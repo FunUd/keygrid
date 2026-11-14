@@ -43,7 +43,7 @@ public class MultiMonitorIntegrationTests
         Assert.True(mgr.ProcessKey('Q'));
         Assert.True(mgr.ProcessKey('Q'));
 
-        Assert.Equal(SelectionState.AwaitingConfirmation, mgr.State);
+        Assert.Equal(SelectionState.ExecutingClick, mgr.State);
         Assert.NotNull(mgr.TargetCoordinate);
 
         var target = mgr.TargetCoordinate.Value;

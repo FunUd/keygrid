@@ -25,7 +25,7 @@ public class SelectionManagerTests
     }
 
     [Fact]
-    public void TwoStageKeystrokes_TransitionsToAwaitingConfirmation()
+    public void TwoStageKeystrokes_ExecutesClickImmediatelyAfterFourthKey()
     {
         var mgr = new SelectionManager();
         mgr.StartSelection(_single1080pMonitor);
@@ -48,14 +48,16 @@ public class SelectionManagerTests
         Assert.Equal(2, mgr.SelectedColumnIndex);
         Assert.Equal(3, mgr.History.Count);
 
-        // Stage 2: Row 'R' (index 3)
+        // Stage 2: Row 'R' (index 3) resolves the target and starts the click immediately
         Assert.True(mgr.ProcessKey('R'));
-        Assert.Equal(SelectionState.AwaitingConfirmation, mgr.State);
+        Assert.Equal(SelectionState.ExecutingClick, mgr.State);
         Assert.Equal(4, mgr.History.Count);
         Assert.NotNull(mgr.TargetCoordinate);
 
-        // Enter confirms target
-        Assert.True(mgr.ProcessEnter());
+        // There is no confirmation state: Enter and Backspace are no longer accepted
+        Assert.False(mgr.ProcessEnter());
+        Assert.False(mgr.ProcessBackspace());
+        Assert.False(mgr.ProcessKey('Q'));
         Assert.Equal(SelectionState.ExecutingClick, mgr.State);
     }
 
@@ -87,19 +89,12 @@ public class SelectionManagerTests
         var mgr = new SelectionManager();
         mgr.StartSelection(_single1080pMonitor);
 
-        // Type 4 keys: Q, W, E, R
+        // Type 3 keys: Q, W, E (stage 2 column selected, click not yet executed)
         mgr.ProcessKey('Q');
         mgr.ProcessKey('W');
         mgr.ProcessKey('E');
-        mgr.ProcessKey('R');
-        Assert.Equal(SelectionState.AwaitingConfirmation, mgr.State);
-
-        // Backspace from 4 -> returns to Selecting (history: 3 keys: Q, W, E)
-        Assert.True(mgr.ProcessBackspace());
         Assert.Equal(SelectionState.Selecting, mgr.State);
-        Assert.Equal(3, mgr.History.Count);
         Assert.Equal(2, mgr.SelectedColumnIndex);
-        Assert.Equal(-1, mgr.SelectedRowIndex);
 
         // Backspace from 3 -> returns to history 2: Q, W (Stage 1 completed)
         Assert.True(mgr.ProcessBackspace());

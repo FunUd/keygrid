@@ -59,10 +59,10 @@ KeyGrid is designed around strict separation of concerns to maximize testability
    - Mapping 26 keys `Q W E R T Y U I O P A S D F G H J K L Z X C V B N M` to indices $0 \dots 25$.
    - Out-of-bounds keys and non-alphabetic keys ignored.
 3. **`SelectionManagerTests`**:
-   - Complete state machine coverage (Standby, Selecting, AwaitingConfirmation, ExecutingClick).
-   - Keystroke history progression (0 -> 1 -> 2 -> 3 -> 4 keys).
-   - Enter at step 2 (premature confirmation at stage 1 reference point).
-   - Enter ignored at step 0, 1, 3.
+   - Complete state machine coverage (Standby, Selecting, ExecutingClick).
+   - Keystroke history progression (0 -> 1 -> 2 -> 3 -> 4 keys), with the 4th key starting the click immediately.
+   - Enter at step 2 (early click at the stage 1 reference point).
+   - Enter ignored at steps 0, 1, 3, and after the 4th key.
    - Backspace: pops key and replays selection history to re-derive active bounding box.
    - Cancel via Esc, focus loss, or monitor change resets to Standby.
 4. **`CoordinateConverterTests`**:
@@ -117,9 +117,9 @@ KeyGrid is designed around strict separation of concerns to maximize testability
   - [x] Center reference point and nearest-pixel resolution.
   - [x] Unit tests for all calculator rules.
 - [x] Implement `SelectionManager`:
-  - [x] State transition logic (Standby, Selecting, AwaitingConfirmation, ExecutingClick).
+  - [x] State transition logic (Standby, Selecting, ExecutingClick).
   - [x] History management (append keystroke, Backspace pop and recalculate).
-  - [x] Enter key validation (stage 1 early confirm vs stage 2 confirm).
+  - [x] Enter key validation (stage 1 early click); stage 2 clicks automatically on the 4th key.
   - [x] Unit tests for `SelectionManager`.
 - [x] Implement `CoordinateConverter`:
   - [x] Mapping physical pixel $(x, y)$ to normalized absolute mouse coordinates $(0 \dots 65535)$.
@@ -128,7 +128,7 @@ KeyGrid is designed around strict separation of concerns to maximize testability
   - [x] Custom rendering for grid lines and bounding rectangle.
   - [x] Top column labels and left row labels.
   - [x] Column highlight (after 1st stroke of a stage) and cell highlight (after 2nd stroke).
-  - [x] Crosshair marker display in `AwaitingConfirmation` state.
+  - [x] Immediate click dispatch when stage 2 completes (no confirmation screen).
   - [x] Keyboard input binding (Q-M keys, Backspace, Enter, Esc).
 - [x] Implement `ClickExecutor`:
   - [x] Dispatcher flush before `SendInput`.

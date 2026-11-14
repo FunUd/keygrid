@@ -81,10 +81,20 @@ public class OverlayManager
 
     private void OnKeyPressed(char key)
     {
-        if (_selectionManager.ProcessKey(key))
+        if (!_selectionManager.ProcessKey(key))
         {
-            UpdateAllOverlays();
+            return;
         }
+
+        // The 4th keystroke completes stage 2 and resolves the target.
+        // Dispatch the click immediately instead of waiting for a confirmation screen.
+        if (_selectionManager.State == SelectionState.ExecutingClick)
+        {
+            ExecuteConfirmedClick();
+            return;
+        }
+
+        UpdateAllOverlays();
     }
 
     private void OnEnterPressed()

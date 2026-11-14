@@ -94,17 +94,16 @@ Q  W  E  R  T  Y  U  I  O  P  A  S  D  F  G  H  J  K  L  Z  X  C  V  B  N  M
   5. Press the third letter (`Q`).
   6. Press the fourth letter (`A`).
 
-### 3. Confirming and Clicking
+### 3. Automatic Clicking
 
-- Once Stage 2 is complete, KeyGrid enters the **Awaiting Confirmation** state and displays a red target crosshair at the resolved click coordinate.
-- Press **`Enter`** to execute the left click. The overlay will hide and SendInput will dispatch the click event.
-- **Early Confirmation**: You can also press **`Enter`** immediately after completing Stage 1 (after the first 2 keystrokes) to click the center of the Stage 1 cell without performing Stage 2.
+- When the fourth keystroke completes Stage 2, KeyGrid immediately resolves the click coordinate, hides the overlay, and dispatches the left click. No confirmation screen is shown.
+- **Early Click**: You can also press **`Enter`** immediately after completing Stage 1 (after the first 2 keystrokes) to click the center of the Stage 1 cell without performing Stage 2.
 
 ### 4. Correcting and Cancelling
 
 | Key | Action |
 |---|---|
-| **`Backspace`** | Undoes the last keystroke and recalculates the active selection area. |
+| **`Backspace`** | Undoes the last keystroke and recalculates the active selection area. Available up to the third keystroke; the fourth keystroke clicks immediately. |
 | **`Esc`** | Cancels the selection mode and returns to standby. |
 | **Focus Loss** | Switching windows or clicking outside automatically cancels selection. |
 

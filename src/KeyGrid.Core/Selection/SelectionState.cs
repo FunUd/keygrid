@@ -16,13 +16,8 @@ public enum SelectionState
     Selecting,
 
     /// <summary>
-    /// 4 keystrokes completed (stage 2 complete). Waiting for Enter confirmation.
-    /// Crosshair marker is displayed.
-    /// </summary>
-    AwaitingConfirmation,
-
-    /// <summary>
-    /// Enter pressed. Overlay is hidden and click is being dispatched via SendInput.
+    /// Target resolved immediately by the 4th keystroke or by Enter after stage 1.
+    /// Overlay is hidden and the click is being dispatched via SendInput.
     /// </summary>
     ExecutingClick
 }

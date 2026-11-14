@@ -10,7 +10,7 @@ namespace KeyGrid.UI;
 
 /// <summary>
 /// Handles high-performance hardware-accelerated drawing of grid lines,
-/// selection masks, 2-letter section labels inside cells, and target crosshairs.
+/// selection masks, and 2-letter section labels inside cells.
 /// </summary>
 public class OverlayRenderElement : FrameworkElement
 {
@@ -22,7 +22,6 @@ public class OverlayRenderElement : FrameworkElement
     private readonly Brush _cellHighlightBrush = new SolidColorBrush(Color.FromArgb(70, 0, 255, 150));
     private readonly Pen _gridPen = new(new SolidColorBrush(Color.FromArgb(70, 255, 255, 255)), 1.0);
     private readonly Pen _bboxPen = new(new SolidColorBrush(Color.FromArgb(200, 0, 200, 255)), 2.0);
-    private readonly Pen _crosshairPen = new(new SolidColorBrush(Color.FromArgb(240, 255, 50, 50)), 2.0);
 
     // Normal cell badge
     private readonly Brush _badgeBgBrush = new SolidColorBrush(Color.FromArgb(220, 18, 22, 32));
@@ -41,7 +40,6 @@ public class OverlayRenderElement : FrameworkElement
         _cellHighlightBrush.Freeze();
         _gridPen.Freeze();
         _bboxPen.Freeze();
-        _crosshairPen.Freeze();
         _badgeBgBrush.Freeze();
         _badgeBorderPen.Freeze();
         _activeBadgeBgBrush.Freeze();
@@ -168,18 +166,6 @@ public class OverlayRenderElement : FrameworkElement
         {
             DrawCellSectionLabels(dc, dpiX, dpiY);
         }
-
-        // 6. Draw Target Crosshair in AwaitingConfirmation state
-        if (_selectionManager.State == SelectionState.AwaitingConfirmation && _selectionManager.TargetCoordinate.HasValue)
-        {
-            var target = _selectionManager.TargetCoordinate.Value;
-            if (_monitorRect.Contains(target))
-            {
-                double tx = (target.X - _monitorRect.Left) / dpiX;
-                double ty = (target.Y - _monitorRect.Top) / dpiY;
-                DrawCrosshair(dc, tx, ty);
-            }
-        }
     }
 
     /// <summary>
@@ -267,18 +253,6 @@ public class OverlayRenderElement : FrameworkElement
 
         var textOrigin = new Point(center.X - formattedText.Width / 2, center.Y - formattedText.Height / 2);
         dc.DrawText(formattedText, textOrigin);
-    }
-
-    private void DrawCrosshair(DrawingContext dc, double x, double y)
-    {
-        double radius = 8;
-        double arm = 14;
-
-        dc.DrawEllipse(null, _crosshairPen, new Point(x, y), radius, radius);
-        dc.DrawLine(_crosshairPen, new Point(x - arm, y), new Point(x - radius, y));
-        dc.DrawLine(_crosshairPen, new Point(x + radius, y), new Point(x + arm, y));
-        dc.DrawLine(_crosshairPen, new Point(x, y - arm), new Point(x, y - radius));
-        dc.DrawLine(_crosshairPen, new Point(x, y + radius), new Point(x, y + arm));
     }
 
     private Rect ToDipRect(PixelRect rect, double dpiX, double dpiY)

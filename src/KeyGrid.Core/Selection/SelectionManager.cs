@@ -150,9 +150,10 @@ public class SelectionManager
             }
             else if (_history.Count == 4)
             {
-                // Stage 2 completed, enter AwaitingConfirmation
+                // Stage 2 completed. Resolve the target and start the click immediately;
+                // there is no separate confirmation step.
                 TargetCoordinate = GridCalculator.ResolveTargetCoordinate(CurrentBoundingBox, CurrentSelection);
-                State = SelectionState.AwaitingConfirmation;
+                State = SelectionState.ExecutingClick;
             }
 
             return true;
@@ -160,21 +161,14 @@ public class SelectionManager
     }
 
     /// <summary>
-    /// Processes Enter key.
-    /// Allowed when 1st stage is complete (_history.Count == 2) or in AwaitingConfirmation (_history.Count == 4).
+    /// Processes Enter key for the early click after stage 1 (_history.Count == 2).
+    /// Stage 2 clicks automatically on its final keystroke, so Enter is not needed there.
     /// </summary>
     public bool ProcessEnter()
     {
         if (State == SelectionState.Selecting && _history.Count == 2)
         {
             TargetCoordinate = GridCalculator.ResolveTargetCoordinate(CurrentBoundingBox, CurrentSelection);
-            State = SelectionState.ExecutingClick;
-            return true;
-        }
-
-        if (State == SelectionState.AwaitingConfirmation)
-        {
-            TargetCoordinate ??= GridCalculator.ResolveTargetCoordinate(CurrentBoundingBox, CurrentSelection);
             State = SelectionState.ExecutingClick;
             return true;
         }
@@ -188,7 +182,7 @@ public class SelectionManager
     /// </summary>
     public bool ProcessBackspace()
     {
-        if (State != SelectionState.Selecting && State != SelectionState.AwaitingConfirmation)
+        if (State != SelectionState.Selecting)
         {
             return false;
         }
