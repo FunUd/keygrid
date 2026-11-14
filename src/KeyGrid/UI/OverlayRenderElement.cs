@@ -10,22 +10,29 @@ namespace KeyGrid.UI;
 
 /// <summary>
 /// Handles high-performance hardware-accelerated drawing of grid lines,
-/// selection masks, column/row labels, and target crosshairs on an overlay window.
+/// selection masks, 2-letter section labels inside cells, and target crosshairs.
 /// </summary>
 public class OverlayRenderElement : FrameworkElement
 {
     private PixelRect _monitorRect;
     private SelectionManager? _selectionManager;
 
-    private readonly Brush _dimBrush = new SolidColorBrush(Color.FromArgb(140, 10, 15, 25));
+    private readonly Brush _dimBrush = new SolidColorBrush(Color.FromArgb(145, 10, 15, 25));
     private readonly Brush _columnHighlightBrush = new SolidColorBrush(Color.FromArgb(50, 0, 180, 255));
     private readonly Brush _cellHighlightBrush = new SolidColorBrush(Color.FromArgb(70, 0, 255, 150));
-    private readonly Pen _gridPen = new(new SolidColorBrush(Color.FromArgb(80, 255, 255, 255)), 1.0);
+    private readonly Pen _gridPen = new(new SolidColorBrush(Color.FromArgb(70, 255, 255, 255)), 1.0);
     private readonly Pen _bboxPen = new(new SolidColorBrush(Color.FromArgb(200, 0, 200, 255)), 2.0);
     private readonly Pen _crosshairPen = new(new SolidColorBrush(Color.FromArgb(240, 255, 50, 50)), 2.0);
-    private readonly Brush _labelBgBrush = new SolidColorBrush(Color.FromArgb(230, 20, 25, 35));
-    private readonly Pen _labelBorderPen = new(new SolidColorBrush(Color.FromArgb(200, 0, 200, 255)), 1.0);
-    private readonly Typeface _labelTypeface = new("Segoe UI");
+
+    // Normal cell badge
+    private readonly Brush _badgeBgBrush = new SolidColorBrush(Color.FromArgb(220, 18, 22, 32));
+    private readonly Pen _badgeBorderPen = new(new SolidColorBrush(Color.FromArgb(180, 0, 210, 255)), 1.2);
+
+    // Highlighted column cell badge
+    private readonly Brush _activeBadgeBgBrush = new SolidColorBrush(Color.FromArgb(240, 0, 120, 215));
+    private readonly Pen _activeBadgeBorderPen = new(new SolidColorBrush(Color.FromArgb(255, 255, 255, 255)), 1.5);
+
+    private readonly Typeface _labelTypeface = new(new FontFamily("Segoe UI"), FontStyles.Normal, FontWeights.Bold, FontStretches.Normal);
 
     public OverlayRenderElement()
     {
@@ -35,8 +42,10 @@ public class OverlayRenderElement : FrameworkElement
         _gridPen.Freeze();
         _bboxPen.Freeze();
         _crosshairPen.Freeze();
-        _labelBgBrush.Freeze();
-        _labelBorderPen.Freeze();
+        _badgeBgBrush.Freeze();
+        _badgeBorderPen.Freeze();
+        _activeBadgeBgBrush.Freeze();
+        _activeBadgeBorderPen.Freeze();
     }
 
     public void UpdateState(PixelRect monitorRect, SelectionManager selectionManager)
@@ -110,7 +119,7 @@ public class OverlayRenderElement : FrameworkElement
             }
         }
 
-        // 4. Draw Grid Lines
+        // 4. Draw Grid Lines & Bounding Box
         var bboxIntersection = _selectionManager.CurrentBoundingBox.Intersect(_monitorRect);
         if (!bboxIntersection.IsEmpty)
         {
@@ -154,13 +163,13 @@ public class OverlayRenderElement : FrameworkElement
             }
         }
 
-        // 5. Draw Column Labels (Top edge)
-        DrawColumnLabels(dc, dpiX, dpiY);
+        // 5. Draw 2-Letter Section Labels inside each valid cell
+        if (_selectionManager.State == SelectionState.Selecting)
+        {
+            DrawCellSectionLabels(dc, dpiX, dpiY);
+        }
 
-        // 6. Draw Row Labels (Left edge)
-        DrawRowLabels(dc, dpiX, dpiY);
-
-        // 7. Draw Target Crosshair in AwaitingConfirmation state
+        // 6. Draw Target Crosshair in AwaitingConfirmation state
         if (_selectionManager.State == SelectionState.AwaitingConfirmation && _selectionManager.TargetCoordinate.HasValue)
         {
             var target = _selectionManager.TargetCoordinate.Value;
@@ -173,104 +182,88 @@ public class OverlayRenderElement : FrameworkElement
         }
     }
 
-    private void DrawColumnLabels(DrawingContext dc, double dpiX, double dpiY)
+    /// <summary>
+    /// Displays 2-letter labels (Column key + Row key) directly inside each valid grid section,
+    /// eliminating the need to look at screen edges.
+    /// </summary>
+    private void DrawCellSectionLabels(DrawingContext dc, double dpiX, double dpiY)
     {
         if (_selectionManager == null) return;
 
+        int selectedCol = _selectionManager.SelectedColumnIndex;
+
         for (int c = 0; c < _selectionManager.ColumnCount; c++)
         {
-            if (!GridCalculator.IsColumnValid(c, _selectionManager.XBoundaries, _selectionManager.CurrentBoundingBox, _selectionManager.CurrentSelection))
+            // If a column is already selected, only display labels for that active column
+            if (selectedCol >= 0 && selectedCol != c)
             {
                 continue;
             }
 
-            int left = _selectionManager.XBoundaries[c];
-            int right = _selectionManager.XBoundaries[c + 1];
-            int centerX = left + (right - left) / 2;
+            char colChar = KeyLayout.GetKey(c);
 
-            // Find top-most Y coordinate in this column's selection
-            int topY = _selectionManager.CurrentBoundingBox.Top;
-            var colSlice = PixelRect.FromEdges(left, _selectionManager.CurrentBoundingBox.Top, right, _selectionManager.CurrentBoundingBox.Bottom);
-            foreach (var rect in _selectionManager.CurrentSelection)
+            for (int r = 0; r < _selectionManager.RowCount; r++)
             {
-                var isect = rect.Intersect(colSlice);
-                if (!isect.IsEmpty && isect.Top < topY)
+                if (!GridCalculator.IsCellValid(c, r, _selectionManager.XBoundaries, _selectionManager.YBoundaries, _selectionManager.CurrentSelection))
                 {
-                    topY = isect.Top;
+                    continue;
                 }
-            }
 
-            if (_monitorRect.Contains(centerX, topY))
-            {
-                double xDip = (centerX - _monitorRect.Left) / dpiX;
-                double yDip = (topY - _monitorRect.Top) / dpiY;
-                char keyChar = KeyLayout.GetKey(c);
-                DrawBadge(dc, keyChar.ToString(), new Point(xDip, yDip + 14));
+                char rowChar = KeyLayout.GetKey(r);
+
+                var cell = GridCalculator.GetCell(_selectionManager.XBoundaries, _selectionManager.YBoundaries, c, r);
+                var visibleCell = cell.Intersect(_monitorRect);
+                if (visibleCell.IsEmpty)
+                {
+                    continue;
+                }
+
+                double cellWidthDip = visibleCell.Width / dpiX;
+                double cellHeightDip = visibleCell.Height / dpiY;
+
+                // Only render if cell is large enough to display text
+                if (cellWidthDip < 14 || cellHeightDip < 12)
+                {
+                    continue;
+                }
+
+                double centerXDip = (visibleCell.Left + visibleCell.Width / 2.0 - _monitorRect.Left) / dpiX;
+                double centerYDip = (visibleCell.Top + visibleCell.Height / 2.0 - _monitorRect.Top) / dpiY;
+
+                string labelText = $"{colChar}{rowChar}";
+                bool isActiveColumn = (selectedCol == c);
+
+                DrawSectionBadge(dc, labelText, new Point(centerXDip, centerYDip), cellWidthDip, cellHeightDip, isActiveColumn);
             }
         }
     }
 
-    private void DrawRowLabels(DrawingContext dc, double dpiX, double dpiY)
+    private void DrawSectionBadge(DrawingContext dc, string text, Point center, double cellW, double cellH, bool isActive)
     {
-        if (_selectionManager == null) return;
+        // Dynamically scale font size according to cell dimensions
+        double minDim = Math.Min(cellW, cellH);
+        double fontSize = Math.Clamp(minDim * 0.35, 10.0, 14.0);
 
-        for (int r = 0; r < _selectionManager.RowCount; r++)
-        {
-            // Row is valid if at least one cell in row is valid
-            bool rowValid = false;
-            for (int c = 0; c < _selectionManager.ColumnCount; c++)
-            {
-                if (GridCalculator.IsCellValid(c, r, _selectionManager.XBoundaries, _selectionManager.YBoundaries, _selectionManager.CurrentSelection))
-                {
-                    rowValid = true;
-                    break;
-                }
-            }
-
-            if (!rowValid) continue;
-
-            int top = _selectionManager.YBoundaries[r];
-            int bottom = _selectionManager.YBoundaries[r + 1];
-            int centerY = top + (bottom - top) / 2;
-
-            // Find left-most X coordinate in this row's selection
-            int leftX = _selectionManager.CurrentBoundingBox.Left;
-            var rowSlice = PixelRect.FromEdges(_selectionManager.CurrentBoundingBox.Left, top, _selectionManager.CurrentBoundingBox.Right, bottom);
-            foreach (var rect in _selectionManager.CurrentSelection)
-            {
-                var isect = rect.Intersect(rowSlice);
-                if (!isect.IsEmpty && isect.Left < leftX)
-                {
-                    leftX = isect.Left;
-                }
-            }
-
-            if (_monitorRect.Contains(leftX, centerY))
-            {
-                double xDip = (leftX - _monitorRect.Left) / dpiX;
-                double yDip = (centerY - _monitorRect.Top) / dpiY;
-                char keyChar = KeyLayout.GetKey(r);
-                DrawBadge(dc, keyChar.ToString(), new Point(xDip + 14, yDip));
-            }
-        }
-    }
-
-    private void DrawBadge(DrawingContext dc, string text, Point center)
-    {
         var formattedText = new FormattedText(
             text,
             CultureInfo.InvariantCulture,
             FlowDirection.LeftToRight,
             _labelTypeface,
-            13,
+            fontSize,
             Brushes.White,
             1.0);
 
-        double badgeWidth = Math.Max(20, formattedText.Width + 8);
-        double badgeHeight = Math.Max(20, formattedText.Height + 4);
+        double badgeWidth = Math.Min(cellW - 2, formattedText.Width + 10);
+        double badgeHeight = Math.Min(cellH - 2, formattedText.Height + 4);
+
+        if (badgeWidth <= 0 || badgeHeight <= 0) return;
 
         var rect = new Rect(center.X - badgeWidth / 2, center.Y - badgeHeight / 2, badgeWidth, badgeHeight);
-        dc.DrawRoundedRectangle(_labelBgBrush, _labelBorderPen, rect, 4, 4);
+
+        var bgBrush = isActive ? _activeBadgeBgBrush : _badgeBgBrush;
+        var borderPen = isActive ? _activeBadgeBorderPen : _badgeBorderPen;
+
+        dc.DrawRoundedRectangle(bgBrush, borderPen, rect, 4, 4);
 
         var textOrigin = new Point(center.X - formattedText.Width / 2, center.Y - formattedText.Height / 2);
         dc.DrawText(formattedText, textOrigin);

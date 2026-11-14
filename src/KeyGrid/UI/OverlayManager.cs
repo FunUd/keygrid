@@ -17,6 +17,7 @@ public class OverlayManager
     private readonly ClickExecutor _clickExecutor;
     private readonly List<OverlayWindow> _overlays = new();
     private OverlayWindow? _primaryOverlay;
+    private bool _isClosing = false;
 
     public event Action<string>? ErrorOccurred;
 
@@ -104,13 +105,14 @@ public class OverlayManager
 
     private void OnCancelRequested()
     {
+        if (_isClosing) return;
         _selectionManager.Cancel();
         CloseOverlays();
     }
 
     private void OnMonitorConfigurationChanged()
     {
-        if (IsActive)
+        if (IsActive && !_isClosing)
         {
             // spec 5.3: Discard selection on monitor / DPI change
             _selectionManager.Cancel();
@@ -154,11 +156,28 @@ public class OverlayManager
 
     public void CloseOverlays()
     {
-        foreach (var overlay in _overlays)
+        if (_isClosing) return;
+        _isClosing = true;
+
+        try
         {
-            overlay.Close();
+            foreach (var overlay in _overlays)
+            {
+                try
+                {
+                    overlay.Close();
+                }
+                catch (InvalidOperationException)
+                {
+                    // Ignore if window was already closed or closing
+                }
+            }
+            _overlays.Clear();
+            _primaryOverlay = null;
         }
-        _overlays.Clear();
-        _primaryOverlay = null;
+        finally
+        {
+            _isClosing = false;
+        }
     }
 }

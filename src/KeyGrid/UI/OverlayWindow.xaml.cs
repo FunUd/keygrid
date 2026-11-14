@@ -19,6 +19,7 @@ public partial class OverlayWindow : Window
 
     private nint _originalHImc = nint.Zero;
     private bool _imeDisabled = false;
+    private bool _isClosing = false;
 
     public OverlayWindow(PixelRect monitorRect, bool isPrimary)
     {
@@ -122,11 +123,23 @@ public partial class OverlayWindow : Window
         e.Handled = true;
     }
 
+    public new void Close()
+    {
+        _isClosing = true;
+        base.Close();
+    }
+
+    protected override void OnClosing(System.ComponentModel.CancelEventArgs e)
+    {
+        _isClosing = true;
+        base.OnClosing(e);
+    }
+
     private nint WndProc(nint hwnd, int msg, nint wParam, nint lParam, ref bool handled)
     {
         const int WM_KILLFOCUS = 0x0008;
 
-        if (IsPrimary && msg == WM_KILLFOCUS)
+        if (IsPrimary && msg == WM_KILLFOCUS && !_isClosing)
         {
             // Focus lost: spec.md 5.3 requires discarding selection
             CancelRequested?.Invoke();

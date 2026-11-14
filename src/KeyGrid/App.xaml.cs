@@ -12,7 +12,6 @@ public partial class App : Application
 {
     private const string MutexName = "KeyGrid_SingleInstance_Mutex";
     private Mutex? _singleInstanceMutex;
-    private Window? _messageWindow;
     private HwndSource? _hwndSource;
     private Win32MonitorProvider? _monitorProvider;
     private Win32ClickSender? _clickSender;
@@ -26,6 +25,8 @@ public partial class App : Application
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
+
+        ShutdownMode = ShutdownMode.OnExplicitShutdown;
 
         AppDomain.CurrentDomain.UnhandledException += (s, args) =>
         {
@@ -46,22 +47,17 @@ public partial class App : Application
 
         FileLogger.LogInfo("KeyGrid application starting.");
 
-        // 2. Create invisible message-only window for receiving WM_HOTKEY and WM_TRAYICON
-        _messageWindow = new Window
+        // 2. Create message-only HwndSource for receiving WM_HOTKEY and WM_TRAYICON
+        var parameters = new HwndSourceParameters("KeyGridMessageReceiver")
         {
+            WindowStyle = 0,
+            ExtendedWindowStyle = 0,
             Width = 0,
-            Height = 0,
-            WindowStyle = WindowStyle.None,
-            ShowInTaskbar = false,
-            Visibility = Visibility.Hidden
+            Height = 0
         };
-        _messageWindow.Show();
-        _messageWindow.Hide();
-
-        var helper = new WindowInteropHelper(_messageWindow);
-        nint hWnd = helper.Handle;
-        _hwndSource = HwndSource.FromHwnd(hWnd);
-        _hwndSource?.AddHook(WndProc);
+        _hwndSource = new HwndSource(parameters);
+        _hwndSource.AddHook(WndProc);
+        nint hWnd = _hwndSource.Handle;
 
         // 3. Initialize components
         _monitorProvider = new Win32MonitorProvider();
@@ -155,11 +151,17 @@ public partial class App : Application
             _hotkeyManager?.Dispose();
             _trayManager?.Dispose();
             _hwndSource?.Dispose();
-            _messageWindow?.Close();
 
             if (_singleInstanceMutex != null)
             {
-                _singleInstanceMutex.ReleaseMutex();
+                try
+                {
+                    _singleInstanceMutex.ReleaseMutex();
+                }
+                catch (ApplicationException)
+                {
+                    // Ignore if mutex is not owned by this thread
+                }
                 _singleInstanceMutex.Dispose();
                 _singleInstanceMutex = null;
             }
