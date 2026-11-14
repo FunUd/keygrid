@@ -27,7 +27,7 @@ KeyGrid is designed around strict separation of concerns to maximize testability
    - Enables complete integration testing with mock/fake multi-monitor configurations (negative origin, DPI differences, disjoint gaps).
 
 3. **WPF Overlay & Windows UI (`KeyGrid`)**:
-   - WPF application targeting Windows 11 (`net8.0-windows` with Per-Monitor DPI Awareness V2).
+   - WPF application targeting Windows 11 (`net10.0-windows` with Per-Monitor DPI Awareness V2).
    - `NativeMethods`: Strict encapsulation of Win32 P/Invoke (`User32`, `Imm32`, `Shell32`).
    - `OverlayWindow`: Lightweight transparent layered window (`WS_EX_TOPMOST`, `WS_EX_TOOLWINDOW`).
    - `OverlayManager`: Coordinates primary input overlay and secondary display-only overlays.
@@ -76,15 +76,15 @@ KeyGrid is designed around strict separation of concerns to maximize testability
 ## 3. Work Breakdown & Implementation Checklist
 
 ### Phase 0: Project Foundation & Core Infrastructure
-- [ ] Initialize Solution and Project Structure:
-  - [ ] Create `src/KeyGrid.Core` (.NET 8 Class Library, pure logic).
-  - [ ] Create `src/KeyGrid` (.NET 8 WPF Application, `net8.0-windows`).
-  - [ ] Create `tests/KeyGrid.Tests` (.NET 8 xUnit test project).
-- [ ] Configure `app.manifest` in `KeyGrid` for Per-Monitor DPI Awareness V2 (`dpiAwareness` = `PerMonitorV2`).
-- [ ] Implement Geometric Primitives in `KeyGrid.Core`:
-  - [ ] `PixelPoint` (X, Y in integer physical pixels).
-  - [ ] `PixelRect` (Left, Top, Width, Height, Right, Bottom with half-open $[L, R) \times [T, B)$ semantics).
-- [ ] Setup CI / Local Test Scripts (`dotnet test`).
+- [x] Initialize Solution and Project Structure:
+  - [x] Create `src/KeyGrid.Core` (.NET 10 Class Library, pure logic).
+  - [x] Create `src/KeyGrid` (.NET 10 WPF Application, `net10.0-windows`).
+  - [x] Create `tests/KeyGrid.Tests` (.NET 10 xUnit test project).
+- [x] Configure `app.manifest` in `KeyGrid` for Per-Monitor DPI Awareness V2 (`dpiAwareness` = `PerMonitorV2`).
+- [x] Implement Geometric Primitives in `KeyGrid.Core`:
+  - [x] `PixelPoint` (X, Y in integer physical pixels).
+  - [x] `PixelRect` (Left, Top, Width, Height, Right, Bottom with half-open $[L, R) \times [T, B)$ semantics).
+- [x] Setup CI / Local Test Scripts (`dotnet test`).
 
 ### Phase 1: Technical Verification (Spikes & OS Boundary Prototypes)
 - [ ] Implement Win32 P/Invoke Layer (`NativeMethods.cs`):

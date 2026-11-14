@@ -1,0 +1,9 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/KeyGrid.Core/KeyGrid.Core.csproj" />
+    <Project Path="src/KeyGrid/KeyGrid.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/KeyGrid.Tests/KeyGrid.Tests.csproj" />
+  </Folder>
+</Solution>
