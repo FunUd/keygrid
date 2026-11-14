@@ -133,7 +133,17 @@ public partial class App : Application
 
     private void ShowAlreadyRunningNotification()
     {
-        var tempWindow = new Window { Width = 0, Height = 0, WindowStyle = WindowStyle.None, ShowInTaskbar = false };
+        // The temporary window exists only to host the tray balloon.
+        // It must never activate, otherwise it would steal focus from a running overlay.
+        var tempWindow = new Window
+        {
+            Width = 0,
+            Height = 0,
+            WindowStyle = WindowStyle.None,
+            ShowInTaskbar = false,
+            ShowActivated = false,
+            Focusable = false
+        };
         tempWindow.Show();
         nint hWnd = new WindowInteropHelper(tempWindow).Handle;
 

@@ -180,6 +180,62 @@ internal static class NativeMethods
     [DllImport("user32.dll")]
     public static extern bool AttachThreadInput(uint idAttach, uint idAttachTo, bool fAttach);
 
+    [DllImport("user32.dll")]
+    public static extern nint GetFocus();
+
+    [DllImport("user32.dll")]
+    public static extern nint SetFocus(nint hWnd);
+
+    [DllImport("user32.dll")]
+    public static extern bool IsWindowVisible(nint hWnd);
+
+    [DllImport("kernel32.dll")]
+    public static extern uint GetCurrentThreadId();
+
+    /// <summary>
+    /// Brings the window to the foreground and gives it keyboard focus.
+    /// Attaching to the current foreground thread bypasses the Windows foreground lock
+    /// when the overlay must reclaim focus from another window.
+    /// </summary>
+    public static bool EnsureForegroundAndFocus(nint hWnd)
+    {
+        if (hWnd == nint.Zero)
+        {
+            return false;
+        }
+
+        nint foreground = GetForegroundWindow();
+        uint foregroundThread = foreground != nint.Zero
+            ? GetWindowThreadProcessId(foreground, out _)
+            : 0;
+        uint currentThread = GetCurrentThreadId();
+        bool attached = foregroundThread != 0
+            && foregroundThread != currentThread
+            && AttachThreadInput(currentThread, foregroundThread, true);
+
+        try
+        {
+            if (foreground != hWnd)
+            {
+                SetForegroundWindow(hWnd);
+            }
+
+            if (GetFocus() != hWnd)
+            {
+                SetFocus(hWnd);
+            }
+        }
+        finally
+        {
+            if (attached)
+            {
+                AttachThreadInput(currentThread, foregroundThread, false);
+            }
+        }
+
+        return GetForegroundWindow() == hWnd && GetFocus() == hWnd;
+    }
+
     [StructLayout(LayoutKind.Sequential)]
     public struct MOUSEINPUT
     {

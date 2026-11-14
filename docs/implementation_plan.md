@@ -17,6 +17,7 @@ KeyGrid is designed around strict separation of concerns to maximize testability
      - Euclidean nearest-point selection when the center falls into non-monitor space.
      - Key sequence mappings (QWERTY layout order, max 26 keys).
      - Keystroke history, undo/recalculation, and state transitions.
+     - Focus-loss recovery policy for hidden IME/TSF helper windows.
      - Absolute virtual desktop coordinate normalization ($0 \dots 65535$).
    - Can be unit-tested completely in headless environments without UI threads.
 
@@ -64,7 +65,9 @@ KeyGrid is designed around strict separation of concerns to maximize testability
    - Enter at step 2 (early click at the stage 1 reference point).
    - Enter ignored at steps 0, 1, 3, and after the 4th key.
    - Backspace: pops key and replays selection history to re-derive active bounding box.
-   - Cancel via Esc, focus loss, or monitor change resets to Standby.
+   - Cancel via Esc, focus loss to a visible foreign window, or monitor change resets to Standby.
+   - Hidden/own-process focus loss reactivates the overlay; repeated recovery failures cancel.
+   - `FocusLossPolicyTests`: transient recovery, visible foreign cancellation, recovery limit, reset.
 4. **`CoordinateConverterTests`**:
    - Normalization formula $X = (x - x_{min}) \times 65535 / (W - 1)$.
    - Negative origin configurations (secondary monitor placed left or top of primary).
@@ -162,8 +165,10 @@ KeyGrid is designed around strict separation of concerns to maximize testability
   - [x] System tray icon with context menu (Status, Exit).
   - [x] Notification balloon display on registration failure or UIPI send failure.
 - [x] Implement Focus & System Event Watchers:
-  - [x] Cancel selection on overlay focus loss (`WM_KILLFOCUS` / `Deactivated`).
+  - [x] Reclaim focus on transient loss to hidden IME/TSF or own-process windows.
+  - [x] Cancel selection on focus loss to a visible foreign window.
   - [x] Cancel selection on display setting change (`WM_DISPLAYCHANGE`, `WM_DPICHANGED`).
+  - [x] Ensure a second instance's notification window never steals focus from an active overlay.
   - [x] Clean restoration of IME context and window destruction.
 - [x] Implement File Logging:
   - [x] File logger writing to `%LOCALAPPDATA%\KeyGrid\logs`.

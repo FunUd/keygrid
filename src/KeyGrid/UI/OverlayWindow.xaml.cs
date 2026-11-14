@@ -16,6 +16,7 @@ public partial class OverlayWindow : Window
     public event Action? EnterPressed;
     public event Action? BackspacePressed;
     public event Action? CancelRequested;
+    public event Action? FocusLost;
 
     private nint _originalHImc = nint.Zero;
     private bool _imeDisabled = false;
@@ -29,6 +30,36 @@ public partial class OverlayWindow : Window
 
         Focusable = isPrimary;
         IsHitTestVisible = true; // Absorbs mouse input to protect background apps
+
+        // Focus can be lost again while the window is becoming visible,
+        // so reclaim it once the primary overlay is fully loaded.
+        Loaded += (_, _) =>
+        {
+            if (IsPrimary)
+            {
+                TryReactivate();
+            }
+        };
+    }
+
+    /// <summary>
+    /// Reclaims foreground and keyboard focus for the primary overlay.
+    /// </summary>
+    public bool TryReactivate()
+    {
+        if (!IsPrimary || _isClosing)
+        {
+            return false;
+        }
+
+        var hwnd = new WindowInteropHelper(this).Handle;
+        bool focused = NativeMethods.EnsureForegroundAndFocus(hwnd);
+        if (focused)
+        {
+            Focus();
+        }
+
+        return focused;
     }
 
     public void UpdateRenderState(SelectionManager selectionManager)
@@ -68,8 +99,7 @@ public partial class OverlayWindow : Window
             _originalHImc = NativeMethods.ImmAssociateContext(hwnd, nint.Zero);
             _imeDisabled = true;
 
-            Activate();
-            Focus();
+            TryReactivate();
         }
     }
 
@@ -141,8 +171,9 @@ public partial class OverlayWindow : Window
 
         if (IsPrimary && msg == WM_KILLFOCUS && !_isClosing)
         {
-            // Focus lost: spec.md 5.3 requires discarding selection
-            CancelRequested?.Invoke();
+            // Focus loss may be transient (for example an IME/TSF helper window).
+            // OverlayManager decides whether to reclaim focus or cancel.
+            FocusLost?.Invoke();
         }
 
         return nint.Zero;

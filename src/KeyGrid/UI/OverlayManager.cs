@@ -3,6 +3,8 @@ using KeyGrid.Core.Abstractions;
 using KeyGrid.Core.Geometry;
 using KeyGrid.Core.Selection;
 using KeyGrid.Core.Services;
+using KeyGrid.Interop;
+using KeyGrid.Services;
 
 namespace KeyGrid.UI;
 
@@ -16,8 +18,10 @@ public class OverlayManager
     private readonly SelectionManager _selectionManager;
     private readonly ClickExecutor _clickExecutor;
     private readonly List<OverlayWindow> _overlays = new();
+    private readonly FocusLossPolicy _focusLossPolicy = new();
     private OverlayWindow? _primaryOverlay;
     private bool _isClosing = false;
+    private bool _isFocusLossPending = false;
 
     public event Action<string>? ErrorOccurred;
 
@@ -52,6 +56,8 @@ public class OverlayManager
             return;
         }
 
+        _focusLossPolicy.Reset();
+
         // Identify primary monitor: typically (0,0) or the first monitor
         var primaryRect = monitorRects.FirstOrDefault(r => r.Left == 0 && r.Top == 0);
         if (primaryRect.IsEmpty)
@@ -71,6 +77,7 @@ public class OverlayManager
                 overlay.EnterPressed += OnEnterPressed;
                 overlay.BackspacePressed += OnBackspacePressed;
                 overlay.CancelRequested += OnCancelRequested;
+                overlay.FocusLost += OnFocusLost;
             }
 
             _overlays.Add(overlay);
@@ -85,6 +92,8 @@ public class OverlayManager
         {
             return;
         }
+
+        _focusLossPolicy.Reset();
 
         // The 4th keystroke completes stage 2 and resolves the target.
         // Dispatch the click immediately instead of waiting for a confirmation screen.
@@ -101,6 +110,7 @@ public class OverlayManager
     {
         if (_selectionManager.ProcessEnter())
         {
+            _focusLossPolicy.Reset();
             ExecuteConfirmedClick();
         }
     }
@@ -109,6 +119,7 @@ public class OverlayManager
     {
         if (_selectionManager.ProcessBackspace())
         {
+            _focusLossPolicy.Reset();
             UpdateAllOverlays();
         }
     }
@@ -118,6 +129,65 @@ public class OverlayManager
         if (_isClosing) return;
         _selectionManager.Cancel();
         CloseOverlays();
+    }
+
+    private void OnFocusLost()
+    {
+        if (_isClosing || !IsActive || _isFocusLossPending)
+        {
+            return;
+        }
+
+        // Defer handling until the focus transition has completed. Reclaiming focus
+        // synchronously inside WM_KILLFOCUS can be overridden by the incoming window.
+        _isFocusLossPending = true;
+        Dispatcher.CurrentDispatcher.BeginInvoke(
+            DispatcherPriority.Input,
+            new Action(HandleFocusLoss));
+    }
+
+    private void HandleFocusLoss()
+    {
+        try
+        {
+            if (_isClosing || !IsActive)
+            {
+                return;
+            }
+
+            nint foreground = NativeMethods.GetForegroundWindow();
+            uint foregroundPid = 0;
+            if (foreground != nint.Zero)
+            {
+                NativeMethods.GetWindowThreadProcessId(foreground, out foregroundPid);
+            }
+            bool foregroundIsVisible = foreground != nint.Zero && NativeMethods.IsWindowVisible(foreground);
+
+            var action = _focusLossPolicy.Decide(
+                foregroundPid,
+                (uint)Environment.ProcessId,
+                foregroundIsVisible);
+
+            if (action == FocusLossAction.ReactivateOverlay
+                && _primaryOverlay != null
+                && _primaryOverlay.TryReactivate())
+            {
+                FileLogger.LogInfo(
+                    $"Focus loss recovered (foreground PID {foregroundPid}, visible={foregroundIsVisible}).");
+                return;
+            }
+
+            FileLogger.LogInfo(
+                $"Focus loss cancelled selection (foreground PID {foregroundPid}, visible={foregroundIsVisible}).");
+            _selectionManager.Cancel();
+            CloseOverlays();
+        }
+        finally
+        {
+            // Keep the flag set while handling so focus transitions caused by
+            // TryReactivate do not schedule duplicate handling.
+            _isFocusLossPending = false;
+        }
     }
 
     private void OnMonitorConfigurationChanged()
