@@ -47,4 +47,39 @@ public class CoordinateConverterTests
         var primaryOrigin = CoordinateConverter.ToNormalizedVirtualDesktop(new PixelPoint(0, 0), virtualScreen);
         Assert.InRange(primaryOrigin.NormalizedX, 32700, 32800);
     }
+
+    [Theory]
+    [InlineData(1920, 1080)]
+    [InlineData(2560, 1440)]
+    [InlineData(3840, 2160)]
+    [InlineData(7680, 2160)]
+    public void CoordinateConverter_RoundTripPrecision_NeverExceeds1Pixel(int width, int height)
+    {
+        var screen = new PixelRect(0, 0, width, height);
+
+        // Test sample of coordinates including corners, centers, and sub-regions
+        var samplePoints = new[]
+        {
+            new PixelPoint(0, 0),
+            new PixelPoint(width - 1, height - 1),
+            new PixelPoint(width / 2, height / 2),
+            new PixelPoint(width / 4, height / 3),
+            new PixelPoint(width * 3 / 4, height * 2 / 3)
+        };
+
+        foreach (var pt in samplePoints)
+        {
+            var (normX, normY) = CoordinateConverter.ToNormalizedVirtualDesktop(pt, screen);
+
+            // Reconstruct screen pixel using OS formula
+            int reconstructedX = (int)Math.Round((double)normX * (width - 1) / CoordinateConverter.MaxSendInputValue);
+            int reconstructedY = (int)Math.Round((double)normY * (height - 1) / CoordinateConverter.MaxSendInputValue);
+
+            int deltaX = Math.Abs(reconstructedX - pt.X);
+            int deltaY = Math.Abs(reconstructedY - pt.Y);
+
+            Assert.True(deltaX <= 1, $"Delta X for {pt} in {width}x{height} is {deltaX}");
+            Assert.True(deltaY <= 1, $"Delta Y for {pt} in {width}x{height} is {deltaY}");
+        }
+    }
 }

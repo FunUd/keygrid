@@ -1,0 +1,164 @@
+using System.Windows.Threading;
+using KeyGrid.Core.Abstractions;
+using KeyGrid.Core.Geometry;
+using KeyGrid.Core.Selection;
+using KeyGrid.Core.Services;
+
+namespace KeyGrid.UI;
+
+/// <summary>
+/// Manages creation, event routing, rendering synchronization,
+/// and teardown for overlay windows across all monitors.
+/// </summary>
+public class OverlayManager
+{
+    private readonly IMonitorProvider _monitorProvider;
+    private readonly SelectionManager _selectionManager;
+    private readonly ClickExecutor _clickExecutor;
+    private readonly List<OverlayWindow> _overlays = new();
+    private OverlayWindow? _primaryOverlay;
+
+    public event Action<string>? ErrorOccurred;
+
+    public bool IsActive => _overlays.Count > 0;
+
+    public OverlayManager(
+        IMonitorProvider monitorProvider,
+        SelectionManager selectionManager,
+        ClickExecutor clickExecutor)
+    {
+        _monitorProvider = monitorProvider;
+        _selectionManager = selectionManager;
+        _clickExecutor = clickExecutor;
+
+        _monitorProvider.Changed += OnMonitorConfigurationChanged;
+    }
+
+    public void ShowOverlays()
+    {
+        CloseOverlays();
+
+        var monitorRects = _monitorProvider.GetMonitorRects();
+        if (monitorRects.Count == 0)
+        {
+            ErrorOccurred?.Invoke("No active displays found.");
+            return;
+        }
+
+        if (!_selectionManager.StartSelection(monitorRects))
+        {
+            ErrorOccurred?.Invoke("Failed to initialize selection area.");
+            return;
+        }
+
+        // Identify primary monitor: typically (0,0) or the first monitor
+        var primaryRect = monitorRects.FirstOrDefault(r => r.Left == 0 && r.Top == 0);
+        if (primaryRect.IsEmpty)
+        {
+            primaryRect = monitorRects[0];
+        }
+
+        foreach (var rect in monitorRects)
+        {
+            bool isPrimary = (rect == primaryRect);
+            var overlay = new OverlayWindow(rect, isPrimary);
+
+            if (isPrimary)
+            {
+                _primaryOverlay = overlay;
+                overlay.KeyPressed += OnKeyPressed;
+                overlay.EnterPressed += OnEnterPressed;
+                overlay.BackspacePressed += OnBackspacePressed;
+                overlay.CancelRequested += OnCancelRequested;
+            }
+
+            _overlays.Add(overlay);
+            overlay.Show();
+            overlay.UpdateRenderState(_selectionManager);
+        }
+    }
+
+    private void OnKeyPressed(char key)
+    {
+        if (_selectionManager.ProcessKey(key))
+        {
+            UpdateAllOverlays();
+        }
+    }
+
+    private void OnEnterPressed()
+    {
+        if (_selectionManager.ProcessEnter())
+        {
+            ExecuteConfirmedClick();
+        }
+    }
+
+    private void OnBackspacePressed()
+    {
+        if (_selectionManager.ProcessBackspace())
+        {
+            UpdateAllOverlays();
+        }
+    }
+
+    private void OnCancelRequested()
+    {
+        _selectionManager.Cancel();
+        CloseOverlays();
+    }
+
+    private void OnMonitorConfigurationChanged()
+    {
+        if (IsActive)
+        {
+            // spec 5.3: Discard selection on monitor / DPI change
+            _selectionManager.Cancel();
+            CloseOverlays();
+        }
+    }
+
+    private void UpdateAllOverlays()
+    {
+        foreach (var overlay in _overlays)
+        {
+            overlay.UpdateRenderState(_selectionManager);
+        }
+    }
+
+    private void ExecuteConfirmedClick()
+    {
+        if (!_selectionManager.TargetCoordinate.HasValue)
+        {
+            CloseOverlays();
+            _selectionManager.CompleteClick();
+            return;
+        }
+
+        var target = _selectionManager.TargetCoordinate.Value;
+        var virtualScreen = _selectionManager.VirtualScreenBoundingBox;
+
+        bool success = _clickExecutor.ExecuteClick(
+            target,
+            virtualScreen,
+            hideOverlaysAction: CloseOverlays,
+            waitAfterHideAction: () => Dispatcher.CurrentDispatcher.Invoke(() => { }, DispatcherPriority.Render));
+
+        _selectionManager.CompleteClick();
+
+        if (!success)
+        {
+            ErrorOccurred?.Invoke($"Failed to dispatch click to ({target.X}, {target.Y}). The target window may require higher integrity level (UIPI).");
+        }
+    }
+
+    public void CloseOverlays()
+    {
+        foreach (var overlay in _overlays)
+        {
+            overlay.Close();
+        }
+        _overlays.Clear();
+        _primaryOverlay = null;
+    }
+}

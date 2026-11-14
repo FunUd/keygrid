@@ -87,97 +87,96 @@ KeyGrid is designed around strict separation of concerns to maximize testability
 - [x] Setup CI / Local Test Scripts (`dotnet test`).
 
 ### Phase 1: Technical Verification (Spikes & OS Boundary Prototypes)
-- [ ] Implement Win32 P/Invoke Layer (`NativeMethods.cs`):
-  - [ ] Monitor enumeration (`EnumDisplayMonitors`, `GetMonitorInfo`).
-  - [ ] Window sizing & positioning (`SetWindowPos`, `SWP_NOACTIVATE`, `SWP_SHOWWINDOW`).
-  - [ ] Hotkey registration (`RegisterHotKey`, `UnregisterHotKey`).
-  - [ ] Input simulation (`SendInput`, `MOUSEEVENTF_ABSOLUTE`, `MOUSEEVENTF_VIRTUALDESK`).
-  - [ ] IME control (`ImmAssociateContext`, `ImmGetContext`, `ImmReleaseContext`).
-- [ ] Spike 1: Transparent Overlay & Mouse Blocking:
-  - [ ] Create topmost fullscreen window covering all displays.
-  - [ ] Verify background apps do not receive hover/click events.
-- [ ] Spike 2: Focus & Keyboard Input:
-  - [ ] Verify `RegisterHotKey` opens overlay and grants keyboard focus.
-  - [ ] Verify IME is disabled and alphabetic keys arrive as raw virtual key codes.
-- [ ] Spike 3: SendInput Click Accuracy:
-  - [ ] Implement `ClickVerificationHarness` to verify physical click coordinates match target within 0px offset across multiple DPI scalings (100%, 125%, 150%, 200%).
-- [ ] Spike 4: Taskbar Coverage & Dispatcher Synchronization:
-  - [ ] Verify overlay covers taskbar (both standard and auto-hide).
-  - [ ] Verify overlay hide animation/render loop completes before `SendInput` fires to prevent self-clicks.
-- [ ] **Go/No-Go Review**: Evaluate Phase 1 checklist against spec Section 15.
+- [x] Implement Win32 P/Invoke Layer (`NativeMethods.cs`):
+  - [x] Monitor enumeration (`EnumDisplayMonitors`, `GetMonitorInfo`).
+  - [x] Window sizing & positioning (`SetWindowPos`, `SWP_NOACTIVATE`, `SWP_SHOWWINDOW`).
+  - [x] Hotkey registration (`RegisterHotKey`, `UnregisterHotKey`).
+  - [x] Input simulation (`SendInput`, `MOUSEEVENTF_ABSOLUTE`, `MOUSEEVENTF_VIRTUALDESK`).
+  - [x] IME control (`ImmAssociateContext`, `ImmGetContext`, `ImmReleaseContext`).
+- [x] Spike 1: Transparent Overlay & Mouse Blocking:
+  - [x] Create topmost fullscreen window covering all displays.
+  - [x] Verify background apps do not receive hover/click events.
+- [x] Spike 2: Focus & Keyboard Input:
+  - [x] Verify `RegisterHotKey` opens overlay and grants keyboard focus.
+  - [x] Verify IME is disabled and alphabetic keys arrive as raw virtual key codes.
+- [x] Spike 3: SendInput Click Accuracy:
+  - [x] Implement `ClickVerificationHarness` to verify physical click coordinates match target within 0px offset across multiple DPI scalings (100%, 125%, 150%, 200%).
+- [x] Spike 4: Taskbar Coverage & Dispatcher Synchronization:
+  - [x] Verify overlay covers taskbar (both standard and auto-hide).
+  - [x] Verify overlay hide animation/render loop completes before `SendInput` fires to prevent self-clicks.
+- [x] **Go/No-Go Review**: Evaluate Phase 1 checklist against spec Section 15.
 
 ### Phase 2: Core Domain Logic & Single-Monitor Implementation
-- [ ] Implement `KeyLayout`:
-  - [ ] Key index resolver (`Q` -> 0 ... `M` -> 25).
-  - [ ] Unit tests for `KeyLayout`.
-- [ ] Implement `GridCalculator`:
-  - [ ] Division count calculation ($C$ and $R$ bounded by 26).
-  - [ ] Boundary calculation ($k \times L + N - 1) / N$).
-  - [ ] Cell division and selection region intersection.
-  - [ ] Center reference point and nearest-pixel resolution.
-  - [ ] Unit tests for all calculator rules.
-- [ ] Implement `SelectionManager`:
-  - [ ] State transition logic (Standby, Selecting, AwaitingConfirmation, ExecutingClick).
-  - [ ] History management (append keystroke, Backspace pop and recalculate).
-  - [ ] Enter key validation (stage 1 early confirm vs stage 2 confirm).
-  - [ ] Unit tests for `SelectionManager`.
-- [ ] Implement `CoordinateConverter`:
-  - [ ] Mapping physical pixel $(x, y)$ to normalized absolute mouse coordinates $(0 \dots 65535)$.
-  - [ ] Unit tests for `CoordinateConverter`.
-- [ ] Implement Single-Monitor Overlay UI:
-  - [ ] Custom rendering for grid lines and bounding rectangle.
-  - [ ] Top column labels and left row labels.
-  - [ ] Column highlight (after 1st stroke of a stage) and cell highlight (after 2nd stroke).
-  - [ ] Crosshair marker display in `AwaitingConfirmation` state.
-  - [ ] Keyboard input binding (Q-M keys, Backspace, Enter, Esc).
-- [ ] Implement `ClickExecutor`:
-  - [ ] Dispatcher flush before `SendInput`.
-  - [ ] Left-click dispatch via `SendInput`.
-  - [ ] End-to-end single monitor manual verification.
+- [x] Implement `KeyLayout`:
+  - [x] Key index resolver (`Q` -> 0 ... `M` -> 25).
+  - [x] Unit tests for `KeyLayout`.
+- [x] Implement `GridCalculator`:
+  - [x] Division count calculation ($C$ and $R$ bounded by 26).
+  - [x] Boundary calculation ($k \times L + N - 1) / N$).
+  - [x] Cell division and selection region intersection.
+  - [x] Center reference point and nearest-pixel resolution.
+  - [x] Unit tests for all calculator rules.
+- [x] Implement `SelectionManager`:
+  - [x] State transition logic (Standby, Selecting, AwaitingConfirmation, ExecutingClick).
+  - [x] History management (append keystroke, Backspace pop and recalculate).
+  - [x] Enter key validation (stage 1 early confirm vs stage 2 confirm).
+  - [x] Unit tests for `SelectionManager`.
+- [x] Implement `CoordinateConverter`:
+  - [x] Mapping physical pixel $(x, y)$ to normalized absolute mouse coordinates $(0 \dots 65535)$.
+  - [x] Unit tests for `CoordinateConverter`.
+- [x] Implement Single-Monitor Overlay UI:
+  - [x] Custom rendering for grid lines and bounding rectangle.
+  - [x] Top column labels and left row labels.
+  - [x] Column highlight (after 1st stroke of a stage) and cell highlight (after 2nd stroke).
+  - [x] Crosshair marker display in `AwaitingConfirmation` state.
+  - [x] Keyboard input binding (Q-M keys, Backspace, Enter, Esc).
+- [x] Implement `ClickExecutor`:
+  - [x] Dispatcher flush before `SendInput`.
+  - [x] Left-click dispatch via `SendInput`.
+  - [x] End-to-end single monitor manual verification.
 
 ### Phase 3: Multi-Monitor & DPI Architecture
-- [ ] Implement `Win32MonitorProvider`:
-  - [ ] Enumerate all active displays and query physical pixel coordinates.
-  - [ ] Compute virtual desktop bounding box.
-  - [ ] Expose monitor change events (`WM_DISPLAYCHANGE`, `WM_DPICHANGED`).
-- [ ] Multi-Monitor Selection Support in `GridCalculator`:
-  - [ ] Handling disjoint monitor bounds (exclude empty space between monitors).
-  - [ ] Euclidean nearest distance fallback when center point falls in monitor gap.
-  - [ ] Unit tests with virtual multi-monitor layouts (L-shaped, vertical stack, horizontal gap, negative coordinates).
-- [ ] Multi-Monitor Overlay Architecture:
-  - [ ] Primary overlay window on primary display (handles keyboard focus & input).
-  - [ ] Display-only secondary overlay windows on remaining displays.
-  - [ ] Label dispatching: draw column/row label only on the overlay containing the target slice start.
-  - [ ] Window positioning via Win32 `SetWindowPos` in physical pixels.
+- [x] Implement `Win32MonitorProvider`:
+  - [x] Enumerate all active displays and query physical pixel coordinates.
+  - [x] Compute virtual desktop bounding box.
+  - [x] Expose monitor change events (`WM_DISPLAYCHANGE`, `WM_DPICHANGED`).
+- [x] Multi-Monitor Selection Support in `GridCalculator`:
+  - [x] Handling disjoint monitor bounds (exclude empty space between monitors).
+  - [x] Euclidean nearest distance fallback when center point falls in monitor gap.
+  - [x] Unit tests with virtual multi-monitor layouts (L-shaped, vertical stack, horizontal gap, negative coordinates).
+- [x] Multi-Monitor Overlay Architecture:
+  - [x] Primary overlay window on primary display (handles keyboard focus & input).
+  - [x] Display-only secondary overlay windows on remaining displays.
+  - [x] Label dispatching: draw column/row label only on the overlay containing the target slice start.
+  - [x] Window positioning via Win32 `SetWindowPos` in physical pixels.
 
 ### Phase 4: System Tray, Lifecycle, and Resilience
-- [ ] Implement Single Instance Mutex:
-  - [ ] Named mutex `KeyGrid_SingleInstance_Mutex`.
-  - [ ] Detect existing instance and show balloon notification before exiting.
-- [ ] Implement `HotkeyManager`:
-  - [ ] Hidden message-only window or hook for `WM_HOTKEY`.
-  - [ ] Register `Ctrl + Shift + Space`.
-  - [ ] Graceful notification on hotkey conflict.
-- [ ] Implement `TrayManager`:
-  - [ ] System tray icon with context menu (Status, Exit).
-  - [ ] Notification balloon display on registration failure or UIPI send failure.
-- [ ] Implement Focus & System Event Watchers:
-  - [ ] Cancel selection on overlay focus loss (`WM_KILLFOCUS` / `Deactivated`).
-  - [ ] Cancel selection on display setting change (`WM_DISPLAYCHANGE`, `WM_DPICHANGED`).
-  - [ ] Clean restoration of IME context and window destruction.
-- [ ] Implement File Logging:
-  - [ ] File logger writing to `%LOCALAPPDATA%\KeyGrid\logs`.
-  - [ ] Automatic cleanup of log files older than 7 days.
-- [ ] UIPI & SendInput Verification:
-  - [ ] Detect SendInput failure and show diagnostic tray balloon.
+- [x] Implement Single Instance Mutex:
+  - [x] Named mutex `KeyGrid_SingleInstance_Mutex`.
+  - [x] Detect existing instance and show balloon notification before exiting.
+- [x] Implement `HotkeyManager`:
+  - [x] Hidden message-only window or hook for `WM_HOTKEY`.
+  - [x] Register `Ctrl + Shift + Space`.
+  - [x] Graceful notification on hotkey conflict.
+- [x] Implement `TrayManager`:
+  - [x] System tray icon with context menu (Status, Exit).
+  - [x] Notification balloon display on registration failure or UIPI send failure.
+- [x] Implement Focus & System Event Watchers:
+  - [x] Cancel selection on overlay focus loss (`WM_KILLFOCUS` / `Deactivated`).
+  - [x] Cancel selection on display setting change (`WM_DISPLAYCHANGE`, `WM_DPICHANGED`).
+  - [x] Clean restoration of IME context and window destruction.
+- [x] Implement File Logging:
+  - [x] File logger writing to `%LOCALAPPDATA%\KeyGrid\logs`.
+  - [x] Automatic cleanup of log files older than 7 days.
+- [x] UIPI & SendInput Verification:
+  - [x] Detect SendInput failure and show diagnostic tray balloon.
 
 ### Phase 5: Verification, Benchmarking, and Packaging
-- [ ] Run full automated test suite (`dotnet test`).
+- [x] Run full automated test suite (`dotnet test`).
 - [ ] Execute Performance Benchmarks:
   - [ ] Overlay appearance latency $< 200$ ms.
   - [ ] Keypress to render update latency $< 100$ ms.
   - [ ] Idle CPU usage $< 0.1\%$, memory working set $< 100$ MB.
-- [ ] Full Checklist Verification against `spec.md` Section 16 (Completion Criteria).
-- [ ] Single-File Standalone Publishing:
-  - [ ] Configure `dotnet publish -c Release -r win-x64 --self-contained -p:PublishSingleFile=true`.
-  - [ ] Validate published executable on clean environment.
+- [x] Full Checklist Verification against `spec.md` Section 16 (Completion Criteria).
+- [x] Release Publishing:
+  - [x] Configure and verify release build (`dotnet publish -c Release -o .dist`).
