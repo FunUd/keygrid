@@ -18,6 +18,7 @@ KeyGrid is designed around strict separation of concerns to maximize testability
      - Key sequence mappings (QWERTY layout order, max 26 keys).
      - Keystroke history, undo/recalculation, and state transitions.
      - Focus-loss recovery policy for hidden IME/TSF helper windows.
+     - Stage-2 key-ruler placement with screen-edge flipping.
      - Absolute virtual desktop coordinate normalization ($0 \dots 65535$).
    - Can be unit-tested completely in headless environments without UI threads.
 
@@ -68,10 +69,16 @@ KeyGrid is designed around strict separation of concerns to maximize testability
    - Cancel via Esc, focus loss to a visible foreign window, or monitor change resets to Standby.
    - Hidden/own-process focus loss reactivates the overlay; repeated recovery failures cancel.
    - `FocusLossPolicyTests`: transient recovery, visible foreign cancellation, recovery limit, reset.
-4. **`CoordinateConverterTests`**:
+4. **`Stage2LabelLayoutTests`**:
+   - Rulers stay outside the selected cell when the preferred side has room.
+   - Top edge flips the horizontal ruler below; left edge flips the vertical ruler right.
+   - Top-left and bottom-right corners flip both rulers without covering the cell.
+   - Inside-edge fallback is used only when no outside side fits.
+   - Label centers follow the calculated cell boundaries.
+5. **`CoordinateConverterTests`**:
    - Normalization formula $X = (x - x_{min}) \times 65535 / (W - 1)$.
    - Negative origin configurations (secondary monitor placed left or top of primary).
-5. **Phase 1 Spike Validation**:
+6. **Phase 1 Spike Validation**:
    - Accuracy verification window registering click events and verifying 0px delta.
 
 ---
@@ -129,10 +136,14 @@ KeyGrid is designed around strict separation of concerns to maximize testability
   - [x] Unit tests for `CoordinateConverter`.
 - [x] Implement Single-Monitor Overlay UI:
   - [x] Custom rendering for grid lines and bounding rectangle.
-  - [x] Top column labels and left row labels.
+  - [x] Stage 1 in-cell 2-letter labels and Stage 2 local key rulers outside the selected cell.
   - [x] Column highlight (after 1st stroke of a stage) and cell highlight (after 2nd stroke).
   - [x] Immediate click dispatch when stage 2 completes (no confirmation screen).
   - [x] Keyboard input binding (Q-M keys, Backspace, Enter, Esc).
+- [x] Implement `Stage2LabelLayout`:
+  - [x] Place horizontal and vertical rulers outside the selected cell.
+  - [x] Flip at monitor edges and fall back to the inside edge only when necessary.
+  - [x] Unit tests for placement, edge flipping, fallback, and label centers.
 - [x] Implement `ClickExecutor`:
   - [x] Dispatcher flush before `SendInput`.
   - [x] Left-click dispatch via `SendInput`.
@@ -150,7 +161,7 @@ KeyGrid is designed around strict separation of concerns to maximize testability
 - [x] Multi-Monitor Overlay Architecture:
   - [x] Primary overlay window on primary display (handles keyboard focus & input).
   - [x] Display-only secondary overlay windows on remaining displays.
-  - [x] Label dispatching: draw column/row label only on the overlay containing the target slice start.
+  - [x] Label dispatching: draw labels/rulers only on the overlay containing the selected cell.
   - [x] Window positioning via Win32 `SetWindowPos` in physical pixels.
 
 ### Phase 4: System Tray, Lifecycle, and Resilience

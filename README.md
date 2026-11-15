@@ -75,7 +75,7 @@ Press the global hotkey:
 
 $$\text{Ctrl} + \text{Shift} + \text{Space}$$
 
-Full-screen transparent overlays will appear across all connected monitors, displaying 2-letter alphabetic labels (Column key + Row key, e.g., `QQ`, `WE`, `RA`) directly inside each grid section. This eliminates eye movement to screen edges.
+Full-screen transparent overlays will appear across all connected monitors. In Stage 1, each grid section displays a 2-letter label (Column key + Row key, e.g., `QQ`, `WE`, `RA`) directly in the cell. In Stage 2, small key rulers appear just outside the zoomed cell, keeping the sub-cell centers clear.
 
 ### 2. Selecting Coordinates (2 Stages)
 
@@ -90,9 +90,9 @@ Q  W  E  R  T  Y  U  I  O  P  A  S  D  F  G  H  J  K  L  Z  X  C  V  B  N  M
   2. Press the first letter (`E`). The active column highlights.
   3. Press the second letter (`D`). The grid immediately zooms into that cell.
 - **Stage 2**:
-  4. In the zoomed cell, read the new 2-letter sub-cell label (e.g., `QA`).
-  5. Press the third letter (`Q`).
-  6. Press the fourth letter (`A`).
+  4. Read the sub-column key from the ruler just above or below the zoomed cell (e.g., `Q`). The ruler flips to the opposite side near a screen edge.
+  5. Press the third letter (`Q`). The chosen sub-column and its ruler segment highlight.
+  6. Read the sub-row key from the ruler just left or right of the cell (e.g., `A`), then press the fourth letter (`A`).
 
 ### 3. Automatic Clicking
 
