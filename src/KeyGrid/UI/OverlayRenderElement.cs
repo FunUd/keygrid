@@ -37,6 +37,9 @@ public class OverlayRenderElement : FrameworkElement
     private readonly Pen _rulerBorderPen = new(new SolidColorBrush(Color.FromArgb(120, 0, 210, 255)), 1.0);
     private readonly Brush _activeRulerBgBrush = new SolidColorBrush(Color.FromArgb(230, 0, 120, 215));
     private readonly Brush _labelShadowBrush = new SolidColorBrush(Color.FromArgb(170, 0, 0, 0));
+    // Active-ruler border (bright, thick) vs inactive-ruler border (dim, thin)
+    private readonly Pen _activeRulerBorderPen = new(new SolidColorBrush(Color.FromArgb(255, 0, 230, 255)), 2.0);
+    private readonly Pen _inactiveRulerBorderPen = new(new SolidColorBrush(Color.FromArgb(60, 150, 200, 220)), 0.8);
 
     private readonly Typeface _labelTypeface = new(new FontFamily("Segoe UI"), FontStyles.Normal, FontWeights.Bold, FontStretches.Normal);
 
@@ -55,6 +58,8 @@ public class OverlayRenderElement : FrameworkElement
         _rulerBorderPen.Freeze();
         _activeRulerBgBrush.Freeze();
         _labelShadowBrush.Freeze();
+        _activeRulerBorderPen.Freeze();
+        _inactiveRulerBorderPen.Freeze();
     }
 
     public void UpdateState(PixelRect monitorRect, SelectionManager selectionManager)
@@ -305,8 +310,13 @@ public class OverlayRenderElement : FrameworkElement
             }
         }
 
-        dc.DrawRoundedRectangle(null, _rulerBorderPen, horizontalStrip, 3, 3);
-        dc.DrawRoundedRectangle(null, _rulerBorderPen, verticalStrip, 3, 3);
+        // Determine which ruler is awaiting input next and highlight it.
+        bool columnIsNext = selectedColumn < 0; // no sub-column chosen yet => horizontal is next
+        var hRulerBorderPen = columnIsNext ? _activeRulerBorderPen : _inactiveRulerBorderPen;
+        var vRulerBorderPen = columnIsNext ? _inactiveRulerBorderPen : _activeRulerBorderPen;
+
+        dc.DrawRoundedRectangle(null, hRulerBorderPen, horizontalStrip, 3, 3);
+        dc.DrawRoundedRectangle(null, vRulerBorderPen, verticalStrip, 3, 3);
 
         double horizontalCenterY = horizontalStrip.Top + horizontalStrip.Height / 2.0;
         for (int c = 0; c < selectionManager.ColumnCount; c++)

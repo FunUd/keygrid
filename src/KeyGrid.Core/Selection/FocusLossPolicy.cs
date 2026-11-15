@@ -33,8 +33,15 @@ public sealed class FocusLossPolicy
 
     public FocusLossAction Decide(uint foregroundProcessId, uint currentProcessId, bool foregroundIsVisible)
     {
-        bool isTransient = foregroundProcessId == currentProcessId || !foregroundIsVisible;
-        if (isTransient && _consecutiveRecoveries < MaxConsecutiveRecoveries)
+        bool isOwnProcess = foregroundProcessId == currentProcessId;
+        bool isHiddenHelper = !foregroundIsVisible;
+        // Own process windows and invisible helpers (IME/TSF) are always transient.
+        // For visible foreign windows we still attempt recovery up to MaxConsecutiveRecoveries
+        // times, because the first focus loss after the overlay opens is typically caused by
+        // Windows returning focus to the previously active window before SetForegroundWindow
+        // completes – not by a deliberate user switch.
+        bool shouldRecover = (isOwnProcess || isHiddenHelper || _consecutiveRecoveries < MaxConsecutiveRecoveries);
+        if (shouldRecover)
         {
             _consecutiveRecoveries++;
             return FocusLossAction.ReactivateOverlay;

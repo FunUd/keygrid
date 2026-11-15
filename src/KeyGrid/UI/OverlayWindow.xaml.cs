@@ -30,16 +30,6 @@ public partial class OverlayWindow : Window
 
         Focusable = isPrimary;
         IsHitTestVisible = true; // Absorbs mouse input to protect background apps
-
-        // Focus can be lost again while the window is becoming visible,
-        // so reclaim it once the primary overlay is fully loaded.
-        Loaded += (_, _) =>
-        {
-            if (IsPrimary)
-            {
-                TryReactivate();
-            }
-        };
     }
 
     /// <summary>

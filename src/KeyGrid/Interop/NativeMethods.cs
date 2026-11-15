@@ -283,4 +283,9 @@ internal static class NativeMethods
 
     [DllImport("user32.dll", SetLastError = true)]
     public static extern uint SendInput(uint nInputs, [In] INPUT[] pInputs, int cbSize);
+
+    public const uint ASFW_ANY = 0xFFFFFFFF;
+
+    [DllImport("user32.dll")]
+    public static extern bool AllowSetForegroundWindow(uint dwProcessId);
 }
