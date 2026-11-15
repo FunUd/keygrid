@@ -23,7 +23,7 @@ public class OverlayManager
     private IReadOnlyList<PixelRect> _activeMonitorRects = Array.Empty<PixelRect>();
     private OverlayWindow? _primaryOverlay;
     private int _isClosing;
-    private bool _isFocusLossPending = false;
+    private int? _focusLossPendingGeneration;
     private bool _isDisplayChangePending = false;
     private int _selectionGeneration;
 
@@ -47,7 +47,12 @@ public class OverlayManager
 
     public void ShowOverlays()
     {
+        int generation = ++_selectionGeneration;
+        _focusLossPendingGeneration = null;
+        _isDisplayChangePending = false;
+
         CloseOverlays();
+        _selectionManager.Cancel();
 
         var monitors = _monitorProvider.GetMonitors()
             .Where(m => !m.Bounds.IsEmpty)
@@ -75,9 +80,6 @@ public class OverlayManager
             return;
         }
 
-        _selectionGeneration++;
-        int generation = _selectionGeneration;
-        _isDisplayChangePending = false;
         FileLogger.LogInfo(
             $"Selection started on {monitors.Count} monitor(s) with target {targetPixels:0.##} px " +
             $"(primary DPI scale {primaryMonitor.DpiScale:0.###}).");
@@ -96,7 +98,7 @@ public class OverlayManager
                 overlay.EnterPressed += OnEnterPressed;
                 overlay.BackspacePressed += OnBackspacePressed;
                 overlay.CancelRequested += OnCancelRequested;
-                overlay.FocusLost += OnFocusLost;
+                overlay.FocusLost += () => OnFocusLost(generation);
             }
 
             _overlays.Add(overlay);
@@ -165,26 +167,29 @@ public class OverlayManager
         CloseOverlays();
     }
 
-    private void OnFocusLost()
+    private void OnFocusLost(int generation)
     {
-        if (IsClosing || !IsActive || _isFocusLossPending)
+        if (generation != _selectionGeneration
+            || IsClosing
+            || !IsActive
+            || _focusLossPendingGeneration == generation)
         {
             return;
         }
 
         // Defer handling until the focus transition has completed. Reclaiming focus
         // synchronously inside WM_KILLFOCUS can be overridden by the incoming window.
-        _isFocusLossPending = true;
+        _focusLossPendingGeneration = generation;
         Dispatcher.CurrentDispatcher.BeginInvoke(
             DispatcherPriority.Input,
-            new Action(HandleFocusLoss));
+            new Action(() => HandleFocusLoss(generation)));
     }
 
-    private void HandleFocusLoss()
+    private void HandleFocusLoss(int generation)
     {
         try
         {
-            if (IsClosing || !IsActive)
+            if (generation != _selectionGeneration || IsClosing || !IsActive)
             {
                 return;
             }
@@ -220,7 +225,10 @@ public class OverlayManager
         {
             // Keep the flag set while handling so focus transitions caused by
             // TryReactivate do not schedule duplicate handling.
-            _isFocusLossPending = false;
+            if (_focusLossPendingGeneration == generation)
+            {
+                _focusLossPendingGeneration = null;
+            }
         }
     }
 
@@ -253,7 +261,10 @@ public class OverlayManager
         }
         finally
         {
-            _isDisplayChangePending = false;
+            if (generation == _selectionGeneration)
+            {
+                _isDisplayChangePending = false;
+            }
         }
     }
 

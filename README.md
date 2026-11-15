@@ -116,6 +116,8 @@ The blocks assume the physical rows of a QWERTY or JIS keyboard. On layouts such
 | **`Esc`** | Cancels the selection mode and returns to standby. |
 | **Focus Loss** | Switching to a visible application cancels selection. Transient focus loss to hidden Windows/IME helper windows is recovered automatically. |
 
+If the grid remains visible but no longer receives keyboard input, press **`Ctrl + Shift + Space`** again to restart the selection from the beginning and restore focus to the grid.
+
 ### 5. Exiting KeyGrid
 
 Right-click the **KeyGrid** tray icon in the system notification area and select **終了 (Exit)**.

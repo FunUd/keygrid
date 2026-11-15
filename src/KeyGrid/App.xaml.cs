@@ -97,13 +97,16 @@ public partial class App : Application
 
     private void OnHotkeyTriggered()
     {
-        // Ignore hotkey while selection is already active according to spec.md Section 7.2
-        if (_overlayManager != null && _overlayManager.IsActive)
+        if (_selectionManager?.State == SelectionState.ExecutingClick)
         {
+            FileLogger.LogInfo("Hotkey ignored while a click is being executed.");
             return;
         }
 
-        FileLogger.LogInfo("Hotkey triggered: opening overlays.");
+        string action = _overlayManager?.IsActive == true
+            ? "restarting selection"
+            : "opening overlays";
+        FileLogger.LogInfo($"Hotkey triggered: {action}.");
         _overlayManager?.ShowOverlays();
     }
 

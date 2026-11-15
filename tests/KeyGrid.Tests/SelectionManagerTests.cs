@@ -27,6 +27,27 @@ public class SelectionManagerTests
     }
 
     [Fact]
+    public void StartSelection_RestartsFromTheBeginning()
+    {
+        var mgr = new SelectionManager();
+        mgr.StartSelection(_single1080pMonitor, Target20Pixels);
+        Assert.True(mgr.ProcessKey('Q'));
+        Assert.True(mgr.ProcessKey('Y'));
+        Assert.True(mgr.ProcessKey('E'));
+
+        bool restarted = mgr.StartSelection(_single1080pMonitor, Target20Pixels);
+
+        Assert.True(restarted);
+        Assert.Equal(SelectionState.Selecting, mgr.State);
+        Assert.Empty(mgr.History);
+        Assert.Equal(1, mgr.CurrentStage);
+        Assert.Equal(-1, mgr.SelectedColumnIndex);
+        Assert.Equal(-1, mgr.SelectedRowIndex);
+        Assert.Null(mgr.TargetCoordinate);
+        Assert.Equal(_single1080pMonitor[0], mgr.CurrentBoundingBox);
+    }
+
+    [Fact]
     public void StartSelection_EmptyMonitorList_ReturnsFalse()
     {
         var mgr = new SelectionManager();
