@@ -54,6 +54,33 @@ public class GridCalculatorTests
         }
     }
 
+    [Fact]
+    public void CalculateBoundaries_LargeLength_DoesNotOverflow()
+    {
+        const int origin = -50_000_000;
+        const int length = 200_000_000;
+        const int count = 26;
+
+        var boundaries = GridCalculator.CalculateBoundaries(origin, length, count);
+
+        Assert.Equal(count + 1, boundaries.Length);
+        Assert.Equal(origin, boundaries[0]);
+        Assert.Equal(origin + length, boundaries[count]);
+
+        long floorSize = length / count;
+        long ceilSize = (length + (long)count - 1) / count;
+
+        for (int k = 0; k < count; k++)
+        {
+            long cellWidth = (long)boundaries[k + 1] - boundaries[k];
+            Assert.InRange(cellWidth, floorSize, ceilSize);
+        }
+
+        // k * length exceeds int.MaxValue for k >= 11; the boundary must still be exact.
+        long expectedLastBoundary = origin + ((long)25 * length + count - 1) / count;
+        Assert.Equal((int)expectedLastBoundary, boundaries[25]);
+    }
+
     [Theory]
     [InlineData(1920, 1080)]
     [InlineData(2560, 1440)]

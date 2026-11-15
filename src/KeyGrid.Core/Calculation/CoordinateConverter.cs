@@ -30,15 +30,20 @@ public static class CoordinateConverter
         int normX = 0;
         if (widthSpan > 0)
         {
-            long relativeX = point.X - virtualScreen.Left;
-            normX = (int)((relativeX * MaxSendInputValue) / widthSpan);
+            // Use 64-bit arithmetic so extreme coordinates cannot overflow before
+            // normalization. Points outside the virtual screen are clamped to the
+            // valid SendInput range as a defensive measure.
+            long relativeX = (long)point.X - virtualScreen.Left;
+            long normalizedX = (relativeX * MaxSendInputValue) / widthSpan;
+            normX = (int)Math.Clamp(normalizedX, 0, MaxSendInputValue);
         }
 
         int normY = 0;
         if (heightSpan > 0)
         {
-            long relativeY = point.Y - virtualScreen.Top;
-            normY = (int)((relativeY * MaxSendInputValue) / heightSpan);
+            long relativeY = (long)point.Y - virtualScreen.Top;
+            long normalizedY = (relativeY * MaxSendInputValue) / heightSpan;
+            normY = (int)Math.Clamp(normalizedY, 0, MaxSendInputValue);
         }
 
         return (normX, normY);

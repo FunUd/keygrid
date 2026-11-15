@@ -56,7 +56,9 @@ public static class GridCalculator
 
         for (int k = 1; k < count; k++)
         {
-            boundaries[k] = origin + (k * length + count - 1) / count;
+            // Promote the multiplication to 64-bit so large lengths cannot overflow
+            // before the division, even if the division-count limit is relaxed later.
+            boundaries[k] = origin + (int)(((long)k * length + count - 1) / count);
         }
 
         return boundaries;

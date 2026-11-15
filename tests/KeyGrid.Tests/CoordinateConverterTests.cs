@@ -49,6 +49,42 @@ public class CoordinateConverterTests
     }
 
     [Theory]
+    [InlineData(-1000, -1000, 0, 0)]
+    [InlineData(5000, 5000, 65535, 65535)]
+    [InlineData(-1, 1080, 0, 65535)]
+    [InlineData(int.MaxValue, int.MinValue, 65535, 0)]
+    public void ToNormalizedVirtualDesktop_PointOutsideVirtualScreen_ClampsToValidRange(
+        int x,
+        int y,
+        int expectedX,
+        int expectedY)
+    {
+        var virtualScreen = new PixelRect(0, 0, 1920, 1080);
+
+        var normalized = CoordinateConverter.ToNormalizedVirtualDesktop(
+            new PixelPoint(x, y),
+            virtualScreen);
+
+        Assert.Equal(expectedX, normalized.NormalizedX);
+        Assert.Equal(expectedY, normalized.NormalizedY);
+    }
+
+    [Fact]
+    public void ToNormalizedVirtualDesktop_ExtremeCoordinateWithNegativeOrigin_DoesNotOverflow()
+    {
+        // Subtracting the negative origin from int.MaxValue overflows 32-bit arithmetic;
+        // the converter must use 64-bit math before clamping.
+        var virtualScreen = new PixelRect(-1920, 0, 3840, 1080);
+
+        var normalized = CoordinateConverter.ToNormalizedVirtualDesktop(
+            new PixelPoint(int.MaxValue, int.MaxValue),
+            virtualScreen);
+
+        Assert.Equal(CoordinateConverter.MaxSendInputValue, normalized.NormalizedX);
+        Assert.Equal(CoordinateConverter.MaxSendInputValue, normalized.NormalizedY);
+    }
+
+    [Theory]
     [InlineData(1920, 1080)]
     [InlineData(2560, 1440)]
     [InlineData(3840, 2160)]
