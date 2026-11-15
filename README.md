@@ -100,7 +100,7 @@ The blocks assume the physical rows of a QWERTY or JIS keyboard. On layouts such
 ### 3. Automatic Clicking
 
 - Press **`Enter`** in Stage 2 to resolve the highlighted cell, hide the overlay, and dispatch the left click.
-- **Early Click**: Press **`Enter`** immediately after Stage 1 to click the center of that selected region without navigating Stage 2.
+- **Confirm Without Moving**: Press **`Enter`** as soon as Stage 2 appears to click its initially highlighted, center-most valid cell.
 
 ### 4. Correcting and Cancelling
 

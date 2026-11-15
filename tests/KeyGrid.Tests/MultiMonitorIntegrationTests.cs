@@ -105,4 +105,22 @@ public class MultiMonitorIntegrationTests
         bool processed = mgr.ProcessKey(midKey);
         Assert.False(processed, $"Key '{midKey}' for empty middle column should be rejected.");
     }
+
+    [Fact]
+    public void Stage2ArrowNavigation_SkipsRowsInsideMonitorGap()
+    {
+        var top = new PixelRect(0, 0, 1920, 490);
+        var bottom = new PixelRect(0, 535, 1920, 545);
+        var mgr = new SelectionManager();
+        mgr.StartSelection(new[] { top, bottom });
+
+        Assert.True(mgr.ProcessKey('Q'));
+        Assert.True(mgr.ProcessKey('H')); // Stage 1 row 4 spans the 45px monitor gap.
+        Assert.Equal(2, mgr.CurrentStage);
+        Assert.Equal(2, mgr.SelectedRowIndex);
+
+        Assert.True(mgr.MoveStage2Cursor(0, 1));
+
+        Assert.Equal(4, mgr.SelectedRowIndex); // Stage 2 row 3 is entirely in the gap.
+    }
 }

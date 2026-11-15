@@ -3,7 +3,7 @@ using KeyGrid.Core.Geometry;
 namespace KeyGrid.Core.Calculation;
 
 /// <summary>
-/// Chooses the single monitor that owns a grid cell's label and stage-2 rulers.
+/// Chooses the single monitor that owns a grid cell's Stage 1 label.
 /// The owner is the monitor containing the cell reference point. When that point
 /// falls in a gap, the monitor with the largest intersection wins; ties use the
 /// monitor's top-left position so the result does not depend on enumeration order.
