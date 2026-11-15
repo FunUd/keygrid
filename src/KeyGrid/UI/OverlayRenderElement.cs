@@ -34,7 +34,6 @@ public class OverlayRenderElement : FrameworkElement
     // Stage-2 key rulers. They sit outside the selected cell so the sub-cell
     // centers (the click targets) stay unobstructed.
     private readonly Brush _rulerBgBrush = new SolidColorBrush(Color.FromArgb(190, 18, 22, 32));
-    private readonly Pen _rulerBorderPen = new(new SolidColorBrush(Color.FromArgb(120, 0, 210, 255)), 1.0);
     private readonly Brush _activeRulerBgBrush = new SolidColorBrush(Color.FromArgb(230, 0, 120, 215));
     private readonly Brush _labelShadowBrush = new SolidColorBrush(Color.FromArgb(170, 0, 0, 0));
     // Active-ruler border (bright, thick) vs inactive-ruler border (dim, thin)
@@ -55,7 +54,6 @@ public class OverlayRenderElement : FrameworkElement
         _activeBadgeBgBrush.Freeze();
         _activeBadgeBorderPen.Freeze();
         _rulerBgBrush.Freeze();
-        _rulerBorderPen.Freeze();
         _activeRulerBgBrush.Freeze();
         _labelShadowBrush.Freeze();
         _activeRulerBorderPen.Freeze();
