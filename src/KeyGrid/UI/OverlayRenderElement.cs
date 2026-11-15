@@ -20,7 +20,12 @@ public class OverlayRenderElement : FrameworkElement
     private readonly Brush _dimBrush = new SolidColorBrush(Color.FromArgb(145, 10, 15, 25));
     private readonly Brush _columnHighlightBrush = new SolidColorBrush(Color.FromArgb(50, 0, 180, 255));
     private readonly Brush _cellHighlightBrush = new SolidColorBrush(Color.FromArgb(70, 0, 255, 150));
-    private readonly Pen _gridPen = new(new SolidColorBrush(Color.FromArgb(70, 255, 255, 255)), 1.0);
+    // Grid lines are drawn as two one-physical-pixel lines straddling each boundary:
+    // black on the left/top and white on the right/bottom. On white content only the
+    // black line is visible; on black content only the white line is visible, so the
+    // grid remains legible without reading the screen or changing colors dynamically.
+    private readonly Brush _gridDarkBrush = new SolidColorBrush(Color.FromArgb(100, 0, 0, 0));
+    private readonly Brush _gridLightBrush = new SolidColorBrush(Color.FromArgb(100, 255, 255, 255));
     private readonly Pen _bboxPen = new(new SolidColorBrush(Color.FromArgb(200, 0, 200, 255)), 2.0);
 
     // Normal cell badge
@@ -47,7 +52,8 @@ public class OverlayRenderElement : FrameworkElement
         _dimBrush.Freeze();
         _columnHighlightBrush.Freeze();
         _cellHighlightBrush.Freeze();
-        _gridPen.Freeze();
+        _gridDarkBrush.Freeze();
+        _gridLightBrush.Freeze();
         _bboxPen.Freeze();
         _badgeBgBrush.Freeze();
         _badgeBorderPen.Freeze();
@@ -144,14 +150,11 @@ public class OverlayRenderElement : FrameworkElement
                 int x = _selectionManager.XBoundaries[c];
                 if (x >= _monitorRect.Left && x < _monitorRect.Right)
                 {
-                    double xDip = (x - _monitorRect.Left) / dpiX;
                     int startY = Math.Max(_selectionManager.CurrentBoundingBox.Top, _monitorRect.Top);
                     int endY = Math.Min(_selectionManager.CurrentBoundingBox.Bottom, _monitorRect.Bottom);
                     if (startY < endY)
                     {
-                        dc.DrawLine(_gridPen,
-                            new Point(xDip, (startY - _monitorRect.Top) / dpiY),
-                            new Point(xDip, (endY - _monitorRect.Top) / dpiY));
+                        DrawVerticalGridLine(dc, x, startY, endY, dpiX, dpiY);
                     }
                 }
             }
@@ -162,14 +165,11 @@ public class OverlayRenderElement : FrameworkElement
                 int y = _selectionManager.YBoundaries[r];
                 if (y >= _monitorRect.Top && y < _monitorRect.Bottom)
                 {
-                    double yDip = (y - _monitorRect.Top) / dpiY;
                     int startX = Math.Max(_selectionManager.CurrentBoundingBox.Left, _monitorRect.Left);
                     int endX = Math.Min(_selectionManager.CurrentBoundingBox.Right, _monitorRect.Right);
                     if (startX < endX)
                     {
-                        dc.DrawLine(_gridPen,
-                            new Point((startX - _monitorRect.Left) / dpiX, yDip),
-                            new Point((endX - _monitorRect.Left) / dpiX, yDip));
+                        DrawHorizontalGridLine(dc, y, startX, endX, dpiX, dpiY);
                     }
                 }
             }
@@ -390,6 +390,61 @@ public class OverlayRenderElement : FrameworkElement
         }
 
         return false;
+    }
+
+    /// <summary>
+    /// Draws a vertical grid line as two one-physical-pixel lines centered on the
+    /// boundary: black on the left pixel and white on the right pixel. Using physical
+    /// pixel sizes keeps the pair crisp and prevents it from growing at higher DPI.
+    /// </summary>
+    private void DrawVerticalGridLine(
+        DrawingContext dc,
+        int x,
+        int startY,
+        int endY,
+        double dpiX,
+        double dpiY)
+    {
+        double top = (startY - _monitorRect.Top) / dpiY;
+        double height = (endY - startY) / dpiY;
+        double width = 1.0 / dpiX;
+
+        // The pair straddles the boundary, so the dark pixel is outside the monitor
+        // only when the line lies exactly on the left edge.
+        if (x > _monitorRect.Left)
+        {
+            double darkLeft = (x - 1 - _monitorRect.Left) / dpiX;
+            dc.DrawRectangle(_gridDarkBrush, null, new Rect(darkLeft, top, width, height));
+        }
+
+        double lightLeft = (x - _monitorRect.Left) / dpiX;
+        dc.DrawRectangle(_gridLightBrush, null, new Rect(lightLeft, top, width, height));
+    }
+
+    /// <summary>
+    /// Draws a horizontal grid line as two one-physical-pixel lines centered on the
+    /// boundary: black on the upper pixel and white on the lower pixel.
+    /// </summary>
+    private void DrawHorizontalGridLine(
+        DrawingContext dc,
+        int y,
+        int startX,
+        int endX,
+        double dpiX,
+        double dpiY)
+    {
+        double left = (startX - _monitorRect.Left) / dpiX;
+        double width = (endX - startX) / dpiX;
+        double height = 1.0 / dpiY;
+
+        if (y > _monitorRect.Top)
+        {
+            double darkTop = (y - 1 - _monitorRect.Top) / dpiY;
+            dc.DrawRectangle(_gridDarkBrush, null, new Rect(left, darkTop, width, height));
+        }
+
+        double lightTop = (y - _monitorRect.Top) / dpiY;
+        dc.DrawRectangle(_gridLightBrush, null, new Rect(left, lightTop, width, height));
     }
 
     private void DrawRulerChar(DrawingContext dc, char key, Point center)
