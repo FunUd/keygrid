@@ -75,7 +75,6 @@ public class OverlayManager
             return;
         }
 
-        _focusLossPolicy.Reset();
         _selectionGeneration++;
         int generation = _selectionGeneration;
         _isDisplayChangePending = false;
@@ -132,8 +131,6 @@ public class OverlayManager
             return;
         }
 
-        _focusLossPolicy.Reset();
-
         // The 4th keystroke completes stage 2 and resolves the target.
         // Dispatch the click immediately instead of waiting for a confirmation screen.
         if (_selectionManager.State == SelectionState.ExecutingClick)
@@ -149,7 +146,6 @@ public class OverlayManager
     {
         if (_selectionManager.ProcessEnter())
         {
-            _focusLossPolicy.Reset();
             ExecuteConfirmedClick();
         }
     }
@@ -158,7 +154,6 @@ public class OverlayManager
     {
         if (_selectionManager.ProcessBackspace())
         {
-            _focusLossPolicy.Reset();
             UpdateAllOverlays();
         }
     }
