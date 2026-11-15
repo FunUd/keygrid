@@ -9,19 +9,39 @@ namespace KeyGrid.Services;
 public static class FileLogger
 {
     private static readonly object _lock = new();
-    private static readonly string _logDir;
-    private static readonly string _logFilePath;
+    private static bool _initialized;
+    private static string? _logFilePath;
 
-    static FileLogger()
+    /// <summary>
+    /// Initializes the log directory on first use instead of in a static constructor.
+    /// A failing static constructor surfaces as TypeInitializationException at the first
+    /// log call and can crash startup, so initialization failures only disable logging.
+    /// </summary>
+    private static void EnsureInitialized()
     {
-        string localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-        _logDir = Path.Combine(localAppData, "KeyGrid", "logs");
-        Directory.CreateDirectory(_logDir);
+        if (_initialized)
+        {
+            return;
+        }
 
-        string fileName = $"keygrid_{DateTime.Now:yyyyMMdd}.log";
-        _logFilePath = Path.Combine(_logDir, fileName);
+        try
+        {
+            string localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+            string logDir = Path.Combine(localAppData, "KeyGrid", "logs");
+            Directory.CreateDirectory(logDir);
 
-        CleanOldLogs();
+            _logFilePath = Path.Combine(logDir, $"keygrid_{DateTime.Now:yyyyMMdd}.log");
+            CleanOldLogs(logDir);
+        }
+        catch
+        {
+            // Logging must never prevent the application from starting.
+            _logFilePath = null;
+        }
+        finally
+        {
+            _initialized = true;
+        }
     }
 
     public static void LogInfo(string message) => Log("INFO", message);
@@ -36,9 +56,15 @@ public static class FileLogger
     {
         try
         {
-            string line = $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [{level}] {message}{Environment.NewLine}";
             lock (_lock)
             {
+                EnsureInitialized();
+                if (_logFilePath == null)
+                {
+                    return;
+                }
+
+                string line = $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [{level}] {message}{Environment.NewLine}";
                 File.AppendAllText(_logFilePath, line);
             }
         }
@@ -48,12 +74,12 @@ public static class FileLogger
         }
     }
 
-    private static void CleanOldLogs()
+    private static void CleanOldLogs(string logDir)
     {
         try
         {
             var cutoff = DateTime.Now.AddDays(-7);
-            var dirInfo = new DirectoryInfo(_logDir);
+            var dirInfo = new DirectoryInfo(logDir);
             foreach (var file in dirInfo.GetFiles("keygrid_*.log"))
             {
                 if (file.LastWriteTime < cutoff)
