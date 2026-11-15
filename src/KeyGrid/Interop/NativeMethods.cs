@@ -220,6 +220,8 @@ internal static class NativeMethods
     /// Brings the window to the foreground and gives it keyboard focus.
     /// Attaching to the current foreground thread bypasses the Windows foreground lock
     /// when the overlay must reclaim focus from another window.
+    /// The return value is a best-effort check of the state observed immediately after
+    /// the Win32 calls; another window can still take focus immediately afterwards.
     /// </summary>
     public static bool EnsureForegroundAndFocus(nint hWnd)
     {

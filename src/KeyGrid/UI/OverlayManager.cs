@@ -20,12 +20,14 @@ public class OverlayManager
     private readonly List<OverlayWindow> _overlays = new();
     private readonly FocusLossPolicy _focusLossPolicy = new();
     private OverlayWindow? _primaryOverlay;
-    private bool _isClosing = false;
+    private int _isClosing;
     private bool _isFocusLossPending = false;
 
     public event Action<string>? ErrorOccurred;
 
     public bool IsActive => _overlays.Count > 0;
+
+    private bool IsClosing => Volatile.Read(ref _isClosing) != 0;
 
     public OverlayManager(
         IMonitorProvider monitorProvider,
@@ -126,14 +128,14 @@ public class OverlayManager
 
     private void OnCancelRequested()
     {
-        if (_isClosing) return;
+        if (IsClosing) return;
         _selectionManager.Cancel();
         CloseOverlays();
     }
 
     private void OnFocusLost()
     {
-        if (_isClosing || !IsActive || _isFocusLossPending)
+        if (IsClosing || !IsActive || _isFocusLossPending)
         {
             return;
         }
@@ -150,7 +152,7 @@ public class OverlayManager
     {
         try
         {
-            if (_isClosing || !IsActive)
+            if (IsClosing || !IsActive)
             {
                 return;
             }
@@ -192,7 +194,7 @@ public class OverlayManager
 
     private void OnMonitorConfigurationChanged()
     {
-        if (IsActive && !_isClosing)
+        if (IsActive && !IsClosing)
         {
             // spec 5.3: Discard selection on monitor / DPI change
             _selectionManager.Cancel();
@@ -236,8 +238,13 @@ public class OverlayManager
 
     public void CloseOverlays()
     {
-        if (_isClosing) return;
-        _isClosing = true;
+        // Overlay teardown is normally UI-thread bound, but WM_DISPLAYCHANGE and
+        // focus transitions can enter here re-entrantly. Interlocked guarantees that
+        // only the first caller runs the teardown sequence.
+        if (Interlocked.Exchange(ref _isClosing, 1) != 0)
+        {
+            return;
+        }
 
         try
         {
@@ -257,7 +264,7 @@ public class OverlayManager
         }
         finally
         {
-            _isClosing = false;
+            Volatile.Write(ref _isClosing, 0);
         }
     }
 }

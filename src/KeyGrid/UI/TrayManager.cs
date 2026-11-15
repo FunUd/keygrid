@@ -76,7 +76,9 @@ public class TrayManager : IDisposable
 
     public void HandleTrayMessage(nint lParam)
     {
-        int msg = (int)lParam;
+        // The notification message is carried in LOWORD(lParam). Masking makes the
+        // extraction explicit and independent of pointer width/sign extension.
+        int msg = (int)((long)lParam & 0xFFFF);
         if (msg == NativeMethods.WM_RBUTTONUP)
         {
             ShowContextMenu();
