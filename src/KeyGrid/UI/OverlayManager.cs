@@ -77,11 +77,9 @@ public class OverlayManager
             FileLogger.LogWarning("No monitor reported as primary; using the first enumerated monitor.");
         }
 
-        var primaryMonitor = monitors[primaryIndex];
-        double targetPixels = GridCalculator.CalculateTargetPixels(primaryMonitor.DpiScale);
         var monitorRects = monitors.Select(m => m.Bounds).ToList();
         _activeMonitorRects = monitorRects;
-        if (!_selectionManager.StartSelection(monitorRects, targetPixels))
+        if (!_selectionManager.StartSelection(monitorRects))
         {
             ErrorOccurred?.Invoke("Failed to initialize selection area.");
             RestoreOriginatingForegroundWindow();
@@ -89,8 +87,9 @@ public class OverlayManager
         }
 
         FileLogger.LogInfo(
-            $"Selection started on {monitors.Count} monitor(s) with target {targetPixels:0.##} px " +
-            $"(primary DPI scale {primaryMonitor.DpiScale:0.###}).");
+            $"Selection started on {monitors.Count} monitor(s) with " +
+            $"Stage 1 grid {_selectionManager.ColumnCount}x{_selectionManager.RowCount} and " +
+            $"Stage 2 grid {SelectionManager.Stage2ColumnCount}x{SelectionManager.Stage2RowCount}.");
 
         for (int i = 0; i < monitors.Count; i++)
         {
@@ -103,6 +102,7 @@ public class OverlayManager
             {
                 _primaryOverlay = overlay;
                 overlay.KeyPressed += OnKeyPressed;
+                overlay.MoveRequested += OnMoveRequested;
                 overlay.EnterPressed += OnEnterPressed;
                 overlay.BackspacePressed += OnBackspacePressed;
                 overlay.CancelRequested += OnCancelRequested;
@@ -141,15 +141,15 @@ public class OverlayManager
             return;
         }
 
-        // The 4th keystroke completes stage 2 and resolves the target.
-        // Dispatch the click immediately instead of waiting for a confirmation screen.
-        if (_selectionManager.State == SelectionState.ExecutingClick)
-        {
-            ExecuteConfirmedClick();
-            return;
-        }
-
         UpdateAllOverlays();
+    }
+
+    private void OnMoveRequested(int columnDelta, int rowDelta)
+    {
+        if (_selectionManager.MoveStage2Cursor(columnDelta, rowDelta))
+        {
+            UpdateAllOverlays();
+        }
     }
 
     private void OnEnterPressed()

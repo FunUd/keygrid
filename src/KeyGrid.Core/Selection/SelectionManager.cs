@@ -9,6 +9,9 @@ namespace KeyGrid.Core.Selection;
 /// </summary>
 public class SelectionManager
 {
+    public const int Stage2ColumnCount = 5;
+    public const int Stage2RowCount = 5;
+
     private readonly List<PixelRect> _initialMonitors = new();
     private readonly List<char> _history = new();
     private KeyAllocation? _keyAllocation;
@@ -37,11 +40,6 @@ public class SelectionManager
     /// </summary>
     public IReadOnlyList<char> RowKeys => _keyAllocation?.RowKeys ?? Array.Empty<char>();
 
-    /// <summary>
-    /// Physical-pixel target for the final cell, derived from the primary monitor DPI.
-    /// </summary>
-    public double TargetPixels { get; private set; }
-
     public int[] XBoundaries { get; private set; } = Array.Empty<int>();
 
     public int[] YBoundaries { get; private set; } = Array.Empty<int>();
@@ -61,14 +59,8 @@ public class SelectionManager
     /// Initiates selection mode with the provided monitor display bounds.
     /// </summary>
     /// <param name="monitorRects">Active monitor bounds in physical pixels.</param>
-    /// <param name="targetPixels">Target final-cell size in physical pixels.</param>
-    public bool StartSelection(IReadOnlyList<PixelRect> monitorRects, double targetPixels)
+    public bool StartSelection(IReadOnlyList<PixelRect> monitorRects)
     {
-        if (!double.IsFinite(targetPixels) || targetPixels <= 0)
-        {
-            throw new ArgumentOutOfRangeException(nameof(targetPixels), "Target size must be finite and greater than zero.");
-        }
-
         var validRects = monitorRects.Where(r => !r.IsEmpty).ToList();
         if (validRects.Count == 0)
         {
@@ -78,8 +70,6 @@ public class SelectionManager
         _initialMonitors.Clear();
         _initialMonitors.AddRange(validRects);
         _history.Clear();
-        TargetPixels = targetPixels;
-
         VirtualScreenBoundingBox = PixelRect.BoundingBox(_initialMonitors);
         CurrentSelection = _initialMonitors.ToList();
         CurrentBoundingBox = VirtualScreenBoundingBox;
@@ -96,10 +86,11 @@ public class SelectionManager
 
     private void SetupStage1Divisions()
     {
-        var (cols, rows) = GridCalculator.CalculateDivisions(
+        var (cols, rows) = GridCalculator.CalculateFirstStageDivisions(
             CurrentBoundingBox.Width,
             CurrentBoundingBox.Height,
-            TargetPixels);
+            Stage2ColumnCount,
+            Stage2RowCount);
 
         ColumnCount = cols;
         RowCount = rows;
@@ -108,12 +99,50 @@ public class SelectionManager
     }
 
     /// <summary>
-    /// Stage 2 reuses the Stage 1 division counts and only recalculates the
-    /// boundaries for the selected cell, as specified in section 4.1.
+    /// Stage 2 uses a fixed 5x5 grid and starts on the valid cell nearest its center.
     /// </summary>
     private void SetupStage2Divisions()
     {
+        ColumnCount = Stage2ColumnCount;
+        RowCount = Stage2RowCount;
         CalculateBoundaries();
+        SelectNearestValidStage2Cell();
+    }
+
+    private void SelectNearestValidStage2Cell()
+    {
+        int centerColumn = ColumnCount / 2;
+        int centerRow = RowCount / 2;
+        int bestDistance = int.MaxValue;
+        int bestColumn = -1;
+        int bestRow = -1;
+
+        for (int row = 0; row < RowCount; row++)
+        {
+            for (int column = 0; column < ColumnCount; column++)
+            {
+                if (!GridCalculator.IsCellValid(column, row, XBoundaries, YBoundaries, CurrentSelection))
+                {
+                    continue;
+                }
+
+                int distance = Math.Abs(column - centerColumn) + Math.Abs(row - centerRow);
+                if (distance < bestDistance)
+                {
+                    bestDistance = distance;
+                    bestColumn = column;
+                    bestRow = row;
+                }
+            }
+        }
+
+        if (bestColumn < 0 || bestRow < 0)
+        {
+            throw new InvalidOperationException("Stage 2 grid has no valid cell.");
+        }
+
+        SelectedColumnIndex = bestColumn;
+        SelectedRowIndex = bestRow;
     }
 
     private void CalculateBoundaries()
@@ -123,12 +152,13 @@ public class SelectionManager
     }
 
     /// <summary>
-    /// Processes a character key according to the current stage's column or row set.
-    /// A key from the other set is rejected.
+    /// Processes a Stage 1 character key according to the column or row key set.
     /// </summary>
     public bool ProcessKey(char key)
     {
-        if (State != SelectionState.Selecting || _keyAllocation is not { } allocation)
+        if (State != SelectionState.Selecting
+            || _history.Count >= 2
+            || _keyAllocation is not { } allocation)
         {
             return false;
         }
@@ -166,24 +196,14 @@ public class SelectionManager
             SelectedRowIndex = index;
             _history.Add(char.ToUpperInvariant(key));
 
-            // Cell confirmed for this stage
+            // The second Stage 1 key selects the region to refine in Stage 2.
             var selectedCell = GridCalculator.GetCell(XBoundaries, YBoundaries, SelectedColumnIndex, SelectedRowIndex);
             CurrentSelection = GridCalculator.IntersectCellWithSelection(selectedCell, CurrentSelection);
             CurrentBoundingBox = PixelRect.BoundingBox(CurrentSelection);
 
             if (_history.Count == 2)
             {
-                // Stage 1 completed, initialize Stage 2
                 SetupStage2Divisions();
-                SelectedColumnIndex = -1;
-                SelectedRowIndex = -1;
-            }
-            else if (_history.Count == 4)
-            {
-                // Stage 2 completed. Resolve the target and start the click immediately;
-                // there is no separate confirmation step.
-                TargetCoordinate = GridCalculator.ResolveTargetCoordinate(CurrentBoundingBox, CurrentSelection);
-                State = SelectionState.ExecutingClick;
             }
 
             return true;
@@ -191,13 +211,56 @@ public class SelectionManager
     }
 
     /// <summary>
-    /// Processes Enter key for the early click after stage 1 (_history.Count == 2).
-    /// Stage 2 clicks automatically on its final keystroke, so Enter is not needed there.
+    /// Moves the Stage 2 selection to the next valid cell in the requested direction.
+    /// Invalid cells are skipped so monitor gaps do not block navigation.
+    /// </summary>
+    public bool MoveStage2Cursor(int columnDelta, int rowDelta)
+    {
+        if (State != SelectionState.Selecting
+            || _history.Count != 2
+            || Math.Abs(columnDelta) + Math.Abs(rowDelta) != 1)
+        {
+            return false;
+        }
+
+        int column = SelectedColumnIndex + columnDelta;
+        int row = SelectedRowIndex + rowDelta;
+        while (column >= 0
+            && column < ColumnCount
+            && row >= 0
+            && row < RowCount)
+        {
+            if (GridCalculator.IsCellValid(column, row, XBoundaries, YBoundaries, CurrentSelection))
+            {
+                SelectedColumnIndex = column;
+                SelectedRowIndex = row;
+                return true;
+            }
+
+            column += columnDelta;
+            row += rowDelta;
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Confirms the Stage 2 cursor position and resolves its click coordinate.
     /// </summary>
     public bool ProcessEnter()
     {
-        if (State == SelectionState.Selecting && _history.Count == 2)
+        if (State == SelectionState.Selecting
+            && _history.Count == 2
+            && SelectedColumnIndex >= 0
+            && SelectedRowIndex >= 0)
         {
+            var selectedCell = GridCalculator.GetCell(
+                XBoundaries,
+                YBoundaries,
+                SelectedColumnIndex,
+                SelectedRowIndex);
+            CurrentSelection = GridCalculator.IntersectCellWithSelection(selectedCell, CurrentSelection);
+            CurrentBoundingBox = PixelRect.BoundingBox(CurrentSelection);
             TargetCoordinate = GridCalculator.ResolveTargetCoordinate(CurrentBoundingBox, CurrentSelection);
             State = SelectionState.ExecutingClick;
             return true;
@@ -257,7 +320,6 @@ public class SelectionManager
         VirtualScreenBoundingBox = PixelRect.Empty;
         ColumnCount = 1;
         RowCount = 1;
-        TargetPixels = 0;
         XBoundaries = Array.Empty<int>();
         YBoundaries = Array.Empty<int>();
         SelectedColumnIndex = -1;

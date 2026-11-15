@@ -9,8 +9,7 @@ namespace KeyGrid.UI;
 
 /// <summary>
 /// Handles high-performance hardware-accelerated drawing of grid lines,
-/// selection masks, stage-1 in-cell labels, the early-Enter marker, and
-/// stage-2 in-cell labels.
+/// selection masks, stage-1 in-cell labels, and the stage-2 cursor.
 /// </summary>
 public class OverlayRenderElement : FrameworkElement
 {
@@ -22,6 +21,7 @@ public class OverlayRenderElement : FrameworkElement
     private readonly Brush _dimBrush = new SolidColorBrush(Color.FromArgb(145, 10, 15, 25));
     private readonly Brush _columnHighlightBrush = new SolidColorBrush(Color.FromArgb(55, 0, 229, 255));
     private readonly Brush _cellHighlightBrush = new SolidColorBrush(Color.FromArgb(65, 180, 220, 255));
+    private readonly Brush _stage2CursorBrush = new SolidColorBrush(Color.FromArgb(100, 255, 40, 40));
     // Grid lines are drawn as two one-physical-pixel lines straddling each boundary:
     // black on the left/top and white on the right/bottom. On white content only the
     // black line is visible; on black content only the white line is visible, so the
@@ -37,19 +37,8 @@ public class OverlayRenderElement : FrameworkElement
     private readonly Brush _activeBadgeBgBrush = new SolidColorBrush(Color.FromArgb(240, 12, 16, 24));
     private readonly Pen _activeBadgeBorderPen = new(new SolidColorBrush(Color.FromArgb(255, 255, 255, 255)), 1.4);
 
-    // Stage-2 badges are deliberately lighter than stage 1 so the click target
-    // remains visible beneath the in-cell key hints.
-    private readonly Brush _stage2BadgeBgBrush = new SolidColorBrush(Color.FromArgb(105, 12, 16, 24));
-    private readonly Pen _stage2BadgeBorderPen = new(new SolidColorBrush(Color.FromArgb(85, 0, 229, 255)), 0.8);
-    private readonly Brush _activeStage2BadgeBgBrush = new SolidColorBrush(Color.FromArgb(125, 12, 16, 24));
-    private readonly Pen _activeStage2BadgeBorderPen = new(new SolidColorBrush(Color.FromArgb(155, 255, 255, 255)), 1.0);
-
     private readonly Brush _columnKeyBrush = new SolidColorBrush(Color.FromRgb(0, 229, 255));
     private readonly Brush _rowKeyBrush = new SolidColorBrush(Color.FromRgb(255, 200, 87));
-
-    // The early-Enter crosshair marks the optional intermediate click point.
-    private readonly Pen _crosshairPen = new(new SolidColorBrush(Color.FromArgb(255, 255, 255, 255)), 1.4);
-    private readonly Pen _crosshairShadowPen = new(new SolidColorBrush(Color.FromArgb(210, 0, 0, 0)), 3.6);
 
     private readonly Typeface _labelTypeface = new(new FontFamily("Segoe UI"), FontStyles.Normal, FontWeights.Bold, FontStretches.Normal);
 
@@ -62,6 +51,7 @@ public class OverlayRenderElement : FrameworkElement
         _dimBrush.Freeze();
         _columnHighlightBrush.Freeze();
         _cellHighlightBrush.Freeze();
+        _stage2CursorBrush.Freeze();
         _gridDarkBrush.Freeze();
         _gridLightBrush.Freeze();
         _bboxPen.Freeze();
@@ -69,14 +59,8 @@ public class OverlayRenderElement : FrameworkElement
         _badgeBorderPen.Freeze();
         _activeBadgeBgBrush.Freeze();
         _activeBadgeBorderPen.Freeze();
-        _stage2BadgeBgBrush.Freeze();
-        _stage2BadgeBorderPen.Freeze();
-        _activeStage2BadgeBgBrush.Freeze();
-        _activeStage2BadgeBorderPen.Freeze();
         _columnKeyBrush.Freeze();
         _rowKeyBrush.Freeze();
-        _crosshairPen.Freeze();
-        _crosshairShadowPen.Freeze();
     }
 
     public void UpdateState(
@@ -151,7 +135,10 @@ public class OverlayRenderElement : FrameworkElement
             var cellIntersection = cell.Intersect(_monitorRect);
             if (!cellIntersection.IsEmpty)
             {
-                dc.DrawRectangle(_cellHighlightBrush, null, ToDipRect(cellIntersection, dpiX, dpiY));
+                var brush = _selectionManager.CurrentStage >= 2
+                    ? _stage2CursorBrush
+                    : _cellHighlightBrush;
+                dc.DrawRectangle(brush, null, ToDipRect(cellIntersection, dpiX, dpiY));
             }
         }
         else if (_selectionManager.CurrentStage >= 2)
@@ -205,13 +192,11 @@ public class OverlayRenderElement : FrameworkElement
         if (_selectionManager.State == SelectionState.Selecting)
         {
             DrawCellSectionLabels(dc, dpiX, dpiY);
-            DrawEarlyClickMarker(dc, dpiX, dpiY);
         }
     }
 
     /// <summary>
-    /// Draws key labels inside valid grid sections. The active column shows only
-    /// row keys, so each stage presents only the keys needed for the next input.
+    /// Draws Stage 1 labels inside valid cells. The active column shows only row keys.
     /// </summary>
     private void DrawCellSectionLabels(DrawingContext dc, double dpiX, double dpiY)
     {
@@ -219,7 +204,6 @@ public class OverlayRenderElement : FrameworkElement
 
         if (_selectionManager.CurrentStage >= 2)
         {
-            DrawStage2CellLabels(dc, dpiX, dpiY, _selectionManager);
             return;
         }
 
@@ -268,78 +252,14 @@ public class OverlayRenderElement : FrameworkElement
                     rowChar,
                     cellRect,
                     rowOnly,
-                    _pixelsPerDip,
-                    compact: false);
-            }
-        }
-    }
-
-    private void DrawStage2CellLabels(
-        DrawingContext dc,
-        double dpiX,
-        double dpiY,
-        SelectionManager selectionManager)
-    {
-        int selectedCol = selectionManager.SelectedColumnIndex;
-        bool rowOnly = selectedCol >= 0;
-
-        for (int c = 0; c < selectionManager.ColumnCount; c++)
-        {
-            if (rowOnly && selectedCol != c)
-            {
-                continue;
-            }
-
-            for (int r = 0; r < selectionManager.RowCount; r++)
-            {
-                if (!GridCalculator.IsCellValid(
-                        c,
-                        r,
-                        selectionManager.XBoundaries,
-                        selectionManager.YBoundaries,
-                        selectionManager.CurrentSelection))
-                {
-                    continue;
-                }
-
-                var cell = GridCalculator.GetCell(
-                    selectionManager.XBoundaries,
-                    selectionManager.YBoundaries,
-                    c,
-                    r);
-                if (!IsOwnerMonitor(cell))
-                {
-                    continue;
-                }
-
-                var visibleCell = cell.Intersect(_monitorRect);
-                if (visibleCell.IsEmpty)
-                {
-                    continue;
-                }
-
-                var cellRect = ToDipRect(visibleCell, dpiX, dpiY);
-                if (cellRect.Width < 14 || cellRect.Height < 12)
-                {
-                    continue;
-                }
-
-                DrawSectionBadge(
-                    dc,
-                    rowOnly ? null : selectionManager.ColumnKeys[c],
-                    selectionManager.RowKeys[r],
-                    cellRect,
-                    isActiveColumn: rowOnly,
-                    _pixelsPerDip,
-                    compact: true);
+                    _pixelsPerDip);
             }
         }
     }
 
     /// <summary>
-    /// Draws a two-character column+row badge, or a single amber row badge after
-    /// the column is selected. The badge is lifted above the cell center when the
-    /// cell is tall enough, keeping the click target clear.
+    /// Draws a two-character column+row badge, or a single row badge after
+    /// the column is selected.
     /// </summary>
     private void DrawSectionBadge(
         DrawingContext dc,
@@ -347,15 +267,12 @@ public class OverlayRenderElement : FrameworkElement
         char rowKey,
         Rect cellRect,
         bool isActiveColumn,
-        double pixelsPerDip,
-        bool compact)
+        double pixelsPerDip)
     {
         double maxWidth = Math.Max(1.0, cellRect.Width - 2);
         double maxHeight = Math.Max(1.0, cellRect.Height - 2);
 
-        double targetFontSize = compact
-            ? columnKey.HasValue ? 11.5 : 13.0
-            : columnKey.HasValue ? 18.0 : 22.0;
+        double targetFontSize = columnKey.HasValue ? 18.0 : 22.0;
         double widthFactor = columnKey.HasValue ? 1.4 : 0.7;
         double estimatedByWidth = maxWidth / widthFactor;
         double estimatedByHeight = maxHeight / 1.2;
@@ -415,34 +332,13 @@ public class OverlayRenderElement : FrameworkElement
         }
 
         double cellCenterX = cellRect.Left + (cellRect.Width / 2.0);
-        double cellCenterY = cellRect.Top + (cellRect.Height / 2.0);
-
-        double badgeCenterX = compact
-            ? cellRect.Left + 1 + (badgeWidth / 2.0)
-            : cellCenterX;
+        double badgeCenterY = cellRect.Top + (cellRect.Height / 2.0);
+        double badgeCenterX = cellCenterX;
         double minCenterX = cellRect.Left + 1 + (badgeWidth / 2.0);
         double maxCenterX = cellRect.Right - 1 - (badgeWidth / 2.0);
         if (minCenterX <= maxCenterX)
         {
             badgeCenterX = Math.Clamp(badgeCenterX, minCenterX, maxCenterX);
-        }
-
-        double minCenterY = cellRect.Top + 1 + (badgeHeight / 2.0);
-        double maxCenterY = cellRect.Bottom - 1 - (badgeHeight / 2.0);
-        double badgeCenterY = compact
-            ? cellRect.Top + 1 + (badgeHeight / 2.0)
-            : cellCenterY;
-        if (!compact && minCenterY <= maxCenterY)
-        {
-            double desiredCenterY = cellCenterY - (badgeHeight / 2.0) - 6.0;
-            badgeCenterY = Math.Clamp(desiredCenterY, minCenterY, maxCenterY);
-
-            // Compact cells cannot keep the badge above the center; center it
-            // instead of letting it cover the click point from one side.
-            if (badgeCenterY + (badgeHeight / 2.0) > cellCenterY - 2.0)
-            {
-                badgeCenterY = cellCenterY;
-            }
         }
 
         var badgeRect = new Rect(
@@ -451,16 +347,8 @@ public class OverlayRenderElement : FrameworkElement
             badgeWidth,
             badgeHeight);
 
-        var bgBrush = compact
-            ? isActiveColumn ? _activeStage2BadgeBgBrush : _stage2BadgeBgBrush
-            : isActiveColumn ? _activeBadgeBgBrush : _badgeBgBrush;
-        var borderPen = compact
-            ? isActiveColumn ? _activeStage2BadgeBorderPen : _stage2BadgeBorderPen
-            : isActiveColumn ? _activeBadgeBorderPen : _badgeBorderPen;
-        if (compact)
-        {
-            dc.PushOpacity(0.88);
-        }
+        var bgBrush = isActiveColumn ? _activeBadgeBgBrush : _badgeBgBrush;
+        var borderPen = isActiveColumn ? _activeBadgeBorderPen : _badgeBorderPen;
 
         dc.DrawRoundedRectangle(bgBrush, borderPen, badgeRect, 3, 3);
 
@@ -474,62 +362,10 @@ public class OverlayRenderElement : FrameworkElement
 
         double rowY = badgeCenterY - (rowGlyph.Height / 2.0);
         dc.DrawText(rowGlyph, new Point(textLeft, rowY));
-        if (compact)
-        {
-            dc.Pop();
-        }
     }
 
     /// <summary>
-    /// Marks the current Stage 1 click point while Enter can confirm it. This is
-    /// shown only between the second and third keystrokes to avoid persistent
-    /// clutter in every cell.
-    /// </summary>
-    private void DrawEarlyClickMarker(DrawingContext dc, double dpiX, double dpiY)
-    {
-        if (_selectionManager == null ||
-            _selectionManager.CurrentStage != 2 ||
-            _selectionManager.History.Count != 2 ||
-            _selectionManager.CurrentSelection.Count == 0)
-        {
-            return;
-        }
-
-        var target = GridCalculator.ResolveTargetCoordinate(
-            _selectionManager.CurrentBoundingBox,
-            _selectionManager.CurrentSelection);
-        if (!_monitorRect.Contains(target))
-        {
-            return;
-        }
-
-        double x = (target.X - _monitorRect.Left) / dpiX;
-        double y = (target.Y - _monitorRect.Top) / dpiY;
-        const double innerGap = 1.5;
-        const double armLength = 6.0;
-
-        DrawCrosshair(dc, _crosshairShadowPen, x, y, innerGap, armLength);
-        DrawCrosshair(dc, _crosshairPen, x, y, innerGap, armLength);
-    }
-
-    private static void DrawCrosshair(
-        DrawingContext dc,
-        Pen pen,
-        double x,
-        double y,
-        double innerGap,
-        double armLength)
-    {
-        double outer = innerGap + armLength;
-        dc.DrawLine(pen, new Point(x - outer, y), new Point(x - innerGap, y));
-        dc.DrawLine(pen, new Point(x + innerGap, y), new Point(x + outer, y));
-        dc.DrawLine(pen, new Point(x, y - outer), new Point(x, y - innerGap));
-        dc.DrawLine(pen, new Point(x, y + innerGap), new Point(x, y + outer));
-    }
-
-    /// <summary>
-    /// A cell spanning monitors gets exactly one owner. Its labels and rulers are
-    /// drawn only by that monitor's overlay.
+    /// A cell spanning monitors gets exactly one owner for its Stage 1 label.
     /// </summary>
     private bool IsOwnerMonitor(PixelRect cell)
     {

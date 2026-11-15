@@ -14,6 +14,7 @@ public partial class OverlayWindow : Window
     public bool IsPrimary { get; }
 
     public event Action<char>? KeyPressed;
+    public event Action<int, int>? MoveRequested;
     public event Action? EnterPressed;
     public event Action? BackspacePressed;
     public event Action? CancelRequested;
@@ -131,6 +132,30 @@ public partial class OverlayWindow : Window
         if (e.Key == Key.Enter)
         {
             EnterPressed?.Invoke();
+            return;
+        }
+
+        if (e.Key == Key.Left)
+        {
+            MoveRequested?.Invoke(-1, 0);
+            return;
+        }
+
+        if (e.Key == Key.Right)
+        {
+            MoveRequested?.Invoke(1, 0);
+            return;
+        }
+
+        if (e.Key == Key.Up)
+        {
+            MoveRequested?.Invoke(0, -1);
+            return;
+        }
+
+        if (e.Key == Key.Down)
+        {
+            MoveRequested?.Invoke(0, 1);
             return;
         }
 

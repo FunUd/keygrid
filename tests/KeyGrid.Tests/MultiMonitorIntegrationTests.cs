@@ -16,11 +16,11 @@ public class MultiMonitorIntegrationTests
         var monitors = new[] { monitor1, monitor2 };
 
         var mgr = new SelectionManager();
-        mgr.StartSelection(monitors, 20.0);
+        mgr.StartSelection(monitors);
 
         Assert.Equal(new PixelRect(0, 0, 3840, 1080), mgr.VirtualScreenBoundingBox);
-        Assert.Equal(14, mgr.ColumnCount);
-        Assert.Equal(8, mgr.RowCount);
+        Assert.Equal(20, mgr.ColumnCount);
+        Assert.Equal(6, mgr.RowCount);
     }
 
     [Fact]
@@ -34,13 +34,12 @@ public class MultiMonitorIntegrationTests
         var monitors = new[] { d1, d2 };
 
         var mgr = new SelectionManager();
-        mgr.StartSelection(monitors, 20.0);
+        mgr.StartSelection(monitors);
 
-        // Perform 4 valid keystrokes: column Q, row Y, then the same sub-cell.
+        // Select a valid Stage 1 cell and confirm the default Stage 2 cursor.
         Assert.True(mgr.ProcessKey('Q'));
-        Assert.True(mgr.ProcessKey('Y'));
-        Assert.True(mgr.ProcessKey('Q'));
-        Assert.True(mgr.ProcessKey('Y'));
+        Assert.True(mgr.ProcessKey('H'));
+        Assert.True(mgr.ProcessEnter());
 
         Assert.Equal(SelectionState.ExecutingClick, mgr.State);
         Assert.NotNull(mgr.TargetCoordinate);
@@ -61,7 +60,7 @@ public class MultiMonitorIntegrationTests
         var monitors = new[] { left, primary };
 
         var mgr = new SelectionManager();
-        mgr.StartSelection(monitors, 20.0);
+        mgr.StartSelection(monitors);
 
         Assert.Equal(-1920, mgr.VirtualScreenBoundingBox.Left);
         Assert.Equal(3840, mgr.VirtualScreenBoundingBox.Width);
@@ -69,17 +68,16 @@ public class MultiMonitorIntegrationTests
         // First key 'Q' selects column 0 (which is on the left monitor at [-1920...]).
         Assert.True(mgr.ProcessKey('Q'));
         Assert.False(mgr.ProcessKey('Q')); // Q is not a row key.
-        Assert.True(mgr.ProcessKey('Y'));
-        Assert.True(mgr.ProcessKey('Q'));
+        Assert.True(mgr.ProcessKey('H'));
 
-        // Backspace replays the same allocation before resolving the target.
+        // Backspace replays the same allocation before confirming the selection.
         Assert.True(mgr.ProcessBackspace());
-        Assert.Equal(2, mgr.History.Count);
-        Assert.Equal("QWERTASDFGZXCV", new string(mgr.ColumnKeys.ToArray()));
-        Assert.True(mgr.ProcessKey('Q'));
-        Assert.False(mgr.ProcessKey('Q')); // Q is still not a row key.
-        Assert.True(mgr.ProcessKey('Y'));
+        Assert.Single(mgr.History);
+        Assert.Equal("QWERTASDFGZXCVBYUIOP", new string(mgr.ColumnKeys.ToArray()));
+        Assert.False(mgr.ProcessKey('Q')); // After Backspace, the next key is a row key.
+        Assert.True(mgr.ProcessKey('H'));
 
+        Assert.True(mgr.ProcessEnter());
         Assert.NotNull(mgr.TargetCoordinate);
         var target = mgr.TargetCoordinate.Value;
 
@@ -97,7 +95,7 @@ public class MultiMonitorIntegrationTests
         var m2 = new PixelRect(1900, 0, 100, 100);
 
         var mgr = new SelectionManager();
-        mgr.StartSelection(new[] { m1, m2 }, 20.0);
+        mgr.StartSelection(new[] { m1, m2 });
 
         // Columns covering the empty gap [100, 1900) should be invalid and rejected
         // Middle columns should be invalid

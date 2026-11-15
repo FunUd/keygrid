@@ -11,73 +11,35 @@ public static class GridCalculator
     public const int MaxDivisions = 26;
 
     /// <summary>
-    /// Default target final-cell size in device-independent pixels. The target is
-    /// converted to physical pixels with the primary monitor's effective DPI scale.
+    /// Chooses the Stage 1 divisions that minimize the final cell size after a fixed
+    /// Stage 2 grid, while keeping the Stage 1 key allocation within its 26-key budget.
     /// </summary>
-    public const double DefaultTargetDip = 20.0;
-
-    /// <summary>
-    /// Converts the default target to physical pixels for a monitor DPI scale.
-    /// </summary>
-    public static double CalculateTargetPixels(double dpiScale)
+    public static (int Columns, int Rows) CalculateFirstStageDivisions(
+        int width,
+        int height,
+        int stage2Columns,
+        int stage2Rows)
     {
-        if (!double.IsFinite(dpiScale) || dpiScale <= 0)
+        if (width <= 0)
         {
-            throw new ArgumentOutOfRangeException(nameof(dpiScale), "DPI scale must be finite and greater than zero.");
+            throw new ArgumentOutOfRangeException(nameof(width));
         }
 
-        return DefaultTargetDip * dpiScale;
-    }
-
-    /// <summary>
-    /// Calculates the column count C and row count R for a physical width and height.
-    /// Finds the minimum counts satisfying target * C^2 >= W and target * R^2 >= H.
-    /// The column and row allocations must fit within the 26-key budget, so the
-    /// result always satisfies C + R &lt;= 26. If the independent minimums exceed
-    /// that budget, the target is relaxed by minimizing the worst-case final cell size.
-    /// </summary>
-    public static (int Columns, int Rows) CalculateDivisions(int width, int height, double targetPixels)
-    {
-        ValidateTargetPixels(targetPixels);
-
-        // The caller passes valid monitor bounds. Keeping empty dimensions at one cell
-        // preserves the previous defensive behavior for degenerate inputs.
-        int effectiveWidth = Math.Max(1, width);
-        int effectiveHeight = Math.Max(1, height);
-
-        int minimumColumns = CalculateMinimumDivision(effectiveWidth, targetPixels);
-        int minimumRows = CalculateMinimumDivision(effectiveHeight, targetPixels);
-        if (minimumColumns + minimumRows <= MaxDivisions)
+        if (height <= 0)
         {
-            return (minimumColumns, minimumRows);
+            throw new ArgumentOutOfRangeException(nameof(height));
         }
 
-        return CalculateRelaxedDivisions(effectiveWidth, effectiveHeight);
-    }
-
-    private static int CalculateMinimumDivision(int length, double targetPixels)
-    {
-        // Smallest integer N such that targetPixels * N^2 >= length.
-        for (int n = 1; n < MaxDivisions; n++)
+        if (stage2Columns <= 0)
         {
-            if (targetPixels * n * n >= length)
-            {
-                return n;
-            }
+            throw new ArgumentOutOfRangeException(nameof(stage2Columns));
         }
 
-        return MaxDivisions;
-    }
+        if (stage2Rows <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(stage2Rows));
+        }
 
-    /// <summary>
-    /// Chooses C and R with C + R &lt;= 26 that minimize the worst-case final cell size
-    /// max(ceil(ceil(W / C) / C), ceil(ceil(H / R) / R)).
-    /// Because the target is common to both dimensions, minimizing this pixel size is
-    /// equivalent to minimizing the worst-case ratio to the target. Ties are broken by
-    /// fewer total cells, then fewer total keys, then smaller C.
-    /// </summary>
-    private static (int Columns, int Rows) CalculateRelaxedDivisions(int width, int height)
-    {
         int bestColumns = 1;
         int bestRows = 1;
         int bestWorstFinalSize = int.MaxValue;
@@ -88,14 +50,14 @@ public static class GridCalculator
         {
             for (int rows = 1; columns + rows <= MaxDivisions; rows++)
             {
-                int finalWidth = CalculateFinalDimension(width, columns);
-                int finalHeight = CalculateFinalDimension(height, rows);
+                int finalWidth = DivideCeiling(DivideCeiling(width, columns), stage2Columns);
+                int finalHeight = DivideCeiling(DivideCeiling(height, rows), stage2Rows);
                 int worstFinalSize = Math.Max(finalWidth, finalHeight);
                 long cellCount = (long)columns * rows;
                 int keyCount = columns + rows;
 
                 bool isBetter = worstFinalSize < bestWorstFinalSize
-                    || (worstFinalSize == bestWorstFinalSize && cellCount < bestCellCount)
+                    || (worstFinalSize == bestWorstFinalSize && cellCount > bestCellCount)
                     || (worstFinalSize == bestWorstFinalSize && cellCount == bestCellCount && keyCount < bestKeyCount)
                     || (worstFinalSize == bestWorstFinalSize && cellCount == bestCellCount && keyCount == bestKeyCount && columns < bestColumns);
 
@@ -113,18 +75,9 @@ public static class GridCalculator
         return (bestColumns, bestRows);
     }
 
-    private static int CalculateFinalDimension(int length, int count)
+    private static int DivideCeiling(int dividend, int divisor)
     {
-        int stage1 = (int)(((long)length + count - 1) / count);
-        return (int)(((long)stage1 + count - 1) / count);
-    }
-
-    private static void ValidateTargetPixels(double targetPixels)
-    {
-        if (!double.IsFinite(targetPixels) || targetPixels <= 0)
-        {
-            throw new ArgumentOutOfRangeException(nameof(targetPixels), "Target size must be finite and greater than zero.");
-        }
+        return (int)(((long)dividend + divisor - 1) / divisor);
     }
 
     /// <summary>

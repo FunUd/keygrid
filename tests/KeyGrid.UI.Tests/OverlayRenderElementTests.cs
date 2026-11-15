@@ -20,12 +20,12 @@ public class OverlayRenderElementTests
         var leftGlyphs = RenderGlyphs(LeftMonitor, selection);
         var rightGlyphs = RenderGlyphs(RightMonitor, selection);
 
-        Assert.Equal(8, leftGlyphs.Length);
-        Assert.Equal(4, rightGlyphs.Length);
-        Assert.Equal(4, leftGlyphs.Count(selection.ColumnKeys.Contains));
-        Assert.Equal(4, leftGlyphs.Count(selection.RowKeys.Contains));
-        Assert.Equal(2, rightGlyphs.Count(selection.ColumnKeys.Contains));
-        Assert.Equal(2, rightGlyphs.Count(selection.RowKeys.Contains));
+        Assert.Equal(144, leftGlyphs.Length);
+        Assert.Equal(144, rightGlyphs.Length);
+        Assert.Equal(72, leftGlyphs.Count(selection.ColumnKeys.Contains));
+        Assert.Equal(72, leftGlyphs.Count(selection.RowKeys.Contains));
+        Assert.Equal(72, rightGlyphs.Count(selection.ColumnKeys.Contains));
+        Assert.Equal(72, rightGlyphs.Count(selection.RowKeys.Contains));
     }
 
     [Fact]
@@ -37,84 +37,51 @@ public class OverlayRenderElementTests
         var leftGlyphs = RenderGlyphs(LeftMonitor, selection);
         var rightGlyphs = RenderGlyphs(RightMonitor, selection);
 
-        Assert.Equal(selection.RowKeys.Take(2), leftGlyphs);
+        Assert.Equal(selection.RowKeys, leftGlyphs);
         Assert.Empty(rightGlyphs);
     }
 
     [Fact]
-    public void Stage2Cells_ShowColumnAndRowKeysInsideEveryValidCell()
+    public void Stage2Cells_HideLetterLabelsAndHighlightTheCursorInRed()
     {
         var selection = CreateSelection();
         SelectFirstStageCell(selection);
 
-        var leftGlyphs = RenderGlyphs(LeftMonitor, selection);
-        var rightGlyphs = RenderGlyphs(RightMonitor, selection);
-        var expected = selection.ColumnKeys.Take(3)
-            .SelectMany(key => Enumerable.Repeat(key, 2))
-            .Concat(selection.RowKeys.Take(2).SelectMany(key => Enumerable.Repeat(key, 3)))
-            .OrderBy(key => key);
+        var drawings = RenderDrawings(LeftMonitor, selection);
 
-        Assert.Equal(expected, leftGlyphs.OrderBy(key => key));
-        Assert.Empty(rightGlyphs);
+        Assert.Empty(RenderGlyphs(LeftMonitor, selection));
+        Assert.Contains(
+            GetGeometryDrawings(drawings),
+            drawing => drawing.Brush is SolidColorBrush brush
+                && brush.Color == Color.FromArgb(100, 255, 40, 40));
     }
 
     [Fact]
-    public void Stage2CellLabels_AreSmallerAndMoreTransparentThanStage1()
-    {
-        var stage1 = CreateSelection();
-        var stage1Glyphs = RenderGlyphDetails(LeftMonitor, stage1);
-
-        SelectFirstStageCell(stage1);
-        var stage2Glyphs = RenderGlyphDetails(LeftMonitor, stage1);
-
-        Assert.NotEmpty(stage1Glyphs);
-        Assert.NotEmpty(stage2Glyphs);
-        Assert.True(
-            stage2Glyphs.Max(glyph => glyph.FontSize) < stage1Glyphs.Max(glyph => glyph.FontSize));
-        Assert.All(stage2Glyphs, glyph => Assert.True(glyph.Opacity < 1.0));
-    }
-
-    [Fact]
-    public void Stage2AfterSubColumnSelection_SuppressesOtherSubColumnLabels()
+    public void Stage2ArrowMovement_ChangesTheHighlightedCell()
     {
         var selection = CreateSelection();
         SelectFirstStageCell(selection);
-        Assert.True(selection.ProcessKey(selection.ColumnKeys[1]));
+        int initialColumn = selection.SelectedColumnIndex;
+        int initialRow = selection.SelectedRowIndex;
 
-        var glyphs = RenderGlyphs(LeftMonitor, selection);
-        var expected = selection.RowKeys.Take(2).OrderBy(key => key);
+        Assert.True(selection.MoveStage2Cursor(1, 0));
+        Assert.Equal(initialColumn + 1, selection.SelectedColumnIndex);
+        Assert.Equal(initialRow, selection.SelectedRowIndex);
 
-        Assert.Equal(expected, glyphs.OrderBy(key => key));
-    }
+        Assert.Empty(RenderGlyphs(LeftMonitor, selection));
+        Assert.Contains(
+            GetGeometryDrawings(RenderDrawings(LeftMonitor, selection)),
+            drawing => drawing.Brush is SolidColorBrush brush
+                && brush.Color == Color.FromArgb(100, 255, 40, 40));
 
-    [Fact]
-    public void Stage2CellSpanningMonitors_ShowsCellKeysOnOwningMonitor()
-    {
-        var selection = CreateSelection();
-        Assert.True(selection.ProcessKey(selection.ColumnKeys[1]));
-        Assert.True(selection.ProcessKey(selection.RowKeys[0]));
-
-        var leftGlyphs = RenderGlyphs(LeftMonitor, selection);
-        var rightGlyphs = RenderGlyphs(RightMonitor, selection);
-
-        Assert.Equal(2, leftGlyphs.Count(selection.ColumnKeys[0]));
-        Assert.Equal(0, leftGlyphs.Count(selection.ColumnKeys[1]));
-        Assert.Equal(0, leftGlyphs.Count(selection.ColumnKeys[2]));
-        Assert.Equal(0, rightGlyphs.Count(selection.ColumnKeys[0]));
-        Assert.Equal(2, rightGlyphs.Count(selection.ColumnKeys[1]));
-        Assert.Equal(2, rightGlyphs.Count(selection.ColumnKeys[2]));
-        Assert.Equal(1, leftGlyphs.Count(selection.RowKeys[0]));
-        Assert.Equal(1, leftGlyphs.Count(selection.RowKeys[1]));
-        Assert.Equal(2, rightGlyphs.Count(selection.RowKeys[0]));
-        Assert.Equal(2, rightGlyphs.Count(selection.RowKeys[1]));
     }
 
     private static SelectionManager CreateSelection()
     {
         var selection = new SelectionManager();
-        Assert.True(selection.StartSelection(Monitors, targetPixels: 100));
-        Assert.Equal(3, selection.ColumnCount);
-        Assert.Equal(2, selection.RowCount);
+        Assert.True(selection.StartSelection(Monitors));
+        Assert.Equal(18, selection.ColumnCount);
+        Assert.Equal(8, selection.RowCount);
         return selection;
     }
 
@@ -134,7 +101,13 @@ public class OverlayRenderElementTests
 
     private static RenderedGlyph[] RenderGlyphDetails(PixelRect monitor, SelectionManager selection)
     {
-        RenderedGlyph[]? glyphs = null;
+        DrawingGroup drawing = RenderDrawings(monitor, selection);
+        return GetGlyphs(drawing).ToArray();
+    }
+
+    private static DrawingGroup RenderDrawings(PixelRect monitor, SelectionManager selection)
+    {
+        DrawingGroup? drawing = null;
         Exception? error = null;
         var thread = new Thread(() =>
         {
@@ -142,13 +115,14 @@ public class OverlayRenderElementTests
             {
                 var element = new TestOverlayRenderElement();
                 element.UpdateState(monitor, Monitors, selection);
-                var drawing = new DrawingGroup();
-                using (var context = drawing.Open())
+                var result = new DrawingGroup();
+                using (var context = result.Open())
                 {
                     element.Render(context);
                 }
 
-                glyphs = GetGlyphs(drawing).ToArray();
+                result.Freeze();
+                drawing = result;
             }
             catch (Exception exception)
             {
@@ -164,7 +138,25 @@ public class OverlayRenderElementTests
             ExceptionDispatchInfo.Capture(error).Throw();
         }
 
-        return glyphs ?? Array.Empty<RenderedGlyph>();
+        return drawing ?? new DrawingGroup();
+    }
+
+    private static IEnumerable<GeometryDrawing> GetGeometryDrawings(Drawing drawing)
+    {
+        if (drawing is GeometryDrawing geometryDrawing)
+        {
+            yield return geometryDrawing;
+        }
+        else if (drawing is DrawingGroup group)
+        {
+            foreach (var child in group.Children)
+            {
+                foreach (var geometry in GetGeometryDrawings(child))
+                {
+                    yield return geometry;
+                }
+            }
+        }
     }
 
     private static IEnumerable<RenderedGlyph> GetGlyphs(Drawing drawing, double parentOpacity = 1.0)
