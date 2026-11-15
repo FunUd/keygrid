@@ -109,4 +109,35 @@ public class FocusLossPolicyTests
                 policy.Decide(ForegroundProcessId, CurrentProcessId, foregroundIsVisible: false));
         }
     }
+
+    [Fact]
+    public void TransientFocusLoss_DoesNotConsumeVisibleForeignRecoveryBudget()
+    {
+        var policy = new FocusLossPolicy();
+
+        // Hidden helpers and own-process windows are always transient. They must not
+        // consume the budget that bounds recovery from visible foreign windows, otherwise
+        // frequent IME focus changes could exhaust it and cause a spurious cancellation.
+        for (int i = 0; i < 10_000; i++)
+        {
+            Assert.Equal(
+                FocusLossAction.ReactivateOverlay,
+                policy.Decide(ForegroundProcessId, CurrentProcessId, foregroundIsVisible: false));
+            Assert.Equal(
+                FocusLossAction.ReactivateOverlay,
+                policy.Decide(CurrentProcessId, CurrentProcessId, foregroundIsVisible: true));
+        }
+
+        // The full budget is still available for visible foreign windows.
+        for (int i = 0; i < FocusLossPolicy.MaxConsecutiveRecoveries; i++)
+        {
+            Assert.Equal(
+                FocusLossAction.ReactivateOverlay,
+                policy.Decide(ForegroundProcessId, CurrentProcessId, foregroundIsVisible: true));
+        }
+
+        Assert.Equal(
+            FocusLossAction.CancelSelection,
+            policy.Decide(ForegroundProcessId, CurrentProcessId, foregroundIsVisible: true));
+    }
 }
