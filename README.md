@@ -63,6 +63,8 @@ Double-click `.dist\KeyGrid.exe` or execute it from PowerShell:
 .\.dist\KeyGrid.exe
 ```
 
+The publish output folder is portable; no installer is required. Keep the folder in a permanent location and create a shortcut if desired.
+
 KeyGrid runs as a background process and displays an icon in the Windows system notification tray. If KeyGrid is already running, starting a second instance will display a notification and exit immediately.
 
 ---
@@ -144,6 +146,18 @@ KeyGrid maintains operational logs for troubleshooting at:
 ```
 
 Logs are retained for 7 days and automatically cleaned up on application startup.
+
+---
+
+## Troubleshooting
+
+| Symptom | What to check |
+|---|---|
+| The hotkey does nothing | Another application may already own `Ctrl + Shift + Space`. The tray tooltip and context menu show whether hotkey registration failed. Close the conflicting application and restart KeyGrid. |
+| The overlay closes immediately | Focus moved to a visible application, which deliberately cancels selection. Transient focus changes to IME/TSF helper windows are recovered automatically. |
+| The click is not delivered | The target may run at a higher integrity level (for example, elevated). Windows UIPI blocks synthetic input to such windows; run both applications at the same integrity level. |
+| A second launch exits immediately | KeyGrid is already running. Only one instance is allowed. |
+| More diagnostics are needed | See `%LOCALAPPDATA%\KeyGrid\logs\keygrid_YYYYMMDD.log`. Logs are retained for 7 days. |
 
 ---
 
