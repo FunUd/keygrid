@@ -20,6 +20,7 @@ public class OverlayManager
     private readonly ClickExecutor _clickExecutor;
     private readonly List<OverlayWindow> _overlays = new();
     private readonly FocusLossPolicy _focusLossPolicy = new();
+    private IReadOnlyList<PixelRect> _activeMonitorRects = Array.Empty<PixelRect>();
     private OverlayWindow? _primaryOverlay;
     private int _isClosing;
     private bool _isFocusLossPending = false;
@@ -67,6 +68,7 @@ public class OverlayManager
         var primaryMonitor = monitors[primaryIndex];
         double targetPixels = GridCalculator.CalculateTargetPixels(primaryMonitor.DpiScale);
         var monitorRects = monitors.Select(m => m.Bounds).ToList();
+        _activeMonitorRects = monitorRects;
         if (!_selectionManager.StartSelection(monitorRects, targetPixels))
         {
             ErrorOccurred?.Invoke("Failed to initialize selection area.");
@@ -100,7 +102,7 @@ public class OverlayManager
 
             _overlays.Add(overlay);
             overlay.Show();
-            overlay.UpdateRenderState(_selectionManager);
+            overlay.UpdateRenderState(_selectionManager, _activeMonitorRects);
         }
 
         // Defer enabling DPI notifications until the overlays have completed their
@@ -274,7 +276,7 @@ public class OverlayManager
     {
         foreach (var overlay in _overlays)
         {
-            overlay.UpdateRenderState(_selectionManager);
+            overlay.UpdateRenderState(_selectionManager, _activeMonitorRects);
         }
     }
 

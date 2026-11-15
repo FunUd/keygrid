@@ -57,9 +57,9 @@ public partial class OverlayWindow : Window
         return focused;
     }
 
-    public void UpdateRenderState(SelectionManager selectionManager)
+    public void UpdateRenderState(SelectionManager selectionManager, IReadOnlyList<PixelRect> monitorRects)
     {
-        RenderElement.UpdateState(MonitorRect, selectionManager);
+        RenderElement.UpdateState(MonitorRect, monitorRects, selectionManager);
     }
 
     protected override void OnSourceInitialized(EventArgs e)
