@@ -7,7 +7,7 @@ KeyGrid is a lightweight, resident Windows 11 utility that enables mouse-free le
 ## Features
 
 - **Keyboard-Driven Precision**: Reach and left-click any on-screen location in 4 keystrokes (Column → Row → Column → Row).
-- **Multi-Monitor & Mixed-DPI Support**: Automatically maps across all active displays, handles non-standard topologies (L-shaped, vertical offsets, gaps), and operates with Per-Monitor DPI Awareness V2.
+- **Multi-Monitor & Mixed-DPI Support**: Automatically maps across all active displays, handles non-standard topologies (L-shaped, vertical offsets, gaps), and operates with Per-Monitor DPI Awareness V2. The 20 DIP grid target is derived from the primary monitor's effective DPI, so secondary monitors in a mixed-DPI setup can have slightly finer or coarser final cells.
 - **Background Resident Utility**: Runs silently in the system tray with near-zero CPU and memory overhead while idle.
 - **IME & Repeat Protection**: Automatically suppresses IME during grid selection and ignores accidental key repeats.
 - **Safe Fallback**: Excludes gaps between disjoint monitors, snapping center reference points to the closest valid display pixel.
@@ -31,7 +31,7 @@ Clone the repository and build using the .NET CLI:
 # Restore dependencies and build the entire solution
 dotnet build
 
-# Run the comprehensive test suite (57+ unit and integration tests)
+# Run the comprehensive test suite (100+ unit and integration tests)
 dotnet test
 ```
 
@@ -77,7 +77,9 @@ Press the global hotkey:
 
 $$\text{Ctrl} + \text{Shift} + \text{Space}$$
 
-Full-screen transparent overlays will appear across all connected monitors. In Stage 1, each grid section displays a 2-letter label (Column key + Row key, e.g., `QQ`, `WE`, `RA`) directly in the cell. In Stage 2, small key rulers appear just outside the zoomed cell, keeping the sub-cell centers clear.
+Full-screen transparent overlays will appear across all connected monitors. In Stage 1, each grid section displays a 2-letter label (Column key + Row key, e.g., `QQ`, `WE`, `RI`) directly in the cell. In Stage 2, small key rulers appear just outside the zoomed cell, keeping the sub-cell centers clear.
+
+The grid targets a 20 DIP final cell on the primary monitor's effective DPI. Typical Stage 1 counts are 10×8 at 1920×1080 100%, 12×9 at 2560×1440 100%, and 14×11 at 3840×2160 100%. On mixed-DPI systems, the target is not uniform across monitors; a higher-DPI secondary display may show finer cells.
 
 ### 2. Selecting Coordinates (2 Stages)
 
@@ -88,13 +90,13 @@ Q  W  E  R  T  Y  U  I  O  P  A  S  D  F  G  H  J  K  L  Z  X  C  V  B  N  M
 ```
 
 - **Stage 1**:
-  1. Look directly at your target on the screen and read the 2-letter label in that cell (e.g., `ED`).
-  2. Press the first letter (`E`). The active column highlights.
-  3. Press the second letter (`D`). The grid immediately zooms into that cell.
+  1. Look directly at your target on the screen and read the 2-letter label in that cell (e.g., `RI`).
+  2. Press the first letter (`R`). The active column highlights.
+  3. Press the second letter (`I`). The grid immediately zooms into that cell.
 - **Stage 2**:
-  4. Read the sub-column key from the ruler just above or below the zoomed cell (e.g., `Q`). The ruler flips to the opposite side near a screen edge.
-  5. Press the third letter (`Q`). The chosen sub-column and its ruler segment highlight.
-  6. Read the sub-row key from the ruler just left or right of the cell (e.g., `A`), then press the fourth letter (`A`).
+  4. Read the sub-column key from the ruler just above or below the zoomed cell (e.g., `E`). The ruler flips to the opposite side near a screen edge.
+  5. Press the third letter (`E`). The chosen sub-column and its ruler segment highlight.
+  6. Read the sub-row key from the ruler just left or right of the cell (e.g., `I`), then press the fourth letter (`I`).
 
 ### 3. Automatic Clicking
 
@@ -127,7 +129,7 @@ keygrid/
 │   │   ├── Services/          # ClickExecutor dispatch synchronization
 │   │   └── Abstractions/      # Hardware abstraction interfaces (IMonitorProvider, IClickSender)
 │   └── KeyGrid/               # Desktop application (.NET 10 WPF / Windows 11)
-│       ├── Interop/           # Win32 P/Invoke (EnumDisplayMonitors, SendInput, ImmAssociateContext)
+│       ├── Interop/           # Win32 P/Invoke (EnumDisplayMonitors, GetDpiForMonitor, SendInput)
 │       ├── UI/                # OverlayWindow, OverlayRenderElement (hardware-accelerated DrawingContext)
 │       ├── Services/          # HotkeyManager, FileLogger
 │       └── app.manifest       # Per-Monitor DPI Awareness V2 declaration
@@ -155,6 +157,7 @@ Logs are retained for 7 days and automatically cleaned up on application startup
 |---|---|
 | The hotkey does nothing | Another application may already own `Ctrl + Shift + Space`. The tray tooltip and context menu show whether hotkey registration failed. Close the conflicting application and restart KeyGrid. |
 | The overlay closes immediately | Focus moved to a visible application, which deliberately cancels selection. Transient focus changes to IME/TSF helper windows are recovered automatically. |
+| Cells look finer or coarser on a secondary monitor | The 20 DIP target follows the primary monitor's effective DPI. This is expected in mixed-DPI setups; make the desired monitor primary to tune the grid for it. |
 | The click is not delivered | The target may run at a higher integrity level (for example, elevated). Windows UIPI blocks synthetic input to such windows; run both applications at the same integrity level. |
 | A second launch exits immediately | KeyGrid is already running. Only one instance is allowed. |
 | More diagnostics are needed | See `%LOCALAPPDATA%\KeyGrid\logs\keygrid_YYYYMMDD.log`. Logs are retained for 7 days. |

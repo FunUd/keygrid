@@ -139,6 +139,10 @@ internal static class NativeMethods
     public const int SM_CYVIRTUALSCREEN = 79;
     public const int SM_CMONITORS = 80;
 
+    // Monitor info flags and DPI types
+    public const uint MONITORINFOF_PRIMARY = 0x00000001;
+    public const int MDT_EFFECTIVE_DPI = 0;
+
     [StructLayout(LayoutKind.Sequential)]
     public struct RECT
     {
@@ -167,6 +171,9 @@ internal static class NativeMethods
 
     [DllImport("user32.dll")]
     public static extern int GetSystemMetrics(int nIndex);
+
+    [DllImport("shcore.dll")]
+    public static extern int GetDpiForMonitor(nint hmonitor, int dpiType, out uint dpiX, out uint dpiY);
 
     [DllImport("user32.dll", SetLastError = true)]
     public static extern bool SetWindowPos(nint hWnd, nint hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags);

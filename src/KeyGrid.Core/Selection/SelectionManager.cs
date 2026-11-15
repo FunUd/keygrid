@@ -26,6 +26,11 @@ public class SelectionManager
 
     public int RowCount { get; private set; } = 1;
 
+    /// <summary>
+    /// Physical-pixel target for the final cell, derived from the primary monitor DPI.
+    /// </summary>
+    public double TargetPixels { get; private set; }
+
     public int[] XBoundaries { get; private set; } = Array.Empty<int>();
 
     public int[] YBoundaries { get; private set; } = Array.Empty<int>();
@@ -44,8 +49,15 @@ public class SelectionManager
     /// <summary>
     /// Initiates selection mode with the provided monitor display bounds.
     /// </summary>
-    public bool StartSelection(IReadOnlyList<PixelRect> monitorRects)
+    /// <param name="monitorRects">Active monitor bounds in physical pixels.</param>
+    /// <param name="targetPixels">Target final-cell size in physical pixels.</param>
+    public bool StartSelection(IReadOnlyList<PixelRect> monitorRects, double targetPixels)
     {
+        if (!double.IsFinite(targetPixels) || targetPixels <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(targetPixels), "Target size must be finite and greater than zero.");
+        }
+
         var validRects = monitorRects.Where(r => !r.IsEmpty).ToList();
         if (validRects.Count == 0)
         {
@@ -55,6 +67,7 @@ public class SelectionManager
         _initialMonitors.Clear();
         _initialMonitors.AddRange(validRects);
         _history.Clear();
+        TargetPixels = targetPixels;
 
         VirtualScreenBoundingBox = PixelRect.BoundingBox(_initialMonitors);
         CurrentSelection = _initialMonitors.ToList();
@@ -72,18 +85,27 @@ public class SelectionManager
 
     private void SetupStage1Divisions()
     {
-        var (cols, rows) = GridCalculator.CalculateDivisions(CurrentBoundingBox.Width, CurrentBoundingBox.Height);
+        var (cols, rows) = GridCalculator.CalculateDivisions(
+            CurrentBoundingBox.Width,
+            CurrentBoundingBox.Height,
+            TargetPixels);
+
         ColumnCount = cols;
         RowCount = rows;
-        XBoundaries = GridCalculator.CalculateBoundaries(CurrentBoundingBox.Left, CurrentBoundingBox.Width, ColumnCount);
-        YBoundaries = GridCalculator.CalculateBoundaries(CurrentBoundingBox.Top, CurrentBoundingBox.Height, RowCount);
+        CalculateBoundaries();
     }
 
+    /// <summary>
+    /// Stage 2 reuses the Stage 1 division counts and only recalculates the
+    /// boundaries for the selected cell, as specified in section 4.1.
+    /// </summary>
     private void SetupStage2Divisions()
     {
-        var (cols, rows) = GridCalculator.CalculateDivisions(CurrentBoundingBox.Width, CurrentBoundingBox.Height);
-        ColumnCount = cols;
-        RowCount = rows;
+        CalculateBoundaries();
+    }
+
+    private void CalculateBoundaries()
+    {
         XBoundaries = GridCalculator.CalculateBoundaries(CurrentBoundingBox.Left, CurrentBoundingBox.Width, ColumnCount);
         YBoundaries = GridCalculator.CalculateBoundaries(CurrentBoundingBox.Top, CurrentBoundingBox.Height, RowCount);
     }

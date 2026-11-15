@@ -11,7 +11,7 @@ KeyGrid is designed around strict separation of concerns to maximize testability
 1. **Pure Domain Core (`KeyGrid.Core`)**:
    - Zero dependencies on Win32, WPF, or UI frameworks.
    - Contains all geometric, algorithmic, and state-machine logic:
-     - Division count calculation ($10 \times N^2 \ge L$, max 26).
+     - Division count calculation (20 DIP target converted with the primary monitor DPI, $C + R \le 26$).
      - Cell boundary partitioning without gaps or overlaps.
      - Multidimensional region intersection & bounding box tracking.
      - Euclidean nearest-point selection when the center falls into non-monitor space.
@@ -23,7 +23,7 @@ KeyGrid is designed around strict separation of concerns to maximize testability
    - Can be unit-tested completely in headless environments without UI threads.
 
 2. **Hardware / OS Abstraction Layer (`KeyGrid.Core.Abstractions`)**:
-   - `IMonitorProvider`: Abstract representation of monitor bounds and DPI/topology change events.
+   - `IMonitorProvider`: Abstract representation of monitor bounds, effective DPI scale, primary-monitor flag, and DPI/topology change events.
    - `IClickSender`: Abstract interface to send mouse clicks to the OS.
    - `IHotkeyRegistrar`: Abstract interface to register system-wide hotkeys.
    - Enables complete integration testing with mock/fake multi-monitor configurations (negative origin, DPI differences, disjoint gaps).
@@ -51,9 +51,9 @@ KeyGrid is designed around strict separation of concerns to maximize testability
 ### 2.2 Key Test Scenarios & Test Matrix
 
 1. **`GridCalculatorTests`**:
-   - **Division formula**: Verify $10 \times C^2 \ge W$ and $10 \times R^2 \ge H$ minimum integers; check 1920x1080 (14, 11), 2560x1440 (16, 12), 3840x2160 (20, 15), 7680x2160 (26, 15).
+   - **Division formula**: Verify the 20 DIP target converted by the primary monitor DPI ($T \times C^2 \ge W$, $T \times R^2 \ge H$) with $C + R \le 26$; check 1920x1080 (10, 8), 2560x1440 (12, 9), 3840x2160 (14, 11), and the relaxed 7680x2160 (17, 9) and 7680x4320 (15, 11) cases.
    - **Boundary partitioning theorem**: For all $L \in [1, 10000]$ and $N \in [1, 26]$, verify cell widths are strictly $\lfloor L/N \rfloor$ or $\lceil L/N \rceil$, sum of widths equals $L$, no overlapping or gaps.
-   - **Two-stage convergence**: Verify bounding box size after 2 steps is $\le 10$ px for standard displays, and reaches theoretical limits on displays $> 6760$ px (e.g. 12px for 7680px width).
+   - **Two-stage convergence**: Verify Stage 2 reuses the Stage 1 counts, the normal case meets the 20 DIP target, and the key-budget relaxation chooses the minimax pair on ultra-wide displays (for example 17x9 for 7680x2160).
    - **Center point & Euclidean distance**:
      - Bounding box center: `left + (W - 1) / 2` (integer division).
      - When center falls in monitor gap: nearest coordinate in valid monitor rects; tie-breaker test (smaller Y first, then smaller X).
@@ -152,8 +152,10 @@ KeyGrid is designed around strict separation of concerns to maximize testability
 ### Phase 3: Multi-Monitor & DPI Architecture
 - [x] Implement `Win32MonitorProvider`:
   - [x] Enumerate all active displays and query physical pixel coordinates.
+  - [x] Query effective DPI and the `MONITORINFOF_PRIMARY` flag per monitor.
+  - [x] Derive the 20 DIP target from the primary monitor's DPI scale.
   - [x] Compute virtual desktop bounding box.
-  - [x] Expose monitor change events (`WM_DISPLAYCHANGE`, `WM_DPICHANGED`).
+  - [x] Expose monitor change events (`WM_DISPLAYCHANGE`, `WM_DPICHANGED`), including overlay-window notifications.
 - [x] Multi-Monitor Selection Support in `GridCalculator`:
   - [x] Handling disjoint monitor bounds (exclude empty space between monitors).
   - [x] Euclidean nearest distance fallback when center point falls in monitor gap.

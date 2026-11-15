@@ -1,6 +1,7 @@
 # KeyGrid Label and Grid Optimization Plan
 
-Status: Revised proposal after technical review. No implementation has been done yet.
+Status: Phase 1 (grid semantics, 20 DIP target, DPI plumbing) code implemented;
+manual smoke validation is pending. Phases 2-4 remain pending.
 
 Related documents:
 
@@ -432,9 +433,9 @@ dense.
 
 ### Phase 2: Key allocation split
 
-Depends on Phase 1. The current 2560x1440 grid needs 16 + 12 = 28 keys and the
-current 4K grid needs 20 + 15 = 35 keys; neither can be split into disjoint
-column and row sets. Do not start this phase until `C + R <= 26` is enforced.
+Depends on Phase 1. Phase 1 now enforces `C + R <= 26`; the 2560x1440 grid uses
+12 + 9 = 21 keys and the 4K grid uses 14 + 11 = 25, so both can be split into
+disjoint column and row sets.
 
 - Implement `KeyLayout.Allocate()` and membership-based lookup.
 - Store per-session column/row key arrays in `SelectionManager`.
@@ -542,8 +543,8 @@ Update these in the same work unit as the corresponding code change:
 dotnet test --nologo
 ```
 
-A docs-only revision of this plan does not require code tests. The current
-baseline is 80 passing tests; record the new test count after each phase.
+A docs-only revision of this plan does not require code tests. The Phase 1
+baseline is 115 passing tests; record the new test count after each phase.
 
 ## 9. Acceptance criteria
 

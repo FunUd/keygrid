@@ -1,5 +1,6 @@
 using System.Windows.Threading;
 using KeyGrid.Core.Abstractions;
+using KeyGrid.Core.Calculation;
 using KeyGrid.Core.Geometry;
 using KeyGrid.Core.Selection;
 using KeyGrid.Core.Services;
@@ -22,6 +23,8 @@ public class OverlayManager
     private OverlayWindow? _primaryOverlay;
     private int _isClosing;
     private bool _isFocusLossPending = false;
+    private bool _isDisplayChangePending = false;
+    private int _selectionGeneration;
 
     public event Action<string>? ErrorOccurred;
 
@@ -45,32 +48,45 @@ public class OverlayManager
     {
         CloseOverlays();
 
-        var monitorRects = _monitorProvider.GetMonitorRects();
-        if (monitorRects.Count == 0)
+        var monitors = _monitorProvider.GetMonitors()
+            .Where(m => !m.Bounds.IsEmpty)
+            .ToList();
+        if (monitors.Count == 0)
         {
             ErrorOccurred?.Invoke("No active displays found.");
             return;
         }
 
-        if (!_selectionManager.StartSelection(monitorRects))
+        int primaryIndex = monitors.FindIndex(m => m.IsPrimary);
+        if (primaryIndex < 0)
+        {
+            primaryIndex = 0;
+            FileLogger.LogWarning("No monitor reported as primary; using the first enumerated monitor.");
+        }
+
+        var primaryMonitor = monitors[primaryIndex];
+        double targetPixels = GridCalculator.CalculateTargetPixels(primaryMonitor.DpiScale);
+        var monitorRects = monitors.Select(m => m.Bounds).ToList();
+        if (!_selectionManager.StartSelection(monitorRects, targetPixels))
         {
             ErrorOccurred?.Invoke("Failed to initialize selection area.");
             return;
         }
 
         _focusLossPolicy.Reset();
+        _selectionGeneration++;
+        int generation = _selectionGeneration;
+        _isDisplayChangePending = false;
+        FileLogger.LogInfo(
+            $"Selection started on {monitors.Count} monitor(s) with target {targetPixels:0.##} px " +
+            $"(primary DPI scale {primaryMonitor.DpiScale:0.###}).");
 
-        // Identify primary monitor: typically (0,0) or the first monitor
-        var primaryRect = monitorRects.FirstOrDefault(r => r.Left == 0 && r.Top == 0);
-        if (primaryRect.IsEmpty)
+        for (int i = 0; i < monitors.Count; i++)
         {
-            primaryRect = monitorRects[0];
-        }
-
-        foreach (var rect in monitorRects)
-        {
-            bool isPrimary = (rect == primaryRect);
-            var overlay = new OverlayWindow(rect, isPrimary);
+            var monitor = monitors[i];
+            bool isPrimary = i == primaryIndex;
+            var overlay = new OverlayWindow(monitor.Bounds, isPrimary, monitor.DpiScale);
+            overlay.DisplayConfigurationChanged += () => OnOverlayDisplayConfigurationChanged(generation);
 
             if (isPrimary)
             {
@@ -86,6 +102,25 @@ public class OverlayManager
             overlay.Show();
             overlay.UpdateRenderState(_selectionManager);
         }
+
+        // Defer enabling DPI notifications until the overlays have completed their
+        // initial per-monitor placement. The expected-DPI check in the overlay also
+        // filters normal startup WM_DPICHANGED messages.
+        Dispatcher.CurrentDispatcher.BeginInvoke(
+            DispatcherPriority.ApplicationIdle,
+            new Action(() =>
+            {
+                if (generation != _selectionGeneration || IsClosing || !IsActive)
+                {
+                    return;
+                }
+
+                foreach (var overlay in _overlays)
+                {
+                    overlay.RefreshExpectedDpi();
+                    overlay.EnableDpiChangeNotifications();
+                }
+            }));
     }
 
     private void OnKeyPressed(char key)
@@ -189,6 +224,39 @@ public class OverlayManager
             // Keep the flag set while handling so focus transitions caused by
             // TryReactivate do not schedule duplicate handling.
             _isFocusLossPending = false;
+        }
+    }
+
+    private void OnOverlayDisplayConfigurationChanged(int generation)
+    {
+        if (generation != _selectionGeneration || IsClosing || !IsActive || _isDisplayChangePending)
+        {
+            return;
+        }
+
+        // Do not close the overlay window from inside its own window procedure.
+        // Defer teardown until the DPI/display message has been fully handled.
+        _isDisplayChangePending = true;
+        Dispatcher.CurrentDispatcher.BeginInvoke(
+            DispatcherPriority.Normal,
+            new Action(() => HandleOverlayDisplayConfigurationChanged(generation)));
+    }
+
+    private void HandleOverlayDisplayConfigurationChanged(int generation)
+    {
+        try
+        {
+            if (generation != _selectionGeneration || IsClosing || !IsActive)
+            {
+                return;
+            }
+
+            FileLogger.LogInfo("Overlay window received a display or DPI change; cancelling selection.");
+            OnMonitorConfigurationChanged();
+        }
+        finally
+        {
+            _isDisplayChangePending = false;
         }
     }
 

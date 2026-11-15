@@ -16,11 +16,11 @@ public class MultiMonitorIntegrationTests
         var monitors = new[] { monitor1, monitor2 };
 
         var mgr = new SelectionManager();
-        mgr.StartSelection(monitors);
+        mgr.StartSelection(monitors, 20.0);
 
         Assert.Equal(new PixelRect(0, 0, 3840, 1080), mgr.VirtualScreenBoundingBox);
-        Assert.Equal(20, mgr.ColumnCount);
-        Assert.Equal(11, mgr.RowCount);
+        Assert.Equal(14, mgr.ColumnCount);
+        Assert.Equal(8, mgr.RowCount);
     }
 
     [Fact]
@@ -34,7 +34,7 @@ public class MultiMonitorIntegrationTests
         var monitors = new[] { d1, d2 };
 
         var mgr = new SelectionManager();
-        mgr.StartSelection(monitors);
+        mgr.StartSelection(monitors, 20.0);
 
         // Find a column that falls in the gap or select a full 2-stage path
         // Perform 4 valid keystrokes
@@ -62,7 +62,7 @@ public class MultiMonitorIntegrationTests
         var monitors = new[] { left, primary };
 
         var mgr = new SelectionManager();
-        mgr.StartSelection(monitors);
+        mgr.StartSelection(monitors, 20.0);
 
         Assert.Equal(-1920, mgr.VirtualScreenBoundingBox.Left);
         Assert.Equal(3840, mgr.VirtualScreenBoundingBox.Width);
@@ -90,7 +90,7 @@ public class MultiMonitorIntegrationTests
         var m2 = new PixelRect(1900, 0, 100, 100);
 
         var mgr = new SelectionManager();
-        mgr.StartSelection(new[] { m1, m2 });
+        mgr.StartSelection(new[] { m1, m2 }, 20.0);
 
         // Columns covering the empty gap [100, 1900) should be invalid and rejected
         // Middle columns should be invalid
