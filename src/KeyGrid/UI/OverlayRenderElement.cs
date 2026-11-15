@@ -10,7 +10,7 @@ namespace KeyGrid.UI;
 /// <summary>
 /// Handles high-performance hardware-accelerated drawing of grid lines,
 /// selection masks, stage-1 in-cell labels, the early-Enter marker, and
-/// stage-2 local key rulers.
+/// stage-2 in-cell labels.
 /// </summary>
 public class OverlayRenderElement : FrameworkElement
 {
@@ -37,14 +37,12 @@ public class OverlayRenderElement : FrameworkElement
     private readonly Brush _activeBadgeBgBrush = new SolidColorBrush(Color.FromArgb(240, 12, 16, 24));
     private readonly Pen _activeBadgeBorderPen = new(new SolidColorBrush(Color.FromArgb(255, 255, 255, 255)), 1.4);
 
-    // Stage-2 key rulers. They sit outside the selected cell so the sub-cell
-    // centers (the click targets) stay unobstructed.
-    private readonly Brush _rulerBgBrush = new SolidColorBrush(Color.FromArgb(205, 12, 16, 24));
-    private readonly Brush _activeSubColumnBrush = new SolidColorBrush(Color.FromArgb(85, 0, 229, 255));
-    private readonly Brush _labelShadowBrush = new SolidColorBrush(Color.FromArgb(180, 0, 0, 0));
-    private readonly Pen _activeHorizontalRulerBorderPen = new(new SolidColorBrush(Color.FromArgb(255, 0, 229, 255)), 1.8);
-    private readonly Pen _activeVerticalRulerBorderPen = new(new SolidColorBrush(Color.FromArgb(255, 255, 200, 87)), 1.8);
-    private readonly Pen _inactiveRulerBorderPen = new(new SolidColorBrush(Color.FromArgb(60, 180, 200, 220)), 0.8);
+    // Stage-2 badges are deliberately lighter than stage 1 so the click target
+    // remains visible beneath the in-cell key hints.
+    private readonly Brush _stage2BadgeBgBrush = new SolidColorBrush(Color.FromArgb(105, 12, 16, 24));
+    private readonly Pen _stage2BadgeBorderPen = new(new SolidColorBrush(Color.FromArgb(85, 0, 229, 255)), 0.8);
+    private readonly Brush _activeStage2BadgeBgBrush = new SolidColorBrush(Color.FromArgb(125, 12, 16, 24));
+    private readonly Pen _activeStage2BadgeBorderPen = new(new SolidColorBrush(Color.FromArgb(155, 255, 255, 255)), 1.0);
 
     private readonly Brush _columnKeyBrush = new SolidColorBrush(Color.FromRgb(0, 229, 255));
     private readonly Brush _rowKeyBrush = new SolidColorBrush(Color.FromRgb(255, 200, 87));
@@ -71,12 +69,10 @@ public class OverlayRenderElement : FrameworkElement
         _badgeBorderPen.Freeze();
         _activeBadgeBgBrush.Freeze();
         _activeBadgeBorderPen.Freeze();
-        _rulerBgBrush.Freeze();
-        _activeSubColumnBrush.Freeze();
-        _labelShadowBrush.Freeze();
-        _activeHorizontalRulerBorderPen.Freeze();
-        _activeVerticalRulerBorderPen.Freeze();
-        _inactiveRulerBorderPen.Freeze();
+        _stage2BadgeBgBrush.Freeze();
+        _stage2BadgeBorderPen.Freeze();
+        _activeStage2BadgeBgBrush.Freeze();
+        _activeStage2BadgeBorderPen.Freeze();
         _columnKeyBrush.Freeze();
         _rowKeyBrush.Freeze();
         _crosshairPen.Freeze();
@@ -205,7 +201,7 @@ public class OverlayRenderElement : FrameworkElement
             }
         }
 
-        // 5. Draw Stage 1 labels or Stage 2 rulers
+        // 5. Draw in-cell labels for the current selection stage
         if (_selectionManager.State == SelectionState.Selecting)
         {
             DrawCellSectionLabels(dc, dpiX, dpiY);
@@ -214,9 +210,8 @@ public class OverlayRenderElement : FrameworkElement
     }
 
     /// <summary>
-    /// Draws stage-1 labels inside each valid grid section. After the column key,
-    /// the active column shows only the row key in amber. Stage 2 uses local rulers
-    /// around the selected cell because sub-cells are too small for the badge.
+    /// Draws key labels inside valid grid sections. The active column shows only
+    /// row keys, so each stage presents only the keys needed for the next input.
     /// </summary>
     private void DrawCellSectionLabels(DrawingContext dc, double dpiX, double dpiY)
     {
@@ -224,7 +219,7 @@ public class OverlayRenderElement : FrameworkElement
 
         if (_selectionManager.CurrentStage >= 2)
         {
-            DrawStage2RulerLabels(dc, dpiX, dpiY, _selectionManager);
+            DrawStage2CellLabels(dc, dpiX, dpiY, _selectionManager);
             return;
         }
 
@@ -273,7 +268,70 @@ public class OverlayRenderElement : FrameworkElement
                     rowChar,
                     cellRect,
                     rowOnly,
-                    _pixelsPerDip);
+                    _pixelsPerDip,
+                    compact: false);
+            }
+        }
+    }
+
+    private void DrawStage2CellLabels(
+        DrawingContext dc,
+        double dpiX,
+        double dpiY,
+        SelectionManager selectionManager)
+    {
+        int selectedCol = selectionManager.SelectedColumnIndex;
+        bool rowOnly = selectedCol >= 0;
+
+        for (int c = 0; c < selectionManager.ColumnCount; c++)
+        {
+            if (rowOnly && selectedCol != c)
+            {
+                continue;
+            }
+
+            for (int r = 0; r < selectionManager.RowCount; r++)
+            {
+                if (!GridCalculator.IsCellValid(
+                        c,
+                        r,
+                        selectionManager.XBoundaries,
+                        selectionManager.YBoundaries,
+                        selectionManager.CurrentSelection))
+                {
+                    continue;
+                }
+
+                var cell = GridCalculator.GetCell(
+                    selectionManager.XBoundaries,
+                    selectionManager.YBoundaries,
+                    c,
+                    r);
+                if (!IsOwnerMonitor(cell))
+                {
+                    continue;
+                }
+
+                var visibleCell = cell.Intersect(_monitorRect);
+                if (visibleCell.IsEmpty)
+                {
+                    continue;
+                }
+
+                var cellRect = ToDipRect(visibleCell, dpiX, dpiY);
+                if (cellRect.Width < 14 || cellRect.Height < 12)
+                {
+                    continue;
+                }
+
+                DrawSectionBadge(
+                    dc,
+                    rowOnly ? null : selectionManager.ColumnKeys[c],
+                    selectionManager.RowKeys[r],
+                    cellRect,
+                    isActiveColumn: rowOnly,
+                    _pixelsPerDip,
+                    compact: true);
             }
         }
     }
@@ -289,12 +347,15 @@ public class OverlayRenderElement : FrameworkElement
         char rowKey,
         Rect cellRect,
         bool isActiveColumn,
-        double pixelsPerDip)
+        double pixelsPerDip,
+        bool compact)
     {
         double maxWidth = Math.Max(1.0, cellRect.Width - 2);
         double maxHeight = Math.Max(1.0, cellRect.Height - 2);
 
-        double targetFontSize = columnKey.HasValue ? 18.0 : 22.0;
+        double targetFontSize = compact
+            ? columnKey.HasValue ? 11.5 : 13.0
+            : columnKey.HasValue ? 18.0 : 22.0;
         double widthFactor = columnKey.HasValue ? 1.4 : 0.7;
         double estimatedByWidth = maxWidth / widthFactor;
         double estimatedByHeight = maxHeight / 1.2;
@@ -356,7 +417,9 @@ public class OverlayRenderElement : FrameworkElement
         double cellCenterX = cellRect.Left + (cellRect.Width / 2.0);
         double cellCenterY = cellRect.Top + (cellRect.Height / 2.0);
 
-        double badgeCenterX = cellCenterX;
+        double badgeCenterX = compact
+            ? cellRect.Left + 1 + (badgeWidth / 2.0)
+            : cellCenterX;
         double minCenterX = cellRect.Left + 1 + (badgeWidth / 2.0);
         double maxCenterX = cellRect.Right - 1 - (badgeWidth / 2.0);
         if (minCenterX <= maxCenterX)
@@ -366,8 +429,10 @@ public class OverlayRenderElement : FrameworkElement
 
         double minCenterY = cellRect.Top + 1 + (badgeHeight / 2.0);
         double maxCenterY = cellRect.Bottom - 1 - (badgeHeight / 2.0);
-        double badgeCenterY = cellCenterY;
-        if (minCenterY <= maxCenterY)
+        double badgeCenterY = compact
+            ? cellRect.Top + 1 + (badgeHeight / 2.0)
+            : cellCenterY;
+        if (!compact && minCenterY <= maxCenterY)
         {
             double desiredCenterY = cellCenterY - (badgeHeight / 2.0) - 6.0;
             badgeCenterY = Math.Clamp(desiredCenterY, minCenterY, maxCenterY);
@@ -386,8 +451,17 @@ public class OverlayRenderElement : FrameworkElement
             badgeWidth,
             badgeHeight);
 
-        var bgBrush = isActiveColumn ? _activeBadgeBgBrush : _badgeBgBrush;
-        var borderPen = isActiveColumn ? _activeBadgeBorderPen : _badgeBorderPen;
+        var bgBrush = compact
+            ? isActiveColumn ? _activeStage2BadgeBgBrush : _stage2BadgeBgBrush
+            : isActiveColumn ? _activeBadgeBgBrush : _badgeBgBrush;
+        var borderPen = compact
+            ? isActiveColumn ? _activeStage2BadgeBorderPen : _stage2BadgeBorderPen
+            : isActiveColumn ? _activeBadgeBorderPen : _badgeBorderPen;
+        if (compact)
+        {
+            dc.PushOpacity(0.88);
+        }
+
         dc.DrawRoundedRectangle(bgBrush, borderPen, badgeRect, 3, 3);
 
         double textLeft = badgeCenterX - (textWidth / 2.0);
@@ -400,205 +474,10 @@ public class OverlayRenderElement : FrameworkElement
 
         double rowY = badgeCenterY - (rowGlyph.Height / 2.0);
         dc.DrawText(rowGlyph, new Point(textLeft, rowY));
-    }
-
-    /// <summary>
-    /// In stage 2 the sub-cell centers are too small for the in-cell 2-letter badge,
-    /// so the keys are moved to rulers just outside the selected cell. The rulers
-    /// flip to the opposite side when the preferred side would leave the monitor.
-    /// </summary>
-    private void DrawStage2RulerLabels(
-        DrawingContext dc,
-        double dpiX,
-        double dpiY,
-        SelectionManager selectionManager)
-    {
-        var selectedCell = selectionManager.CurrentBoundingBox;
-        if (selectedCell.IsEmpty || selectedCell.Intersect(_monitorRect).IsEmpty)
+        if (compact)
         {
-            return;
+            dc.Pop();
         }
-
-        // Keep the ruler sized in DIPs so it remains readable at any DPI scale.
-        double dpiScale = Math.Min(dpiX, dpiY);
-        int stripThickness = Math.Max(10, (int)Math.Round(16 * dpiScale));
-        int gap = Math.Max(2, (int)Math.Round(3 * dpiScale));
-
-        var layout = Stage2LabelLayout.Calculate(
-            selectedCell,
-            _monitorRect,
-            selectionManager.XBoundaries,
-            selectionManager.YBoundaries,
-            selectionManager.ColumnCount,
-            selectionManager.RowCount,
-            stripThickness,
-            gap);
-
-        if (layout == null)
-        {
-            return;
-        }
-
-        var horizontalStrip = ToDipRect(layout.HorizontalStrip, dpiX, dpiY);
-        var verticalStrip = ToDipRect(layout.VerticalStrip, dpiX, dpiY);
-        if (horizontalStrip.Width <= 0 || horizontalStrip.Height <= 0 ||
-            verticalStrip.Width <= 0 || verticalStrip.Height <= 0)
-        {
-            return;
-        }
-
-        var visibleCell = selectedCell.Intersect(_monitorRect);
-        if (visibleCell.IsEmpty)
-        {
-            return;
-        }
-
-        double visibleCellWidthDip = visibleCell.Width / dpiX;
-        double visibleCellHeightDip = visibleCell.Height / dpiY;
-        double columnSpacingDip = visibleCellWidthDip / selectionManager.ColumnCount;
-        double rowSpacingDip = visibleCellHeightDip / selectionManager.RowCount;
-
-        double columnFontSize = Math.Clamp(
-            Math.Min(13.0, Math.Min(columnSpacingDip * 0.75, horizontalStrip.Height * 0.82)),
-            8.0,
-            13.0);
-        double rowFontSize = Math.Clamp(
-            Math.Min(13.0, Math.Min(rowSpacingDip * 0.80, verticalStrip.Width * 0.82)),
-            8.0,
-            13.0);
-
-        dc.DrawRoundedRectangle(_rulerBgBrush, null, horizontalStrip, 3, 3);
-        dc.DrawRoundedRectangle(_rulerBgBrush, null, verticalStrip, 3, 3);
-
-        int selectedColumn = selectionManager.SelectedColumnIndex;
-
-        // Once the sub-column is chosen, highlight its segment in the top ruler.
-        if (selectedColumn >= 0 && selectedColumn < selectionManager.ColumnCount)
-        {
-            var activeSegment = PixelRect.FromEdges(
-                selectionManager.XBoundaries[selectedColumn],
-                layout.HorizontalStrip.Top,
-                selectionManager.XBoundaries[selectedColumn + 1],
-                layout.HorizontalStrip.Bottom);
-            var activeSegmentDip = ToDipRect(activeSegment, dpiX, dpiY);
-            var clipped = Rect.Intersect(activeSegmentDip, horizontalStrip);
-            if (!clipped.IsEmpty)
-            {
-                // Keep the active segment inside the ruler's rounded corners.
-                dc.PushClip(new RectangleGeometry(horizontalStrip, 3, 3));
-                dc.DrawRoundedRectangle(_activeSubColumnBrush, null, clipped, 2, 2);
-                dc.Pop();
-            }
-        }
-
-        // Determine which ruler is awaiting input next and highlight it.
-        bool columnIsNext = selectedColumn < 0; // no sub-column chosen yet => horizontal is next
-        var hRulerBorderPen = columnIsNext ? _activeHorizontalRulerBorderPen : _inactiveRulerBorderPen;
-        var vRulerBorderPen = columnIsNext ? _inactiveRulerBorderPen : _activeVerticalRulerBorderPen;
-
-        dc.DrawRoundedRectangle(null, hRulerBorderPen, horizontalStrip, 3, 3);
-        dc.DrawRoundedRectangle(null, vRulerBorderPen, verticalStrip, 3, 3);
-
-        double horizontalCenterY = horizontalStrip.Top + (horizontalStrip.Height / 2.0);
-        for (int c = 0; c < selectionManager.ColumnCount; c++)
-        {
-            // After the third keystroke only the chosen sub-column remains relevant.
-            if (selectedColumn >= 0 && c != selectedColumn)
-            {
-                continue;
-            }
-
-            if (!GridCalculator.IsColumnValid(
-                    c,
-                    selectionManager.XBoundaries,
-                    selectionManager.CurrentBoundingBox,
-                    selectionManager.CurrentSelection))
-            {
-                continue;
-            }
-
-            var columnRegion = PixelRect.FromEdges(
-                selectionManager.XBoundaries[c],
-                selectedCell.Top,
-                selectionManager.XBoundaries[c + 1],
-                selectedCell.Bottom);
-            if (!IsOwnerMonitor(columnRegion))
-            {
-                continue;
-            }
-
-            double centerX = (layout.ColumnCenters[c] - _monitorRect.Left) / dpiX;
-            DrawRulerChar(
-                dc,
-                selectionManager.ColumnKeys[c],
-                new Point(centerX, horizontalCenterY),
-                _columnKeyBrush,
-                columnFontSize,
-                _pixelsPerDip,
-                horizontalStrip,
-                clampX: true);
-        }
-
-        double verticalCenterX = verticalStrip.Left + (verticalStrip.Width / 2.0);
-        for (int r = 0; r < selectionManager.RowCount; r++)
-        {
-            if (!IsRowValidForStage2(selectionManager, r, selectedColumn))
-            {
-                continue;
-            }
-
-            var rowRegion = PixelRect.FromEdges(
-                selectedCell.Left,
-                selectionManager.YBoundaries[r],
-                selectedCell.Right,
-                selectionManager.YBoundaries[r + 1]);
-            if (!IsOwnerMonitor(rowRegion))
-            {
-                continue;
-            }
-
-            double centerY = (layout.RowCenters[r] - _monitorRect.Top) / dpiY;
-            DrawRulerChar(
-                dc,
-                selectionManager.RowKeys[r],
-                new Point(verticalCenterX, centerY),
-                _rowKeyBrush,
-                rowFontSize,
-                _pixelsPerDip,
-                verticalStrip,
-                clampX: false);
-        }
-    }
-
-    private static bool IsRowValidForStage2(
-        SelectionManager selectionManager,
-        int rowIndex,
-        int selectedColumn)
-    {
-        if (selectedColumn >= 0)
-        {
-            return GridCalculator.IsCellValid(
-                selectedColumn,
-                rowIndex,
-                selectionManager.XBoundaries,
-                selectionManager.YBoundaries,
-                selectionManager.CurrentSelection);
-        }
-
-        for (int c = 0; c < selectionManager.ColumnCount; c++)
-        {
-            if (GridCalculator.IsCellValid(
-                    c,
-                    rowIndex,
-                    selectionManager.XBoundaries,
-                    selectionManager.YBoundaries,
-                    selectionManager.CurrentSelection))
-            {
-                return true;
-            }
-        }
-
-        return false;
     }
 
     /// <summary>
@@ -716,44 +595,6 @@ public class OverlayRenderElement : FrameworkElement
 
         double lightTop = (y - _monitorRect.Top) / dpiY;
         dc.DrawRectangle(_gridLightBrush, null, new Rect(left, lightTop, width, height));
-    }
-
-    private void DrawRulerChar(
-        DrawingContext dc,
-        char key,
-        Point center,
-        Brush brush,
-        double fontSize,
-        double pixelsPerDip,
-        Rect strip,
-        bool clampX)
-    {
-        var label = GetGlyph(key, brush, fontSize, pixelsPerDip);
-        var shadow = GetGlyph(key, _labelShadowBrush, fontSize, pixelsPerDip);
-
-        if (clampX)
-        {
-            double minCenter = strip.Left + (label.Width / 2.0);
-            double maxCenter = strip.Right - (label.Width / 2.0);
-            center.X = minCenter <= maxCenter
-                ? Math.Clamp(center.X, minCenter, maxCenter)
-                : strip.Left + (strip.Width / 2.0);
-        }
-        else
-        {
-            double minCenter = strip.Top + (label.Height / 2.0);
-            double maxCenter = strip.Bottom - (label.Height / 2.0);
-            center.Y = minCenter <= maxCenter
-                ? Math.Clamp(center.Y, minCenter, maxCenter)
-                : strip.Top + (strip.Height / 2.0);
-        }
-
-        double x = center.X - (label.Width / 2.0);
-        double y = center.Y - (label.Height / 2.0);
-        dc.PushClip(new RectangleGeometry(strip));
-        dc.DrawText(shadow, new Point(x + 0.75, y + 0.75));
-        dc.DrawText(label, new Point(x, y));
-        dc.Pop();
     }
 
     private FormattedText GetGlyph(char character, Brush brush, double fontSize, double pixelsPerDip)
