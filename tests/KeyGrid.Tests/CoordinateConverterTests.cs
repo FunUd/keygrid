@@ -85,6 +85,35 @@ public class CoordinateConverterTests
     }
 
     [Theory]
+    [InlineData(1, 1080, 0, 65535)]
+    [InlineData(1920, 1, 65535, 0)]
+    [InlineData(1, 1, 0, 0)]
+    public void ToNormalizedVirtualDesktop_OnePixelAxisMapsToZero(
+        int width,
+        int height,
+        int expectedX,
+        int expectedY)
+    {
+        var screen = new PixelRect(-100, 50, width, height);
+
+        var normalized = CoordinateConverter.ToNormalizedVirtualDesktop(
+            new PixelPoint(screen.Right - 1, screen.Bottom - 1),
+            screen);
+
+        Assert.Equal(expectedX, normalized.NormalizedX);
+        Assert.Equal(expectedY, normalized.NormalizedY);
+    }
+
+    [Fact]
+    public void ToNormalizedVirtualDesktop_EmptyScreen_Throws()
+    {
+        Assert.Throws<ArgumentException>(() =>
+            CoordinateConverter.ToNormalizedVirtualDesktop(
+                new PixelPoint(0, 0),
+                PixelRect.Empty));
+    }
+
+    [Theory]
     [InlineData(1920, 1080)]
     [InlineData(2560, 1440)]
     [InlineData(3840, 2160)]

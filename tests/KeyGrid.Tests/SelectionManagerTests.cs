@@ -57,6 +57,18 @@ public class SelectionManagerTests
     }
 
     [Fact]
+    public void Standby_IgnoresSelectionInput()
+    {
+        var mgr = new SelectionManager();
+
+        Assert.False(mgr.ProcessKey('Q'));
+        Assert.False(mgr.ProcessEnter());
+        Assert.False(mgr.ProcessBackspace());
+        Assert.False(mgr.MoveStage2Cursor(1, 0));
+        Assert.Equal(SelectionState.Standby, mgr.State);
+    }
+
+    [Fact]
     public void Stage1UsesKeyBudgetToImproveFixedStage2Precision()
     {
         var mgr = new SelectionManager();
@@ -103,6 +115,51 @@ public class SelectionManagerTests
         Assert.False(mgr.ProcessKey('Q'));
         Assert.False(mgr.MoveStage2Cursor(1, 0));
         Assert.Equal(SelectionState.ExecutingClick, mgr.State);
+    }
+
+    [Fact]
+    public void Stage2Cursor_RejectsInvalidDirectionsAndStopsAtGridEdges()
+    {
+        var mgr = new SelectionManager();
+        mgr.StartSelection(_single1080pMonitor);
+        Assert.True(mgr.ProcessKey('Q'));
+        Assert.True(mgr.ProcessKey('U'));
+
+        int initialColumn = mgr.SelectedColumnIndex;
+        int initialRow = mgr.SelectedRowIndex;
+        Assert.False(mgr.MoveStage2Cursor(0, 0));
+        Assert.False(mgr.MoveStage2Cursor(1, 1));
+        Assert.False(mgr.MoveStage2Cursor(-1, -1));
+        Assert.Equal(initialColumn, mgr.SelectedColumnIndex);
+        Assert.Equal(initialRow, mgr.SelectedRowIndex);
+
+        while (mgr.MoveStage2Cursor(-1, 0)) { }
+        Assert.Equal(0, mgr.SelectedColumnIndex);
+        Assert.False(mgr.MoveStage2Cursor(-1, 0));
+
+        while (mgr.MoveStage2Cursor(0, -1)) { }
+        Assert.Equal(0, mgr.SelectedRowIndex);
+        Assert.False(mgr.MoveStage2Cursor(0, -1));
+    }
+
+    [Fact]
+    public void CompleteClick_ReturnsToStandbyAndClearsSelection()
+    {
+        var mgr = new SelectionManager();
+        mgr.StartSelection(_single1080pMonitor);
+        Assert.True(mgr.ProcessKey('Q'));
+        Assert.True(mgr.ProcessKey('U'));
+        Assert.True(mgr.ProcessEnter());
+
+        mgr.CompleteClick();
+
+        Assert.Equal(SelectionState.Standby, mgr.State);
+        Assert.Empty(mgr.History);
+        Assert.Empty(mgr.XBoundaries);
+        Assert.Empty(mgr.YBoundaries);
+        Assert.Null(mgr.TargetCoordinate);
+        Assert.Empty(mgr.ColumnKeys);
+        Assert.Empty(mgr.RowKeys);
     }
 
     [Fact]

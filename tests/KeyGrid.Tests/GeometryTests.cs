@@ -54,6 +54,18 @@ public class GeometryTests
     }
 
     [Fact]
+    public void PixelRect_EdgeTouchingAndEmptyRectangles_DoNotIntersect()
+    {
+        var rect = new PixelRect(0, 0, 10, 10);
+        var edgeTouching = new PixelRect(10, 0, 5, 5);
+        var empty = new PixelRect(0, 0, 0, 10);
+
+        Assert.False(rect.IntersectsWith(edgeTouching));
+        Assert.True(rect.Intersect(edgeTouching).IsEmpty);
+        Assert.False(rect.IntersectsWith(empty));
+    }
+
+    [Fact]
     public void PixelRect_BoundingBox_ComputesMinimalEnclosingRectangle()
     {
         var rects = new[]
@@ -72,6 +84,15 @@ public class GeometryTests
     }
 
     [Fact]
+    public void PixelRect_BoundingBox_EmptyInputReturnsEmpty()
+    {
+        Assert.Equal(PixelRect.Empty, PixelRect.BoundingBox(Array.Empty<PixelRect>()));
+        Assert.Equal(
+            PixelRect.Empty,
+            PixelRect.BoundingBox(new[] { PixelRect.Empty, new PixelRect(0, 0, -1, 5) }));
+    }
+
+    [Fact]
     public void PixelRect_Clamp_ClampsToValidPointsWithinHalfOpenInterval()
     {
         var rect = new PixelRect(10, 20, 100, 50); // X: [10, 109], Y: [20, 69]
@@ -87,5 +108,12 @@ public class GeometryTests
 
         var pOutsideBottom = rect.Clamp(new PixelPoint(50, 100));
         Assert.Equal(new PixelPoint(50, 69), pOutsideBottom);
+    }
+
+    [Fact]
+    public void PixelRect_Clamp_EmptyRectangleThrows()
+    {
+        Assert.Throws<InvalidOperationException>(
+            () => PixelRect.Empty.Clamp(new PixelPoint(0, 0)));
     }
 }

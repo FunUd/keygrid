@@ -31,7 +31,7 @@ Clone the repository and build using the .NET CLI:
 # Restore dependencies and build the entire solution
 dotnet build
 
-# Run the comprehensive test suite (100+ unit and integration tests)
+# Run the unit and integration test suite
 dotnet test
 ```
 

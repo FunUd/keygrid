@@ -12,9 +12,11 @@ public class ServicesTests
         public PixelPoint? LastTarget { get; private set; }
         public PixelRect? LastVirtualScreen { get; private set; }
         public bool ReturnResult { get; set; } = true;
+        public List<string> Calls { get; } = new();
 
         public bool SendLeftClick(PixelPoint target, PixelRect virtualScreen)
         {
+            Calls.Add("send");
             LastTarget = target;
             LastVirtualScreen = virtualScreen;
             return ReturnResult;
@@ -44,6 +46,23 @@ public class ServicesTests
     }
 
     [Fact]
+    public void ClickExecutor_WaitsForRenderAfterHidingAndBeforeSending()
+    {
+        var fakeSender = new FakeClickSender();
+        var executor = new ClickExecutor(fakeSender);
+        var calls = fakeSender.Calls;
+
+        bool result = executor.ExecuteClick(
+            new PixelPoint(500, 400),
+            new PixelRect(0, 0, 1920, 1080),
+            hideOverlaysAction: () => calls.Add("hide"),
+            waitAfterHideAction: () => calls.Add("wait"));
+
+        Assert.True(result);
+        Assert.Equal(new[] { "hide", "wait", "send" }, calls);
+    }
+
+    [Fact]
     public void ClickExecutor_WhenSendInputFails_ReturnsFalse()
     {
         var fakeSender = new FakeClickSender { ReturnResult = false };
@@ -56,5 +75,20 @@ public class ServicesTests
             waitAfterHideAction: null);
 
         Assert.False(result);
+    }
+
+    [Fact]
+    public void ClickExecutor_WhenRenderWaitThrows_DoesNotSendClick()
+    {
+        var fakeSender = new FakeClickSender();
+        var executor = new ClickExecutor(fakeSender);
+
+        Assert.Throws<InvalidOperationException>(() => executor.ExecuteClick(
+            new PixelPoint(100, 100),
+            new PixelRect(0, 0, 1920, 1080),
+            hideOverlaysAction: () => { },
+            waitAfterHideAction: () => throw new InvalidOperationException("Render wait failed.")));
+
+        Assert.DoesNotContain("send", fakeSender.Calls);
     }
 }

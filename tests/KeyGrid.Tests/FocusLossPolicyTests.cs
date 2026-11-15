@@ -84,4 +84,23 @@ public class FocusLossPolicyTests
         Assert.Equal(FocusLossAction.ReactivateOverlay,
             policy.Decide(ForegroundProcessId, CurrentProcessId, foregroundIsVisible: false));
     }
+
+    [Theory]
+    [InlineData(true, true, FocusLossAction.ReactivateOverlay)]
+    [InlineData(true, false, FocusLossAction.ReactivateOverlay)]
+    [InlineData(false, true, FocusLossAction.CancelSelection)]
+    [InlineData(false, false, FocusLossAction.ReactivateOverlay)]
+    public void FocusVisibilityAndProcessOwnershipMatrix_DecidesExpectedAction(
+        bool isOwnProcess,
+        bool isVisible,
+        FocusLossAction expectedAction)
+    {
+        var policy = new FocusLossPolicy();
+        uint foregroundProcessId = isOwnProcess ? CurrentProcessId : ForegroundProcessId;
+
+        Assert.Equal(expectedAction, policy.Decide(
+            foregroundProcessId,
+            CurrentProcessId,
+            isVisible));
+    }
 }

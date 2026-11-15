@@ -46,6 +46,30 @@ public class GridCalculatorTests
     }
 
     [Theory]
+    [InlineData(1920, 1080)]
+    [InlineData(1080, 1920)]
+    [InlineData(7680, 2160)]
+    [InlineData(1, 1)]
+    [InlineData(int.MaxValue, 16384)]
+    public void CalculateFirstStageDivisions_MatchesBestCandidateFromKeyBudget(
+        int width,
+        int height)
+    {
+        const int stage2Columns = 5;
+        const int stage2Rows = 5;
+
+        var actual = GridCalculator.CalculateFirstStageDivisions(
+            width,
+            height,
+            stage2Columns,
+            stage2Rows);
+        var expected = FindBestCandidate(width, height, stage2Columns, stage2Rows);
+
+        Assert.Equal(expected, actual);
+        Assert.True(actual.Columns + actual.Rows <= GridCalculator.MaxDivisions);
+    }
+
+    [Theory]
     [InlineData(10, 3, new[] { 0, 4, 7, 10 })] // Example from spec.md: 4px, 3px, 3px
     [InlineData(100, 4, new[] { 0, 25, 50, 75, 100 })]
     [InlineData(1920, 10, null)]
@@ -71,6 +95,59 @@ public class GridCalculatorTests
             Assert.True(cellWidth == floorSize || cellWidth == ceilSize,
                 $"Cell {k} has size {cellWidth}, expected {floorSize} or {ceilSize}");
         }
+    }
+
+    [Fact]
+    public void CalculateBoundaries_AllSmallLengthsAndSupportedCounts_PartitionExactly()
+    {
+        const int origin = -137;
+
+        for (int length = 1; length <= 512; length++)
+        {
+            for (int count = 1; count <= GridCalculator.MaxDivisions; count++)
+            {
+                var boundaries = GridCalculator.CalculateBoundaries(origin, length, count);
+
+                Assert.Equal(count + 1, boundaries.Length);
+                Assert.Equal(origin, boundaries[0]);
+                Assert.Equal(origin + length, boundaries[^1]);
+
+                long totalWidth = 0;
+                int floorSize = length / count;
+                int ceilSize = (length + count - 1) / count;
+                for (int i = 0; i < count; i++)
+                {
+                    int cellWidth = boundaries[i + 1] - boundaries[i];
+                    Assert.InRange(cellWidth, floorSize, ceilSize);
+                    totalWidth += cellWidth;
+                }
+
+                Assert.Equal(length, totalWidth);
+            }
+        }
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-1)]
+    public void CalculateBoundaries_NonPositiveCount_Throws(int count)
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(
+            () => GridCalculator.CalculateBoundaries(0, 100, count));
+    }
+
+    [Theory]
+    [InlineData(-1, 0)]
+    [InlineData(2, 0)]
+    [InlineData(0, -1)]
+    [InlineData(0, 2)]
+    public void GetCell_InvalidIndices_Throws(int columnIndex, int rowIndex)
+    {
+        var xBoundaries = new[] { 0, 10, 20 };
+        var yBoundaries = new[] { 0, 10, 20 };
+
+        Assert.Throws<ArgumentOutOfRangeException>(
+            () => GridCalculator.GetCell(xBoundaries, yBoundaries, columnIndex, rowIndex));
     }
 
     [Fact]
@@ -144,22 +221,72 @@ public class GridCalculatorTests
     }
 
     [Fact]
-    public void ResolveTargetCoordinate_TieBreaking_PrioritizesSmallerYThenSmallerX()
+    public void ResolveTargetCoordinate_EqualDistance_PrioritizesSmallerY()
     {
-        // Two disjoint rectangles equally distant from center:
-        // Top rect: [100, 100, 50, 50] (Right: 150, Bottom: 150)
-        // Bottom rect: [100, 250, 50, 50] (Top: 250)
-        // RefPoint Y = 200
-        // Top rect closest point: (124, 149) -> dy = 51
-        // Bottom rect closest point: (124, 250) -> dy = 50 -> bottom rect is closer
-        var r1 = new PixelRect(100, 100, 50, 50);
-        var r2 = new PixelRect(100, 250, 50, 50);
+        var upper = new PixelRect(9, 5, 1, 1);
+        var lower = new PixelRect(9, 13, 1, 1);
 
-        var bbox = PixelRect.BoundingBox(new[] { r1, r2 });
-        var target = GridCalculator.ResolveTargetCoordinate(bbox, new[] { r1, r2 });
+        var target = GridCalculator.ResolveTargetCoordinate(
+            new PixelRect(0, 0, 20, 20),
+            new[] { lower, upper });
 
-        // Ensure target is on one of the rectangles
-        Assert.True(r1.Contains(target) || r2.Contains(target));
+        Assert.Equal(new PixelPoint(9, 5), target);
     }
 
+    [Fact]
+    public void ResolveTargetCoordinate_EqualDistanceAndY_PrioritizesSmallerX()
+    {
+        var left = new PixelRect(5, 9, 1, 1);
+        var right = new PixelRect(13, 9, 1, 1);
+
+        var target = GridCalculator.ResolveTargetCoordinate(
+            new PixelRect(0, 0, 20, 20),
+            new[] { right, left });
+
+        Assert.Equal(new PixelPoint(5, 9), target);
+    }
+
+    [Fact]
+    public void ResolveTargetCoordinate_EmptySelection_Throws()
+    {
+        Assert.Throws<InvalidOperationException>(
+            () => GridCalculator.ResolveTargetCoordinate(
+                new PixelRect(0, 0, 10, 10),
+                Array.Empty<PixelRect>()));
+    }
+
+    private static (int Columns, int Rows) FindBestCandidate(
+        int width,
+        int height,
+        int stage2Columns,
+        int stage2Rows)
+    {
+        var candidates =
+            from columns in Enumerable.Range(1, GridCalculator.MaxDivisions - 1)
+            from rows in Enumerable.Range(1, GridCalculator.MaxDivisions - columns)
+            let finalWidth = DivideCeiling(DivideCeiling(width, columns), stage2Columns)
+            let finalHeight = DivideCeiling(DivideCeiling(height, rows), stage2Rows)
+            select new
+            {
+                Columns = columns,
+                Rows = rows,
+                WorstFinalSize = Math.Max(finalWidth, finalHeight),
+                CellCount = (long)columns * rows,
+                KeyCount = columns + rows
+            };
+
+        var best = candidates
+            .OrderBy(candidate => candidate.WorstFinalSize)
+            .ThenByDescending(candidate => candidate.CellCount)
+            .ThenBy(candidate => candidate.KeyCount)
+            .ThenBy(candidate => candidate.Columns)
+            .First();
+
+        return (best.Columns, best.Rows);
+    }
+
+    private static int DivideCeiling(int dividend, int divisor)
+    {
+        return (int)(((long)dividend + divisor - 1) / divisor);
+    }
 }
