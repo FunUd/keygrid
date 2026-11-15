@@ -174,6 +174,7 @@ KeyGrid is designed around strict separation of concerns to maximize testability
   - [x] Graceful notification on hotkey conflict.
 - [x] Implement `TrayManager`:
   - [x] System tray icon with context menu (Status, Exit).
+  - [x] Native tray menu that dismisses on outside click or Esc.
   - [x] Notification balloon display on registration failure or UIPI send failure.
 - [x] Implement Focus & System Event Watchers:
   - [x] Reclaim focus on transient loss to hidden IME/TSF or own-process windows.

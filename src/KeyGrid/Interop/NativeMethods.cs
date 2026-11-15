@@ -12,10 +12,19 @@ internal static class NativeMethods
     public const int WM_DISPLAYCHANGE = 0x007E;
     public const int WM_DPICHANGED = 0x02E0;
     public const int WM_ACTIVATEAPP = 0x001C;
+    public const int WM_NULL = 0x0000;
     public const int WM_USER = 0x0400;
     public const int WM_TRAYICON = WM_USER + 1;
     public const int WM_RBUTTONUP = 0x0205;
     public const int WM_LBUTTONDBLCLK = 0x0203;
+
+    // Context menu flags
+    public const uint MF_STRING = 0x00000000;
+    public const uint MF_GRAYED = 0x00000001;
+    public const uint MF_SEPARATOR = 0x00000800;
+    public const uint TPM_RIGHTBUTTON = 0x0002;
+    public const uint TPM_NONOTIFY = 0x0080;
+    public const uint TPM_RETURNCMD = 0x0100;
 
     // Shell_NotifyIcon
     public const uint NIM_ADD = 0x00000000;
@@ -66,6 +75,21 @@ internal static class NativeMethods
         public int X;
         public int Y;
     }
+
+    [DllImport("user32.dll", SetLastError = true)]
+    public static extern nint CreatePopupMenu();
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    public static extern bool AppendMenu(nint hMenu, uint uFlags, nint uIDNewItem, string? lpNewItem);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    public static extern bool DestroyMenu(nint hMenu);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    public static extern int TrackPopupMenuEx(nint hMenu, uint uFlags, int x, int y, nint hWnd, nint lptpm);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    public static extern bool PostMessage(nint hWnd, int msg, nint wParam, nint lParam);
 
     [DllImport("user32.dll", SetLastError = true)]
     public static extern bool DestroyIcon(nint hIcon);
