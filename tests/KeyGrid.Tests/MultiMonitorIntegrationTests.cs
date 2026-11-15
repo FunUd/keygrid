@@ -36,12 +36,11 @@ public class MultiMonitorIntegrationTests
         var mgr = new SelectionManager();
         mgr.StartSelection(monitors, 20.0);
 
-        // Find a column that falls in the gap or select a full 2-stage path
-        // Perform 4 valid keystrokes
+        // Perform 4 valid keystrokes: column Q, row Y, then the same sub-cell.
         Assert.True(mgr.ProcessKey('Q'));
+        Assert.True(mgr.ProcessKey('Y'));
         Assert.True(mgr.ProcessKey('Q'));
-        Assert.True(mgr.ProcessKey('Q'));
-        Assert.True(mgr.ProcessKey('Q'));
+        Assert.True(mgr.ProcessKey('Y'));
 
         Assert.Equal(SelectionState.ExecutingClick, mgr.State);
         Assert.NotNull(mgr.TargetCoordinate);
@@ -67,11 +66,19 @@ public class MultiMonitorIntegrationTests
         Assert.Equal(-1920, mgr.VirtualScreenBoundingBox.Left);
         Assert.Equal(3840, mgr.VirtualScreenBoundingBox.Width);
 
-        // First key 'Q' selects column 0 (which is on the left monitor at [-1920...])
+        // First key 'Q' selects column 0 (which is on the left monitor at [-1920...]).
         Assert.True(mgr.ProcessKey('Q'));
+        Assert.False(mgr.ProcessKey('Q')); // Q is not a row key.
+        Assert.True(mgr.ProcessKey('Y'));
         Assert.True(mgr.ProcessKey('Q'));
+
+        // Backspace replays the same allocation before resolving the target.
+        Assert.True(mgr.ProcessBackspace());
+        Assert.Equal(2, mgr.History.Count);
+        Assert.Equal("QWERTASDFGZXCV", new string(mgr.ColumnKeys.ToArray()));
         Assert.True(mgr.ProcessKey('Q'));
-        Assert.True(mgr.ProcessKey('Q'));
+        Assert.False(mgr.ProcessKey('Q')); // Q is still not a row key.
+        Assert.True(mgr.ProcessKey('Y'));
 
         Assert.NotNull(mgr.TargetCoordinate);
         var target = mgr.TargetCoordinate.Value;
@@ -95,7 +102,7 @@ public class MultiMonitorIntegrationTests
         // Columns covering the empty gap [100, 1900) should be invalid and rejected
         // Middle columns should be invalid
         int midCol = mgr.ColumnCount / 2;
-        char midKey = KeyGrid.Core.KeyLayout.GetKey(midCol);
+        char midKey = mgr.ColumnKeys[midCol];
 
         bool processed = mgr.ProcessKey(midKey);
         Assert.False(processed, $"Key '{midKey}' for empty middle column should be rejected.");

@@ -6,7 +6,7 @@ KeyGrid is a lightweight, resident Windows 11 utility that enables mouse-free le
 
 ## Features
 
-- **Keyboard-Driven Precision**: Reach and left-click any on-screen location in 4 keystrokes (Column → Row → Column → Row).
+- **Keyboard-Driven Precision**: Reach and left-click any on-screen location in 4 keystrokes (Column → Row → Column → Row), using a left-hand column block and a right-hand row block so the two key roles never overlap.
 - **Multi-Monitor & Mixed-DPI Support**: Automatically maps across all active displays, handles non-standard topologies (L-shaped, vertical offsets, gaps), and operates with Per-Monitor DPI Awareness V2. The 20 DIP grid target is derived from the primary monitor's effective DPI, so secondary monitors in a mixed-DPI setup can have slightly finer or coarser final cells.
 - **Background Resident Utility**: Runs silently in the system tray with near-zero CPU and memory overhead while idle.
 - **IME & Repeat Protection**: Automatically suppresses IME during grid selection and ignores accidental key repeats.
@@ -77,17 +77,22 @@ Press the global hotkey:
 
 $$\text{Ctrl} + \text{Shift} + \text{Space}$$
 
-Full-screen transparent overlays will appear across all connected monitors. In Stage 1, each grid section displays a 2-letter label (Column key + Row key, e.g., `QQ`, `WE`, `RI`) directly in the cell. In Stage 2, small key rulers appear just outside the zoomed cell, keeping the sub-cell centers clear.
+Full-screen transparent overlays will appear across all connected monitors. In Stage 1, each grid section displays a 2-letter label (Column key + Row key, e.g., `QY`, `WU`, `RI`) directly in the cell. In Stage 2, small key rulers appear just outside the zoomed cell, keeping the sub-cell centers clear.
 
 The grid targets a 20 DIP final cell on the primary monitor's effective DPI. Typical Stage 1 counts are 10×8 at 1920×1080 100%, 12×9 at 2560×1440 100%, and 14×11 at 3840×2160 100%. On mixed-DPI systems, the target is not uniform across monitors; a higher-DPI secondary display may show finer cells.
 
 ### 2. Selecting Coordinates (2 Stages)
 
-KeyGrid uses an ordered subset of 26 keys:
+KeyGrid splits the 26 letters into a left-hand column block and a right-hand row block. The roles never overlap, so a column key cannot be used as a row key or vice versa:
 
+```text
+Column block: Q W E R T A S D F G Z X C V B   (15 keys)
+Row block:    Y U I O P H J K L N M             (11 keys)
 ```
-Q  W  E  R  T  Y  U  I  O  P  A  S  D  F  G  H  J  K  L  Z  X  C  V  B  N  M
-```
+
+If a grid needs more than 15 columns or more than 11 rows, KeyGrid borrows the remaining keys deterministically while keeping the two sets disjoint. Typical grids do not need borrowing.
+
+The blocks assume the physical rows of a QWERTY or JIS keyboard. On layouts such as AZERTY, the displayed letters may not match the same physical key positions; character-based remapping remains a future enhancement.
 
 - **Stage 1**:
   1. Look directly at your target on the screen and read the 2-letter label in that cell (e.g., `RI`).
@@ -158,6 +163,7 @@ Logs are retained for 7 days and automatically cleaned up on application startup
 | The hotkey does nothing | Another application may already own `Ctrl + Shift + Space`. The tray tooltip and context menu show whether hotkey registration failed. Close the conflicting application and restart KeyGrid. |
 | The overlay closes immediately | Focus moved to a visible application, which deliberately cancels selection. Transient focus changes to IME/TSF helper windows are recovered automatically. |
 | Cells look finer or coarser on a secondary monitor | The 20 DIP target follows the primary monitor's effective DPI. This is expected in mixed-DPI setups; make the desired monitor primary to tune the grid for it. |
+| Column or row keys feel physically shifted | The key blocks assume QWERTY/JIS physical rows. On AZERTY and other remapped letter layouts, labels use characters rather than physical scan-code positions. |
 | The click is not delivered | The target may run at a higher integrity level (for example, elevated). Windows UIPI blocks synthetic input to such windows; run both applications at the same integrity level. |
 | A second launch exits immediately | KeyGrid is already running. Only one instance is allowed. |
 | More diagnostics are needed | See `%LOCALAPPDATA%\KeyGrid\logs\keygrid_YYYYMMDD.log`. Logs are retained for 7 days. |

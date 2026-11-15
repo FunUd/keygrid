@@ -11,6 +11,7 @@ public class SelectionManager
 {
     private readonly List<PixelRect> _initialMonitors = new();
     private readonly List<char> _history = new();
+    private KeyAllocation? _keyAllocation;
 
     public SelectionState State { get; private set; } = SelectionState.Standby;
 
@@ -25,6 +26,16 @@ public class SelectionManager
     public int ColumnCount { get; private set; } = 1;
 
     public int RowCount { get; private set; } = 1;
+
+    /// <summary>
+    /// Disjoint column keys for the current session, in column-index order.
+    /// </summary>
+    public IReadOnlyList<char> ColumnKeys => _keyAllocation?.ColumnKeys ?? Array.Empty<char>();
+
+    /// <summary>
+    /// Disjoint row keys for the current session, in row-index order.
+    /// </summary>
+    public IReadOnlyList<char> RowKeys => _keyAllocation?.RowKeys ?? Array.Empty<char>();
 
     /// <summary>
     /// Physical-pixel target for the final cell, derived from the primary monitor DPI.
@@ -92,6 +103,7 @@ public class SelectionManager
 
         ColumnCount = cols;
         RowCount = rows;
+        _keyAllocation = KeyLayout.Allocate(ColumnCount, RowCount);
         CalculateBoundaries();
     }
 
@@ -111,16 +123,12 @@ public class SelectionManager
     }
 
     /// <summary>
-    /// Processes a character key (Q..M) according to the current selection state.
+    /// Processes a character key according to the current stage's column or row set.
+    /// A key from the other set is rejected.
     /// </summary>
     public bool ProcessKey(char key)
     {
-        if (State != SelectionState.Selecting)
-        {
-            return false;
-        }
-
-        if (!KeyLayout.TryGetIndex(key, out int index))
+        if (State != SelectionState.Selecting || _keyAllocation is not { } allocation)
         {
             return false;
         }
@@ -128,7 +136,7 @@ public class SelectionManager
         // Even count (0 or 2): Column key
         if (_history.Count % 2 == 0)
         {
-            if (index < 0 || index >= ColumnCount)
+            if (!allocation.TryGetColumnIndex(key, out int index))
             {
                 return false;
             }
@@ -145,7 +153,7 @@ public class SelectionManager
         }
         else // Odd count (1 or 3): Row key
         {
-            if (index < 0 || index >= RowCount)
+            if (!allocation.TryGetRowIndex(key, out int index))
             {
                 return false;
             }
@@ -247,9 +255,15 @@ public class SelectionManager
         CurrentSelection = Array.Empty<PixelRect>();
         CurrentBoundingBox = PixelRect.Empty;
         VirtualScreenBoundingBox = PixelRect.Empty;
+        ColumnCount = 1;
+        RowCount = 1;
+        TargetPixels = 0;
+        XBoundaries = Array.Empty<int>();
+        YBoundaries = Array.Empty<int>();
         SelectedColumnIndex = -1;
         SelectedRowIndex = -1;
         TargetCoordinate = null;
+        _keyAllocation = null;
     }
 
     /// <summary>

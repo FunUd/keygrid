@@ -1,7 +1,6 @@
 using System.Globalization;
 using System.Windows;
 using System.Windows.Media;
-using KeyGrid.Core;
 using KeyGrid.Core.Calculation;
 using KeyGrid.Core.Geometry;
 using KeyGrid.Core.Selection;
@@ -207,7 +206,7 @@ public class OverlayRenderElement : FrameworkElement
                 continue;
             }
 
-            char colChar = KeyLayout.GetKey(c);
+            char colChar = _selectionManager.ColumnKeys[c];
 
             for (int r = 0; r < _selectionManager.RowCount; r++)
             {
@@ -216,7 +215,7 @@ public class OverlayRenderElement : FrameworkElement
                     continue;
                 }
 
-                char rowChar = KeyLayout.GetKey(r);
+                char rowChar = _selectionManager.RowKeys[r];
 
                 var cell = GridCalculator.GetCell(_selectionManager.XBoundaries, _selectionManager.YBoundaries, c, r);
                 var visibleCell = cell.Intersect(_monitorRect);
@@ -340,7 +339,7 @@ public class OverlayRenderElement : FrameworkElement
                 continue;
             }
 
-            DrawRulerChar(dc, KeyLayout.GetKey(c), new Point(centerX, horizontalCenterY));
+            DrawRulerChar(dc, selectionManager.ColumnKeys[c], new Point(centerX, horizontalCenterY));
         }
 
         double verticalCenterX = verticalStrip.Left + verticalStrip.Width / 2.0;
@@ -357,7 +356,7 @@ public class OverlayRenderElement : FrameworkElement
                 continue;
             }
 
-            DrawRulerChar(dc, KeyLayout.GetKey(r), new Point(verticalCenterX, centerY));
+            DrawRulerChar(dc, selectionManager.RowKeys[r], new Point(verticalCenterX, centerY));
         }
     }
 

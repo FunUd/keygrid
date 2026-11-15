@@ -1,7 +1,8 @@
 # KeyGrid Label and Grid Optimization Plan
 
-Status: Phase 1 (grid semantics, 20 DIP target, DPI plumbing) code implemented;
-manual smoke validation is pending. Phases 2-4 remain pending.
+Status: Phases 1-2 (grid semantics, 20 DIP target, DPI plumbing, disjoint
+column/row key blocks) code implemented; manual smoke validation is pending.
+Phases 3-4 remain pending.
 
 Related documents:
 
@@ -433,6 +434,8 @@ dense.
 
 ### Phase 2: Key allocation split
 
+Status: code implemented; manual smoke validation is pending.
+
 Depends on Phase 1. Phase 1 now enforces `C + R <= 26`; the 2560x1440 grid uses
 12 + 9 = 21 keys and the 4K grid uses 14 + 11 = 25, so both can be split into
 disjoint column and row sets.
@@ -543,8 +546,8 @@ Update these in the same work unit as the corresponding code change:
 dotnet test --nologo
 ```
 
-A docs-only revision of this plan does not require code tests. The Phase 1
-baseline is 115 passing tests; record the new test count after each phase.
+A docs-only revision of this plan does not require code tests. The current
+baseline is 122 passing tests; record the new test count after each phase.
 
 ## 9. Acceptance criteria
 

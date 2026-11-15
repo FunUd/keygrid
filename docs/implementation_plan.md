@@ -15,7 +15,7 @@ KeyGrid is designed around strict separation of concerns to maximize testability
      - Cell boundary partitioning without gaps or overlaps.
      - Multidimensional region intersection & bounding box tracking.
      - Euclidean nearest-point selection when the center falls into non-monitor space.
-     - Key sequence mappings (QWERTY layout order, max 26 keys).
+     - Disjoint column/row key allocation from physical keyboard blocks (max 26 keys).
      - Keystroke history, undo/recalculation, and state transitions.
      - Focus-loss recovery policy for hidden IME/TSF helper windows.
      - Stage-2 key-ruler placement with screen-edge flipping.
@@ -58,11 +58,13 @@ KeyGrid is designed around strict separation of concerns to maximize testability
      - Bounding box center: `left + (W - 1) / 2` (integer division).
      - When center falls in monitor gap: nearest coordinate in valid monitor rects; tie-breaker test (smaller Y first, then smaller X).
 2. **`KeyLayoutTests`**:
-   - Mapping 26 keys `Q W E R T Y U I O P A S D F G H J K L Z X C V B N M` to indices $0 \dots 25$.
-   - Out-of-bounds keys and non-alphabetic keys ignored.
+   - Left column block (`Q W E R T A S D F G Z X C V B`) and right row block (`Y U I O P H J K L N M`).
+   - Deterministic allocation, including C > 15 and R > 11 borrowing, for all valid count pairs.
+   - Disjoint sets, case-insensitive membership, cross-set rejection, and invalid count validation.
 3. **`SelectionManagerTests`**:
    - Complete state machine coverage (Standby, Selecting, ExecutingClick).
    - Keystroke history progression (0 -> 1 -> 2 -> 3 -> 4 keys), with the 4th key starting the click immediately.
+   - Column/row key-set separation at both stages and Backspace replay with the same allocation.
    - Enter at step 2 (early click at the stage 1 reference point).
    - Enter ignored at steps 0, 1, 3, and after the 4th key.
    - Backspace: pops key and replays selection history to re-derive active bounding box.
@@ -118,8 +120,9 @@ KeyGrid is designed around strict separation of concerns to maximize testability
 
 ### Phase 2: Core Domain Logic & Single-Monitor Implementation
 - [x] Implement `KeyLayout`:
-  - [x] Key index resolver (`Q` -> 0 ... `M` -> 25).
-  - [x] Unit tests for `KeyLayout`.
+  - [x] Disjoint left column block and right row block allocation, including overflow borrowing.
+  - [x] Membership resolvers for column and row keys.
+  - [x] Unit tests for `KeyLayout` and all valid count pairs.
 - [x] Implement `GridCalculator`:
   - [x] Division count calculation ($C$ and $R$ bounded by 26).
   - [x] Boundary calculation ($k \times L + N - 1) / N$).
@@ -139,7 +142,7 @@ KeyGrid is designed around strict separation of concerns to maximize testability
   - [x] Stage 1 in-cell 2-letter labels and Stage 2 local key rulers outside the selected cell.
   - [x] Column highlight (after 1st stroke of a stage) and cell highlight (after 2nd stroke).
   - [x] Immediate click dispatch when stage 2 completes (no confirmation screen).
-  - [x] Keyboard input binding (Q-M keys, Backspace, Enter, Esc).
+  - [x] Keyboard input binding for the allocated column/row sets (Backspace, Enter, Esc).
 - [x] Implement `Stage2LabelLayout`:
   - [x] Place horizontal and vertical rulers outside the selected cell.
   - [x] Flip at monitor edges and fall back to the inside edge only when necessary.
