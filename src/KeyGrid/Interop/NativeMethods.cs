@@ -220,6 +220,9 @@ internal static class NativeMethods
     [DllImport("user32.dll")]
     public static extern bool IsWindowVisible(nint hWnd);
 
+    [DllImport("user32.dll")]
+    public static extern bool IsWindow(nint hWnd);
+
     [DllImport("kernel32.dll")]
     public static extern uint GetCurrentThreadId();
 
@@ -267,6 +270,37 @@ internal static class NativeMethods
         }
 
         return GetForegroundWindow() == hWnd && GetFocus() == hWnd;
+    }
+
+    /// <summary>
+    /// Restores a previously foreground window when it is still available.
+    /// </summary>
+    public static bool TryRestoreForegroundWindow(nint hWnd)
+    {
+        if (hWnd == nint.Zero || !IsWindow(hWnd) || !IsWindowVisible(hWnd))
+        {
+            return false;
+        }
+
+        uint targetThread = GetWindowThreadProcessId(hWnd, out _);
+        uint currentThread = GetCurrentThreadId();
+        bool attached = targetThread != 0
+            && targetThread != currentThread
+            && AttachThreadInput(currentThread, targetThread, true);
+
+        try
+        {
+            SetForegroundWindow(hWnd);
+        }
+        finally
+        {
+            if (attached)
+            {
+                AttachThreadInput(currentThread, targetThread, false);
+            }
+        }
+
+        return GetForegroundWindow() == hWnd;
     }
 
     [StructLayout(LayoutKind.Sequential)]

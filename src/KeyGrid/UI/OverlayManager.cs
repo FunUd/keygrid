@@ -22,6 +22,7 @@ public class OverlayManager
     private readonly FocusLossPolicy _focusLossPolicy = new();
     private IReadOnlyList<PixelRect> _activeMonitorRects = Array.Empty<PixelRect>();
     private OverlayWindow? _primaryOverlay;
+    private nint _originatingForegroundWindow;
     private int _isClosing;
     private int? _focusLossPendingGeneration;
     private bool _isDisplayChangePending = false;
@@ -47,11 +48,16 @@ public class OverlayManager
 
     public void ShowOverlays()
     {
+        if (!IsActive)
+        {
+            _originatingForegroundWindow = NativeMethods.GetForegroundWindow();
+        }
+
         int generation = ++_selectionGeneration;
         _focusLossPendingGeneration = null;
         _isDisplayChangePending = false;
 
-        CloseOverlays();
+        CloseOverlaysWithoutRestore();
         _selectionManager.Cancel();
 
         var monitors = _monitorProvider.GetMonitors()
@@ -60,6 +66,7 @@ public class OverlayManager
         if (monitors.Count == 0)
         {
             ErrorOccurred?.Invoke("No active displays found.");
+            RestoreOriginatingForegroundWindow();
             return;
         }
 
@@ -77,6 +84,7 @@ public class OverlayManager
         if (!_selectionManager.StartSelection(monitorRects, targetPixels))
         {
             ErrorOccurred?.Invoke("Failed to initialize selection area.");
+            RestoreOriginatingForegroundWindow();
             return;
         }
 
@@ -298,11 +306,19 @@ public class OverlayManager
         var target = _selectionManager.TargetCoordinate.Value;
         var virtualScreen = _selectionManager.VirtualScreenBoundingBox;
 
-        bool success = _clickExecutor.ExecuteClick(
-            target,
-            virtualScreen,
-            hideOverlaysAction: CloseOverlays,
-            waitAfterHideAction: () => Dispatcher.CurrentDispatcher.Invoke(() => { }, DispatcherPriority.Render));
+        bool success;
+        try
+        {
+            success = _clickExecutor.ExecuteClick(
+                target,
+                virtualScreen,
+                hideOverlaysAction: CloseOverlaysWithoutRestore,
+                waitAfterHideAction: () => Dispatcher.CurrentDispatcher.Invoke(() => { }, DispatcherPriority.Render));
+        }
+        finally
+        {
+            RestoreOriginatingForegroundWindow();
+        }
 
         _selectionManager.CompleteClick();
 
@@ -313,6 +329,12 @@ public class OverlayManager
     }
 
     public void CloseOverlays()
+    {
+        CloseOverlaysWithoutRestore();
+        RestoreOriginatingForegroundWindow();
+    }
+
+    private void CloseOverlaysWithoutRestore()
     {
         // Overlay teardown is normally UI-thread bound, but WM_DISPLAYCHANGE and
         // focus transitions can enter here re-entrantly. Interlocked guarantees that
@@ -341,6 +363,27 @@ public class OverlayManager
         finally
         {
             Volatile.Write(ref _isClosing, 0);
+        }
+    }
+
+    private void RestoreOriginatingForegroundWindow()
+    {
+        nint target = _originatingForegroundWindow;
+        _originatingForegroundWindow = nint.Zero;
+
+        if (target == nint.Zero)
+        {
+            return;
+        }
+
+        if (NativeMethods.TryRestoreForegroundWindow(target))
+        {
+            FileLogger.LogInfo("Restored the foreground window that was active before selection.");
+        }
+        else
+        {
+            FileLogger.LogWarning(
+                "Could not restore the foreground window that was active before selection; it may no longer be available.");
         }
     }
 }
