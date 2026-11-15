@@ -18,10 +18,12 @@ public class OverlayManager
     private readonly IMonitorProvider _monitorProvider;
     private readonly SelectionManager _selectionManager;
     private readonly ClickExecutor _clickExecutor;
-    private readonly List<OverlayWindow> _overlays = new();
+    private readonly Func<PixelRect, bool, double, IOverlayWindowSurface> _overlayFactory;
+    private readonly IWindowFocusService _windowFocusService;
+    private readonly List<IOverlayWindowSurface> _overlays = new();
     private readonly FocusLossPolicy _focusLossPolicy = new();
     private IReadOnlyList<PixelRect> _activeMonitorRects = Array.Empty<PixelRect>();
-    private OverlayWindow? _primaryOverlay;
+    private IOverlayWindowSurface? _primaryOverlay;
     private nint _originatingForegroundWindow;
     private int _isClosing;
     private int? _focusLossPendingGeneration;
@@ -38,10 +40,27 @@ public class OverlayManager
         IMonitorProvider monitorProvider,
         SelectionManager selectionManager,
         ClickExecutor clickExecutor)
+        : this(
+            monitorProvider,
+            selectionManager,
+            clickExecutor,
+            (monitorRect, isPrimary, dpiScale) => new OverlayWindow(monitorRect, isPrimary, dpiScale),
+            new Win32WindowFocusService())
+    {
+    }
+
+    internal OverlayManager(
+        IMonitorProvider monitorProvider,
+        SelectionManager selectionManager,
+        ClickExecutor clickExecutor,
+        Func<PixelRect, bool, double, IOverlayWindowSurface> overlayFactory,
+        IWindowFocusService windowFocusService)
     {
         _monitorProvider = monitorProvider;
         _selectionManager = selectionManager;
         _clickExecutor = clickExecutor;
+        _overlayFactory = overlayFactory;
+        _windowFocusService = windowFocusService;
 
         _monitorProvider.Changed += OnMonitorConfigurationChanged;
     }
@@ -50,7 +69,7 @@ public class OverlayManager
     {
         if (!IsActive)
         {
-            _originatingForegroundWindow = NativeMethods.GetForegroundWindow();
+            _originatingForegroundWindow = _windowFocusService.GetForegroundWindow();
         }
 
         int generation = ++_selectionGeneration;
@@ -95,7 +114,7 @@ public class OverlayManager
         {
             var monitor = monitors[i];
             bool isPrimary = i == primaryIndex;
-            var overlay = new OverlayWindow(monitor.Bounds, isPrimary, monitor.DpiScale);
+            var overlay = _overlayFactory(monitor.Bounds, isPrimary, monitor.DpiScale);
             overlay.DisplayConfigurationChanged += () => OnOverlayDisplayConfigurationChanged(generation);
 
             if (isPrimary)
@@ -202,13 +221,9 @@ public class OverlayManager
                 return;
             }
 
-            nint foreground = NativeMethods.GetForegroundWindow();
-            uint foregroundPid = 0;
-            if (foreground != nint.Zero)
-            {
-                NativeMethods.GetWindowThreadProcessId(foreground, out foregroundPid);
-            }
-            bool foregroundIsVisible = foreground != nint.Zero && NativeMethods.IsWindowVisible(foreground);
+            nint foreground = _windowFocusService.GetForegroundWindow();
+            uint foregroundPid = _windowFocusService.GetWindowProcessId(foreground);
+            bool foregroundIsVisible = foreground != nint.Zero && _windowFocusService.IsWindowVisible(foreground);
 
             var action = _focusLossPolicy.Decide(
                 foregroundPid,
@@ -376,7 +391,7 @@ public class OverlayManager
             return;
         }
 
-        if (NativeMethods.TryRestoreForegroundWindow(target))
+        if (_windowFocusService.TryRestoreForegroundWindow(target))
         {
             FileLogger.LogInfo("Restored the foreground window that was active before selection.");
         }

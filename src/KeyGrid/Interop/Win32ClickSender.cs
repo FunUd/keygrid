@@ -10,6 +10,19 @@ namespace KeyGrid.Interop;
 /// </summary>
 public class Win32ClickSender : IClickSender
 {
+    private readonly Func<uint, NativeMethods.INPUT[], int, uint> _sendInput;
+
+    public Win32ClickSender()
+        : this(NativeMethods.SendInput)
+    {
+    }
+
+    internal Win32ClickSender(Func<uint, NativeMethods.INPUT[], int, uint> sendInput)
+    {
+        ArgumentNullException.ThrowIfNull(sendInput);
+        _sendInput = sendInput;
+    }
+
     public bool SendLeftClick(PixelPoint target, PixelRect virtualScreen)
     {
         var (normX, normY) = CoordinateConverter.ToNormalizedVirtualDesktop(target, virtualScreen);
@@ -41,7 +54,7 @@ public class Win32ClickSender : IClickSender
                                NativeMethods.MOUSEEVENTF_LEFTUP |
                                NativeMethods.MOUSEEVENTF_VIRTUALDESK;
 
-        uint sent = NativeMethods.SendInput((uint)inputs.Length, inputs, Marshal.SizeOf<NativeMethods.INPUT>());
+        uint sent = _sendInput((uint)inputs.Length, inputs, Marshal.SizeOf<NativeMethods.INPUT>());
         return sent == inputs.Length;
     }
 }

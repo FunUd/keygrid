@@ -8,7 +8,7 @@ using KeyGrid.Interop;
 
 namespace KeyGrid.UI;
 
-public partial class OverlayWindow : Window
+public partial class OverlayWindow : Window, IOverlayWindowSurface
 {
     public PixelRect MonitorRect { get; }
     public bool IsPrimary { get; }
@@ -26,6 +26,7 @@ public partial class OverlayWindow : Window
     private bool _isClosing = false;
     private bool _dpiNotificationsEnabled = false;
     private int _expectedDpi;
+    private readonly OverlayKeyHandler _keyHandler;
 
     public OverlayWindow(PixelRect monitorRect, bool isPrimary, double effectiveDpiScale)
     {
@@ -33,6 +34,12 @@ public partial class OverlayWindow : Window
         MonitorRect = monitorRect;
         IsPrimary = isPrimary;
         _expectedDpi = Math.Max(1, (int)Math.Round(effectiveDpiScale * 96.0));
+        _keyHandler = new OverlayKeyHandler(isPrimary);
+        _keyHandler.KeyPressed += key => KeyPressed?.Invoke(key);
+        _keyHandler.MoveRequested += (columnDelta, rowDelta) => MoveRequested?.Invoke(columnDelta, rowDelta);
+        _keyHandler.EnterPressed += () => EnterPressed?.Invoke();
+        _keyHandler.BackspacePressed += () => BackspacePressed?.Invoke();
+        _keyHandler.CancelRequested += () => CancelRequested?.Invoke();
 
         Focusable = isPrimary;
         IsHitTestVisible = true; // Absorbs mouse input to protect background apps
@@ -102,69 +109,7 @@ public partial class OverlayWindow : Window
     protected override void OnKeyDown(KeyEventArgs e)
     {
         base.OnKeyDown(e);
-
-        if (!IsPrimary)
-        {
-            return;
-        }
-
-        // Ignore key repeat according to spec.md Section 7.1
-        if (e.IsRepeat)
-        {
-            e.Handled = true;
-            return;
-        }
-
-        e.Handled = true;
-
-        if (e.Key == Key.Escape)
-        {
-            CancelRequested?.Invoke();
-            return;
-        }
-
-        if (e.Key == Key.Back)
-        {
-            BackspacePressed?.Invoke();
-            return;
-        }
-
-        if (e.Key == Key.Enter)
-        {
-            EnterPressed?.Invoke();
-            return;
-        }
-
-        if (e.Key == Key.Left)
-        {
-            MoveRequested?.Invoke(-1, 0);
-            return;
-        }
-
-        if (e.Key == Key.Right)
-        {
-            MoveRequested?.Invoke(1, 0);
-            return;
-        }
-
-        if (e.Key == Key.Up)
-        {
-            MoveRequested?.Invoke(0, -1);
-            return;
-        }
-
-        if (e.Key == Key.Down)
-        {
-            MoveRequested?.Invoke(0, 1);
-            return;
-        }
-
-        if (e.Key >= Key.A && e.Key <= Key.Z)
-        {
-            char keyChar = (char)('A' + (e.Key - Key.A));
-            KeyPressed?.Invoke(keyChar);
-            return;
-        }
+        e.Handled = _keyHandler.HandleKeyDown(e.Key, e.IsRepeat);
     }
 
     protected override void OnMouseDown(MouseButtonEventArgs e)
