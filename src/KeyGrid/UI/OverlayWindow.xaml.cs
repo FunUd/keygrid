@@ -58,11 +58,20 @@ public partial class OverlayWindow : Window, IOverlayWindowSurface
         }
 
         var hwnd = new WindowInteropHelper(this).Handle;
+        nint foregroundBefore = NativeMethods.GetForegroundWindow();
         bool focused = NativeMethods.EnsureForegroundAndFocus(hwnd);
+        bool wpfFocused = false;
         if (focused)
         {
-            Focus();
+            wpfFocused = Focus();
         }
+
+        nint foregroundAfter = NativeMethods.GetForegroundWindow();
+        nint focusedWindow = NativeMethods.GetFocus();
+        FileLogger.LogInfo(
+            $"Primary overlay focus request (hwnd=0x{hwnd.ToInt64():X}, visible={IsVisible}, active={IsActive}, " +
+            $"foregroundBefore=0x{foregroundBefore.ToInt64():X}, foregroundAfter=0x{foregroundAfter.ToInt64():X}, " +
+            $"focusedWindow=0x{focusedWindow.ToInt64():X}, nativeSuccess={focused}, wpfSuccess={wpfFocused}).");
 
         return focused;
     }
@@ -104,7 +113,6 @@ public partial class OverlayWindow : Window, IOverlayWindowSurface
             _originalHImc = NativeMethods.ImmAssociateContext(hwnd, nint.Zero);
             _imeDisabled = true;
 
-            TryReactivate();
         }
     }
 
@@ -168,7 +176,10 @@ public partial class OverlayWindow : Window, IOverlayWindowSurface
 
     private nint WndProc(nint hwnd, int msg, nint wParam, nint lParam, ref bool handled)
     {
+        const int WM_ACTIVATE = 0x0006;
+        const int WM_SETFOCUS = 0x0007;
         const int WM_KILLFOCUS = 0x0008;
+        const int WM_ACTIVATEAPP = 0x001C;
 
         if (!_isClosing)
         {
@@ -191,13 +202,32 @@ public partial class OverlayWindow : Window, IOverlayWindowSurface
             }
         }
 
-        if (IsPrimary && msg == WM_KILLFOCUS && !_isClosing)
+        if (IsPrimary && !_isClosing)
         {
-            // Focus loss may be transient (for example an IME/TSF helper window).
-            // OverlayManager decides whether to reclaim focus or cancel.
-            FileLogger.LogInfo(
-                $"Primary overlay received WM_KILLFOCUS (newFocus=0x{wParam.ToInt64():X}).");
-            FocusLost?.Invoke();
+            if (msg == WM_SETFOCUS)
+            {
+                FileLogger.LogInfo(
+                    $"Primary overlay received WM_SETFOCUS (previousFocus=0x{wParam.ToInt64():X}).");
+            }
+            else if (msg == WM_KILLFOCUS)
+            {
+                // Focus loss may be transient (for example an IME/TSF helper window).
+                // OverlayManager decides whether to reclaim focus or cancel.
+                FileLogger.LogInfo(
+                    $"Primary overlay received WM_KILLFOCUS (newFocus=0x{wParam.ToInt64():X}).");
+                FocusLost?.Invoke();
+            }
+            else if (msg == WM_ACTIVATE)
+            {
+                int activation = (int)(wParam.ToInt64() & 0xFFFF);
+                FileLogger.LogInfo(
+                    $"Primary overlay received WM_ACTIVATE (state={activation}, otherWindow=0x{lParam.ToInt64():X}).");
+            }
+            else if (msg == WM_ACTIVATEAPP)
+            {
+                FileLogger.LogInfo(
+                    $"Primary overlay received WM_ACTIVATEAPP (active={wParam != nint.Zero}, threadId={lParam}).");
+            }
         }
 
         return nint.Zero;
