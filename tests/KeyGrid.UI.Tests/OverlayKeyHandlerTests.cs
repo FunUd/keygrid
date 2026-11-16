@@ -25,7 +25,9 @@ public class OverlayKeyHandlerTests
             Assert.True(handler.HandleKeyDown(Key.Down, ModifierKeys.None, isRepeat: false));
             Assert.True(handler.HandleKeyDown(Key.Up, ModifierKeys.None, isRepeat: false));
             Assert.True(handler.HandleKeyDown(Key.Enter, ModifierKeys.None, isRepeat: false));
+            Assert.True(handler.HandleKeyUp(Key.Enter, ModifierKeys.None));
             Assert.True(handler.HandleKeyDown(Key.Enter, ModifierKeys.Shift, isRepeat: false));
+            Assert.True(handler.HandleKeyUp(Key.Enter, ModifierKeys.Shift));
             foreach (var modifiers in new[]
             {
                 ModifierKeys.Control,
@@ -35,6 +37,7 @@ public class OverlayKeyHandlerTests
             })
             {
                 Assert.True(handler.HandleKeyDown(Key.Enter, modifiers, isRepeat: false));
+                Assert.True(handler.HandleKeyUp(Key.Enter, modifiers));
             }
             Assert.True(handler.HandleKeyDown(Key.Back, ModifierKeys.None, isRepeat: false));
             Assert.True(handler.HandleKeyDown(Key.Escape, ModifierKeys.None, isRepeat: false));
@@ -57,9 +60,27 @@ public class OverlayKeyHandlerTests
 
             Assert.True(handler.HandleKeyDown(Key.Q, ModifierKeys.None, isRepeat: true));
             Assert.True(handler.HandleKeyDown(Key.Enter, ModifierKeys.Shift, isRepeat: true));
+            Assert.True(handler.HandleKeyUp(Key.Enter, ModifierKeys.Shift));
             Assert.True(handler.HandleKeyDown(Key.F1, ModifierKeys.None, isRepeat: false));
 
             Assert.Equal(0, dispatchCount);
+        });
+    }
+
+    [Fact]
+    public void PrimaryOverlay_UsesModifiersCapturedOnEnterKeyDown()
+    {
+        UiTestThread.Run(() =>
+        {
+            var handler = new OverlayKeyHandler(isPrimary: true);
+            ClickKind? confirmed = null;
+            handler.ConfirmRequested += clickKind => confirmed = clickKind;
+
+            Assert.True(handler.HandleKeyDown(Key.Enter, ModifierKeys.Shift, isRepeat: false));
+            // The user may release Shift before releasing Enter.
+            Assert.True(handler.HandleKeyUp(Key.Enter, ModifierKeys.None));
+
+            Assert.Equal(ClickKind.Right, confirmed);
         });
     }
 
@@ -74,6 +95,7 @@ public class OverlayKeyHandlerTests
 
             Assert.False(handler.HandleKeyDown(Key.Q, ModifierKeys.None, isRepeat: false));
             Assert.False(handler.HandleKeyDown(Key.Q, ModifierKeys.None, isRepeat: true));
+            Assert.False(handler.HandleKeyUp(Key.Enter, ModifierKeys.None));
 
             Assert.Equal(0, dispatchCount);
         });

@@ -44,15 +44,18 @@ public partial class OverlayWindow : Window, IOverlayWindowSurface
         _keyHandler.CancelRequested += () => CancelRequested?.Invoke();
 
         Focusable = isPrimary;
+        ShowActivated = isPrimary;
         IsHitTestVisible = true; // Absorbs mouse input to protect background apps
     }
+
+    public nint Handle => new WindowInteropHelper(this).Handle;
 
     /// <summary>
     /// Reclaims foreground and keyboard focus for the primary overlay.
     /// </summary>
     public bool TryReactivate()
     {
-        if (!IsPrimary || _isClosing)
+        if (!IsPrimary || _isClosing || !IsVisible)
         {
             return false;
         }
@@ -97,7 +100,14 @@ public partial class OverlayWindow : Window, IOverlayWindowSurface
         }
         NativeMethods.SetWindowLong(hwnd, NativeMethods.GWL_EXSTYLE, exStyle);
 
-        // Position window exactly in physical pixels
+        // Position window exactly in physical pixels. Secondary overlays must never
+        // participate in activation; only the primary overlay owns keyboard input.
+        uint showFlags = NativeMethods.SWP_SHOWWINDOW;
+        if (!IsPrimary)
+        {
+            showFlags |= NativeMethods.SWP_NOACTIVATE;
+        }
+
         NativeMethods.SetWindowPos(
             hwnd,
             NativeMethods.HWND_TOPMOST,
@@ -105,7 +115,7 @@ public partial class OverlayWindow : Window, IOverlayWindowSurface
             MonitorRect.Top,
             MonitorRect.Width,
             MonitorRect.Height,
-            NativeMethods.SWP_SHOWWINDOW);
+            showFlags);
 
         if (IsPrimary)
         {
@@ -130,6 +140,21 @@ public partial class OverlayWindow : Window, IOverlayWindowSurface
             FileLogger.LogInfo(
                 $"Primary overlay WPF keydown (category={GetKeyCategory(key)}, modifiers={modifiers}, " +
                 $"repeat={e.IsRepeat}, handled={handled}).");
+        }
+    }
+
+    protected override void OnKeyUp(KeyEventArgs e)
+    {
+        base.OnKeyUp(e);
+        ModifierKeys modifiers = Keyboard.Modifiers;
+        Key key = e.Key == Key.System ? e.SystemKey : e.Key;
+        bool handled = _keyHandler.HandleKeyUp(key, modifiers);
+        e.Handled = handled;
+
+        if (IsPrimary && handled)
+        {
+            FileLogger.LogInfo(
+                $"Primary overlay WPF keyup (category={GetKeyCategory(key)}, modifiers={modifiers}, handled={handled}).");
         }
     }
 
@@ -167,6 +192,25 @@ public partial class OverlayWindow : Window, IOverlayWindowSurface
     public new void Close()
     {
         _isClosing = true;
+        var hwnd = Handle;
+        if (hwnd != nint.Zero)
+        {
+            // Hide without requesting activation so teardown does not promote a
+            // different window before the click target is restored.
+            NativeMethods.SetWindowPos(
+                hwnd,
+                nint.Zero,
+                0,
+                0,
+                0,
+                0,
+                NativeMethods.SWP_HIDEWINDOW
+                | NativeMethods.SWP_NOACTIVATE
+                | NativeMethods.SWP_NOMOVE
+                | NativeMethods.SWP_NOSIZE
+                | NativeMethods.SWP_NOZORDER);
+        }
+
         base.Close();
     }
 
@@ -184,6 +228,7 @@ public partial class OverlayWindow : Window, IOverlayWindowSurface
         const int WM_ACTIVATEAPP = 0x001C;
         const int WM_KEYDOWN = 0x0100;
         const int WM_SYSKEYDOWN = 0x0104;
+        const int WA_INACTIVE = 0;
 
         if (!_isClosing)
         {
@@ -227,11 +272,23 @@ public partial class OverlayWindow : Window, IOverlayWindowSurface
                     $"Primary overlay received WM_KILLFOCUS (newFocus=0x{wParam.ToInt64():X}).");
                 FocusLost?.Invoke();
             }
+            else if (msg == WM_ACTIVATEAPP && wParam == nint.Zero)
+            {
+                FileLogger.LogInfo(
+                    $"Primary overlay received WM_ACTIVATEAPP (active=False, threadId={lParam}).");
+                FocusLost?.Invoke();
+            }
             else if (msg == WM_ACTIVATE)
             {
                 int activation = (int)(wParam.ToInt64() & 0xFFFF);
                 FileLogger.LogInfo(
                     $"Primary overlay received WM_ACTIVATE (state={activation}, otherWindow=0x{lParam.ToInt64():X}).");
+                if (activation == WA_INACTIVE)
+                {
+                    // WM_KILLFOCUS is not guaranteed when the whole application is
+                    // deactivated, so use the window-level activation transition too.
+                    FocusLost?.Invoke();
+                }
             }
             else if (msg == WM_ACTIVATEAPP)
             {

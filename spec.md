@@ -236,6 +236,8 @@ Backspace undoes one Stage 1 keystroke. In Stage 2 it removes the Stage 1 row ke
 
 フォーカスが自プロセスのウィンドウ、または非表示のヘルパーウィンドウ（IME/TSFのMSCTFIME UIなど）へ移った場合は、ユーザー操作による切り替えとみなさない。この場合は選択状態を破棄せず、主オーバーレイのフォーカスを再取得する。可視の他アプリケーションへフォーカスが移った場合は、フォーカスを奪い返さず、選択状態を破棄して終了する。
 
+フォーカス喪失の判定では、キーボードフォーカスだけでなく、ウィンドウおよびアプリケーションのアクティブ状態も監視する。遷移が完了した後に主オーバーレイが前景ウィンドウかつキーボードフォーカスを持つことを確認し、そうでなければ上記の再取得または終了を行う。グリッドを表示したままフォーカスだけが他のウィンドウへ移る状態を残さない。
+
 モニター構成・DPIが変わった場合は、選択状態を破棄する。
 
 ---
@@ -256,16 +258,17 @@ Backspace undoes one Stage 1 keystroke. In Stage 2 it removes the Stage 1 row ke
 ### 6.3 最終クリック
 
 1. `Enter` or `Shift+Enter` in Stage 2, or after Stage 1, resolves the target coordinate (Section 4.4) and click kind.
-2. Hide all overlays and wait for the hide to complete (wait for the Dispatcher render cycle).
-3. Convert the target coordinate to an absolute virtual-screen coordinate (Section 12.1).
-4. Use `SendInput` to move the pointer and send the selected mouse button down and up.
-5. If the `SendInput` return count does not match the requested count, report failure through a tray notification, including UIPI blocking.
-6. End selection mode and return to standby.
+2. Hide all overlays without activating another window and wait for the hide to complete (wait for the Dispatcher render cycle).
+3. Identify the root window under the target coordinate and try to activate it. If activation fails, continue only when the window under the coordinate is still the identified target.
+4. Verify immediately before dispatch that the window under the target coordinate still belongs to the identified target window. If it does not, do not send the click.
+5. Convert the target coordinate to an absolute virtual-screen coordinate (Section 12.1).
+6. Use `SendInput` to move the pointer and send the selected mouse button down and up.
+7. If the `SendInput` return count does not match the requested count, report failure through a tray notification, including UIPI blocking.
+8. End selection mode and return to standby.
 
 - Do not restore the pointer to its original position after the click.
-- Do not restore the pre-selection window after the click; this can undo target activation before it processes the click. If dispatch fails, leave the pre-selection window active.
-- Before sending the click, restore the window that was foreground before selection after hiding the overlays. This prevents a different window activated during teardown from receiving the click.
-- Verify that the pre-selection window is foreground before dispatching. If it cannot be restored, do not send the click and report the failure. If input dispatch fails, retry restoring the pre-selection window.
+- Do not restore the pre-selection window before dispatch. The pre-selection window can cover the selected coordinate after it is raised and receive the click instead of the window under the target.
+- Do not restore the pre-selection window after a successful click; this can undo target activation before it processes the click. If the click is not sent or dispatch fails, restore the pre-selection window.
 - Transient races with physical mouse input are acceptable in the initial version.
 
 ---

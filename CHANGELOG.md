@@ -6,6 +6,11 @@
 
 - Add keyboard-triggered right-click support with `Shift+Enter`.
 
+### Fixed
+
+- Prevent the grid from staying visible after focus moves to another window. Visible application activation now closes it immediately, and transient focus loss is recovered without leaving the grid behind.
+- Dispatch the click to the window under the selected coordinate instead of restoring the pre-selection window, which could receive the click instead.
+
 ## [0.0.1]
 
 ### Added

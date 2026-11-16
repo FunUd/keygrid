@@ -4,7 +4,6 @@ using KeyGrid.Core.Calculation;
 using KeyGrid.Core.Geometry;
 using KeyGrid.Core.Selection;
 using KeyGrid.Core.Services;
-using KeyGrid.Interop;
 using KeyGrid.Services;
 
 namespace KeyGrid.UI;
@@ -149,6 +148,8 @@ public class OverlayManager
             return;
         }
 
+        LockPrimaryForeground();
+
         // Defer enabling DPI notifications until the overlays have completed their
         // initial per-monitor placement. The expected-DPI check in the overlay also
         // filters normal startup WM_DPICHANGED messages.
@@ -165,6 +166,16 @@ public class OverlayManager
                 {
                     overlay.RefreshExpectedDpi();
                     overlay.EnableDpiChangeNotifications();
+                }
+
+                // The foreground can move away immediately after SetForegroundWindow
+                // without a reliable WM_KILLFOCUS. Re-check once the initial activation
+                // has settled so the grid cannot stay visible without keyboard focus.
+                if (!IsPrimaryForegroundAndFocused())
+                {
+                    FileLogger.LogWarning(
+                        "Primary overlay is not foreground and focused after startup; re-evaluating focus.");
+                    OnFocusLost(generation);
                 }
             }));
     }
@@ -225,16 +236,18 @@ public class OverlayManager
         if (generation != _selectionGeneration
             || IsClosing
             || !IsActive
+            || _selectionManager.State == SelectionState.ExecutingClick
             || _focusLossPendingGeneration == generation)
         {
             return;
         }
 
-        // Defer handling until the focus transition has completed. Reclaiming focus
-        // synchronously inside WM_KILLFOCUS can be overridden by the incoming window.
+        // Defer handling until the focus transition has completed. WM_KILLFOCUS and
+        // WM_ACTIVATE can arrive before the new foreground window is visible, so
+        // handling them at Input priority can observe a stale foreground value.
         _focusLossPendingGeneration = generation;
         Dispatcher.CurrentDispatcher.BeginInvoke(
-            DispatcherPriority.Input,
+            DispatcherPriority.ApplicationIdle,
             new Action(() => HandleFocusLoss(generation)));
     }
 
@@ -242,12 +255,46 @@ public class OverlayManager
     {
         try
         {
-            if (generation != _selectionGeneration || IsClosing || !IsActive)
+            if (generation != _selectionGeneration
+                || IsClosing
+                || !IsActive
+                || _selectionManager.State == SelectionState.ExecutingClick)
             {
                 return;
             }
 
+            var primaryOverlay = _primaryOverlay;
+            if (primaryOverlay == null)
+            {
+                return;
+            }
+
+            nint primaryHandle = primaryOverlay.Handle;
             nint foreground = _windowFocusService.GetForegroundWindow();
+            nint focused = _windowFocusService.GetFocusedWindow();
+            bool primaryIsForeground = primaryHandle != nint.Zero && foreground == primaryHandle;
+            bool primaryIsFocused = primaryHandle != nint.Zero && focused == primaryHandle;
+
+            if (primaryIsForeground)
+            {
+                if (primaryIsFocused)
+                {
+                    FileLogger.LogInfo(
+                        "Focus loss ignored because the primary overlay is foreground and focused.");
+                    LockPrimaryForeground();
+                    return;
+                }
+
+                // The process still owns the foreground window, but keyboard focus
+                // belongs to another window (for example an IME helper). Reclaim it.
+                if (primaryOverlay.TryReactivate())
+                {
+                    LockPrimaryForeground();
+                    FileLogger.LogInfo("Focus loss recovered by restoring keyboard focus to the primary overlay.");
+                    return;
+                }
+            }
+
             uint foregroundPid = _windowFocusService.GetWindowProcessId(foreground);
             bool foregroundIsVisible = foreground != nint.Zero && _windowFocusService.IsWindowVisible(foreground);
 
@@ -258,12 +305,14 @@ public class OverlayManager
 
             FileLogger.LogInfo(
                 $"Focus loss evaluated (foreground={FormatWindowHandle(foreground)}, " +
-                $"pid={foregroundPid}, visible={foregroundIsVisible}, action={action}).");
+                $"focused={FormatWindowHandle(focused)}, pid={foregroundPid}, " +
+                $"visible={foregroundIsVisible}, action={action}).");
 
             if (action == FocusLossAction.ReactivateOverlay
-                && _primaryOverlay != null
-                && _primaryOverlay.TryReactivate())
+                && !primaryIsForeground
+                && primaryOverlay.TryReactivate())
             {
+                LockPrimaryForeground();
                 FileLogger.LogInfo(
                     $"Focus loss recovered (foreground PID {foregroundPid}, visible={foregroundIsVisible}).");
                 return;
@@ -291,6 +340,44 @@ public class OverlayManager
             {
                 _focusLossPendingGeneration = null;
             }
+
+            // A focus transition can occur while activation is being repaired and
+            // be suppressed by the pending flag. Re-check after clearing it so the
+            // overlay cannot keep input while another window owns focus.
+            if (generation == _selectionGeneration
+                && !IsClosing
+                && IsActive
+                && _selectionManager.State != SelectionState.ExecutingClick
+                && !IsPrimaryForegroundAndFocused())
+            {
+                FileLogger.LogWarning(
+                    "Focus changed while handling focus loss; re-evaluating.");
+                OnFocusLost(generation);
+            }
+        }
+    }
+
+    private bool IsPrimaryForegroundAndFocused()
+    {
+        var primaryOverlay = _primaryOverlay;
+        if (primaryOverlay == null)
+        {
+            return false;
+        }
+
+        nint primaryHandle = primaryOverlay.Handle;
+        return primaryHandle != nint.Zero
+            && _windowFocusService.GetForegroundWindow() == primaryHandle
+            && _windowFocusService.GetFocusedWindow() == primaryHandle;
+    }
+
+    private void LockPrimaryForeground()
+    {
+        // LSFW_LOCK only has an effect while this process owns the foreground
+        // window. Never lock an unrelated window that took focus during a race.
+        if (IsPrimaryForegroundAndFocused())
+        {
+            _windowFocusService.TryLockForeground();
         }
     }
 
@@ -362,7 +449,7 @@ public class OverlayManager
         var virtualScreen = _selectionManager.VirtualScreenBoundingBox;
 
         bool success;
-        bool foregroundRestored = false;
+        bool clickTargetReady = false;
         FileLogger.LogInfo(
             $"Click attempt #{attempt} started (kind={clickKind}, target=({target.X}, {target.Y}), " +
             $"virtualScreen={virtualScreen}).");
@@ -382,14 +469,39 @@ public class OverlayManager
                     FileLogger.LogInfo($"Click attempt #{attempt}: waiting for overlay render.");
                     Dispatcher.CurrentDispatcher.Invoke(() => { }, DispatcherPriority.Render);
                     FileLogger.LogInfo($"Click attempt #{attempt}: overlay render wait completed.");
+
+                    // Resolve the click target after the overlays are hidden. Hiding
+                    // does not activate another window, so WindowFromPoint now
+                    // reports the same window a physical click would hit.
+                    nint windowAtTarget = _windowFocusService.GetWindowFromPoint(target);
+                    nint clickTargetWindow = _windowFocusService.GetRootWindow(windowAtTarget);
                     FileLogger.LogInfo(
-                        $"Click attempt #{attempt}: restoring originating foreground window before SendInput.");
-                    foregroundRestored = RestoreOriginatingForegroundWindow();
-                    return foregroundRestored;
+                        $"Click attempt #{attempt}: window under target is " +
+                        $"{FormatWindowHandle(windowAtTarget)} " +
+                        $"(root={FormatWindowHandle(clickTargetWindow)}).");
+                    if (clickTargetWindow == nint.Zero)
+                    {
+                        FileLogger.LogWarning($"Click attempt #{attempt}: no window is under the click coordinate.");
+                        clickTargetReady = false;
+                        return false;
+                    }
+
+                    // Activate the target rather than the pre-selection window.
+                    // Restoring the pre-selection window can raise it over the
+                    // selected coordinate and make it receive the click instead.
+                    bool activated = RestoreForegroundWindow(clickTargetWindow, "Click target");
+                    nint windowAfterRestore = _windowFocusService.GetWindowFromPoint(target);
+                    bool stillHitTarget = _windowFocusService.IsWindowOwnedBy(windowAfterRestore, clickTargetWindow);
+                    clickTargetReady = stillHitTarget;
+                    FileLogger.LogInfo(
+                        $"Click attempt #{attempt}: target activation result={activated}, " +
+                        $"window at target after activation is {FormatWindowHandle(windowAfterRestore)} " +
+                        $"(matchesClickTarget={stillHitTarget}).");
+                    return stillHitTarget;
                 });
             FileLogger.LogInfo(
                 $"Click attempt #{attempt}: click execution returned success={success} " +
-                $"(foregroundRestored={foregroundRestored}).");
+                $"(clickTargetReady={clickTargetReady}).");
         }
         catch
         {
@@ -419,9 +531,10 @@ public class OverlayManager
         _selectionManager.CompleteClick();
         FileLogger.LogInfo($"Click attempt #{attempt} completed; selection returned to standby.");
 
-        if (!foregroundRestored)
+        if (!clickTargetReady)
         {
-            ErrorOccurred?.Invoke("Could not restore the window that was active before selection. The click was not sent.");
+            ErrorOccurred?.Invoke(
+                "Could not confirm the window under the selected coordinate. The click was not sent.");
         }
         else if (!success)
         {
@@ -448,6 +561,7 @@ public class OverlayManager
 
         try
         {
+            _windowFocusService.UnlockForeground();
             int overlayCount = _overlays.Count;
             foreach (var overlay in _overlays)
             {
@@ -484,15 +598,7 @@ public class OverlayManager
             return false;
         }
 
-        nint foregroundBeforeRestore = _windowFocusService.GetForegroundWindow();
-        bool restored = foregroundBeforeRestore == target
-            || _windowFocusService.TryRestoreForegroundWindow(target);
-        nint foregroundAfterRestore = _windowFocusService.GetForegroundWindow();
-        bool succeeded = restored && foregroundAfterRestore == target;
-        FileLogger.LogInfo(
-            $"Foreground restore result={succeeded} (target={FormatWindowHandle(target)}, " +
-            $"before={FormatWindowHandle(foregroundBeforeRestore)}, after={FormatWindowHandle(foregroundAfterRestore)}).");
-
+        bool succeeded = RestoreForegroundWindow(target, "Originating");
         if (succeeded)
         {
             FileLogger.LogInfo("The foreground window that was active before selection is active.");
@@ -503,6 +609,27 @@ public class OverlayManager
                 "Could not restore the foreground window that was active before selection; it may no longer be available.");
         }
 
+        return succeeded;
+    }
+
+    private bool RestoreForegroundWindow(nint target, string description)
+    {
+        if (target == nint.Zero)
+        {
+            FileLogger.LogWarning($"{description} foreground window is not available.");
+            return false;
+        }
+
+        nint foregroundBeforeRestore = _windowFocusService.GetForegroundWindow();
+        bool restored = foregroundBeforeRestore == target
+            || _windowFocusService.TryRestoreForegroundWindow(target);
+        nint foregroundAfterRestore = _windowFocusService.GetForegroundWindow();
+        bool succeeded = restored && foregroundAfterRestore == target;
+        FileLogger.LogInfo(
+            $"{description} foreground restore result={succeeded} " +
+            $"(target={FormatWindowHandle(target)}, " +
+            $"before={FormatWindowHandle(foregroundBeforeRestore)}, " +
+            $"after={FormatWindowHandle(foregroundAfterRestore)}).");
         return succeeded;
     }
 

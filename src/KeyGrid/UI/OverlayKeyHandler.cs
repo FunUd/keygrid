@@ -6,6 +6,7 @@ namespace KeyGrid.UI;
 internal sealed class OverlayKeyHandler
 {
     private readonly bool _isPrimary;
+    private ClickKind? _pendingClickKind;
 
     public event Action<char>? KeyPressed;
     public event Action<int, int>? MoveRequested;
@@ -39,14 +40,15 @@ internal sealed class OverlayKeyHandler
                 BackspacePressed?.Invoke();
                 return true;
             case Key.Enter:
-                if (modifiers == ModifierKeys.None)
+                // Consume the key down so Windows does not deliver it to another window
+                // when the overlay closes. Confirmation runs on key up. Capture the
+                // modifiers now because the user may release Shift before Enter.
+                _pendingClickKind = modifiers switch
                 {
-                    ConfirmRequested?.Invoke(ClickKind.Left);
-                }
-                else if (modifiers == ModifierKeys.Shift)
-                {
-                    ConfirmRequested?.Invoke(ClickKind.Right);
-                }
+                    ModifierKeys.None => ClickKind.Left,
+                    ModifierKeys.Shift => ClickKind.Right,
+                    _ => null
+                };
                 return true;
             case Key.Left:
                 MoveRequested?.Invoke(-1, 0);
@@ -68,5 +70,29 @@ internal sealed class OverlayKeyHandler
 
                 return true;
         }
+    }
+
+    public bool HandleKeyUp(Key key, ModifierKeys modifiers)
+    {
+        if (!_isPrimary)
+        {
+            return false;
+        }
+
+        if (key != Key.Enter)
+        {
+            return false;
+        }
+
+        ClickKind? clickKind = _pendingClickKind;
+        _pendingClickKind = null;
+        if (clickKind.HasValue)
+        {
+            ConfirmRequested?.Invoke(clickKind.Value);
+        }
+
+        // Consume Enter even when the key down was not seen, so a stale key up
+        // cannot reach the window that receives focus after the overlay closes.
+        return true;
     }
 }

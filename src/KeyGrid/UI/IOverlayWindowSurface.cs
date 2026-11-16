@@ -14,6 +14,7 @@ public interface IOverlayWindowSurface
     event Action? FocusLost;
     event Action? DisplayConfigurationChanged;
 
+    nint Handle { get; }
     bool TryReactivate();
     void UpdateRenderState(SelectionManager selectionManager, IReadOnlyList<PixelRect> monitorRects);
     void RefreshExpectedDpi();

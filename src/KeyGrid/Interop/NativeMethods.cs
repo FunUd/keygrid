@@ -125,6 +125,10 @@ internal static class NativeMethods
 
     public static readonly nint HWND_TOPMOST = new(-1);
 
+    public const uint GA_ROOT = 2;
+    public const uint LSFW_LOCK = 1;
+    public const uint LSFW_UNLOCK = 2;
+
     // Hotkey modifiers
     public const uint MOD_ALT = 0x0001;
     public const uint MOD_CONTROL = 0x0002;
@@ -212,6 +216,12 @@ internal static class NativeMethods
     public static extern bool ImmReleaseContext(nint hWnd, nint hIMC);
 
     [DllImport("user32.dll")]
+    public static extern nint GetAncestor(nint hWnd, uint gaFlags);
+
+    [DllImport("user32.dll")]
+    public static extern bool LockSetForegroundWindow(uint uLockCode);
+
+    [DllImport("user32.dll")]
     public static extern nint GetForegroundWindow();
 
     [DllImport("user32.dll")]
@@ -240,16 +250,29 @@ internal static class NativeMethods
 
     /// <summary>
     /// Brings the window to the foreground and gives it keyboard focus.
-    /// Attaching to the current foreground thread bypasses the Windows foreground lock
-    /// when the overlay must reclaim focus from another window.
-    /// The return value is a best-effort check of the state observed immediately after
-    /// the Win32 calls; another window can still take focus immediately afterwards.
+    /// Prefer SetForegroundWindow without attaching input queues; attaching can leave
+    /// the previous window able to receive keys while the overlay stays on top.
+    /// AttachThreadInput is only a fallback when the foreground lock rejects the request.
     /// </summary>
     public static bool EnsureForegroundAndFocus(nint hWnd)
     {
         if (hWnd == nint.Zero)
         {
             return false;
+        }
+
+        SetWindowPos(
+            hWnd,
+            HWND_TOPMOST,
+            0,
+            0,
+            0,
+            0,
+            SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW);
+
+        if (TrySetForegroundAndFocus(hWnd))
+        {
+            return true;
         }
 
         nint foreground = GetForegroundWindow();
@@ -263,15 +286,7 @@ internal static class NativeMethods
 
         try
         {
-            if (foreground != hWnd)
-            {
-                SetForegroundWindow(hWnd);
-            }
-
-            if (GetFocus() != hWnd)
-            {
-                SetFocus(hWnd);
-            }
+            return TrySetForegroundAndFocus(hWnd);
         }
         finally
         {
@@ -279,6 +294,19 @@ internal static class NativeMethods
             {
                 AttachThreadInput(currentThread, foregroundThread, false);
             }
+        }
+    }
+
+    private static bool TrySetForegroundAndFocus(nint hWnd)
+    {
+        if (GetForegroundWindow() != hWnd)
+        {
+            SetForegroundWindow(hWnd);
+        }
+
+        if (GetFocus() != hWnd)
+        {
+            SetFocus(hWnd);
         }
 
         return GetForegroundWindow() == hWnd && GetFocus() == hWnd;
