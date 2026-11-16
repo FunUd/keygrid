@@ -368,6 +368,9 @@ public class OverlayManager
                     FileLogger.LogInfo($"Click attempt #{attempt}: waiting for overlay render.");
                     Dispatcher.CurrentDispatcher.Invoke(() => { }, DispatcherPriority.Render);
                     FileLogger.LogInfo($"Click attempt #{attempt}: overlay render wait completed.");
+                    FileLogger.LogInfo(
+                        $"Click attempt #{attempt}: restoring originating foreground window before SendInput.");
+                    RestoreOriginatingForegroundWindow();
                 });
             FileLogger.LogInfo($"Click attempt #{attempt}: click sender returned success={success}.");
         }

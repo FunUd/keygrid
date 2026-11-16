@@ -79,6 +79,8 @@ public class OverlayManagerTests
             var factory = new FakeOverlayFactory();
             var focus = new FakeWindowFocusService { ForegroundWindow = new nint(71) };
             var clickSender = new FakeClickSender();
+            clickSender.WasOriginatingForegroundRestored = () =>
+                focus.LastRestoredWindow == new nint(71);
             clickSender.AreAllOverlaysClosed = () =>
                 factory.Windows.Count > 0 && factory.Windows.All(window => window.CloseCount > 0);
             var manager = CreateManager(monitorProvider, factory, focus, clickSender);
@@ -110,7 +112,8 @@ public class OverlayManagerTests
             Assert.Equal(new PixelRect(0, 0, 1920, 1080), clickSender.LastVirtualScreen);
             Assert.NotNull(clickSender.LastTarget);
             Assert.Null(error);
-            Assert.Equal(nint.Zero, focus.LastRestoredWindow);
+            Assert.True(clickSender.OriginatingForegroundWasRestoredBeforeSend);
+            Assert.Equal(new nint(71), focus.LastRestoredWindow);
         });
     }
 
@@ -123,6 +126,8 @@ public class OverlayManagerTests
             var factory = new FakeOverlayFactory();
             var focus = new FakeWindowFocusService { ForegroundWindow = new nint(71) };
             var clickSender = new FakeClickSender { ReturnResult = false };
+            clickSender.WasOriginatingForegroundRestored = () =>
+                focus.LastRestoredWindow == new nint(71);
             var manager = CreateManager(monitorProvider, factory, focus, clickSender);
             manager.ShowOverlays();
             UiTestThread.DrainDispatcher();
@@ -136,6 +141,7 @@ public class OverlayManagerTests
 
             Assert.False(manager.IsActive);
             Assert.Equal(SelectionState.Standby, manager.SelectionManager.State);
+            Assert.True(clickSender.OriginatingForegroundWasRestoredBeforeSend);
             Assert.Equal(new nint(71), focus.LastRestoredWindow);
             Assert.Contains("Failed to dispatch click", error);
         });
@@ -467,6 +473,8 @@ public class OverlayManagerTests
         public bool Called { get; private set; }
         public bool ReturnResult { get; set; } = true;
         public bool OverlaysWereClosedBeforeSend { get; private set; }
+        public bool OriginatingForegroundWasRestoredBeforeSend { get; private set; }
+        public Func<bool>? WasOriginatingForegroundRestored { get; set; }
         public Func<bool>? AreAllOverlaysClosed { get; set; }
         public PixelPoint? LastTarget { get; private set; }
         public PixelRect? LastVirtualScreen { get; private set; }
@@ -479,6 +487,8 @@ public class OverlayManagerTests
             LastVirtualScreen = virtualScreen;
             LastClickKind = clickKind;
             OverlaysWereClosedBeforeSend = AreAllOverlaysClosed?.Invoke() ?? false;
+            OriginatingForegroundWasRestoredBeforeSend =
+                WasOriginatingForegroundRestored?.Invoke() ?? false;
             return ReturnResult;
         }
     }
