@@ -246,6 +246,7 @@ public class OverlayManagerTests
             Assert.Equal(SelectionState.Standby, manager.SelectionManager.State);
             Assert.Equal(1, primary.CloseCount);
             Assert.Equal(new nint(99), focus.LastProcessWindow);
+            Assert.Equal(nint.Zero, focus.LastRestoredWindow);
         });
     }
 

@@ -259,7 +259,16 @@ public class OverlayManager
             FileLogger.LogInfo(
                 $"Focus loss cancelled selection (foreground PID {foregroundPid}, visible={foregroundIsVisible}).");
             _selectionManager.Cancel();
-            CloseOverlays();
+            if (action == FocusLossAction.CancelSelection)
+            {
+                CloseOverlaysWithoutRestore();
+                _originatingForegroundWindow = nint.Zero;
+                FileLogger.LogInfo("Kept the externally activated foreground window active.");
+            }
+            else
+            {
+                CloseOverlays();
+            }
         }
         finally
         {
