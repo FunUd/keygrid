@@ -279,6 +279,7 @@ public partial class OverlayWindow : Window, IOverlayWindowSurface
 
     protected override void OnClosed(EventArgs e)
     {
+        FileLogger.LogInfo($"Overlay window closed (primary={IsPrimary}).");
         base.OnClosed(e);
 
         if (IsPrimary && _imeDisabled)

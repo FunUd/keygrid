@@ -411,19 +411,26 @@ public class OverlayManager
 
         try
         {
+            int overlayCount = _overlays.Count;
             foreach (var overlay in _overlays)
             {
+                bool isPrimary = ReferenceEquals(overlay, _primaryOverlay);
+                FileLogger.LogInfo($"Closing {(isPrimary ? "primary" : "secondary")} overlay.");
                 try
                 {
                     overlay.Close();
+                    FileLogger.LogInfo(
+                        $"Close returned for {(isPrimary ? "primary" : "secondary")} overlay.");
                 }
-                catch (InvalidOperationException)
+                catch (InvalidOperationException ex)
                 {
-                    // Ignore if window was already closed or closing
+                    FileLogger.LogWarning(
+                        $"Could not close {(isPrimary ? "primary" : "secondary")} overlay: {ex.Message}");
                 }
             }
             _overlays.Clear();
             _primaryOverlay = null;
+            FileLogger.LogInfo($"Overlay teardown finished (requested={overlayCount}, active={IsActive}).");
         }
         finally
         {
