@@ -69,6 +69,9 @@ internal static class NativeMethods
     [DllImport("user32.dll")]
     public static extern bool GetCursorPos(out POINT lpPoint);
 
+    [DllImport("user32.dll")]
+    public static extern nint WindowFromPoint(POINT point);
+
     [StructLayout(LayoutKind.Sequential)]
     public struct POINT
     {

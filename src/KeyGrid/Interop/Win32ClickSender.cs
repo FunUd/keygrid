@@ -61,7 +61,18 @@ public class Win32ClickSender : IClickSender
                                buttonUpFlag |
                                NativeMethods.MOUSEEVENTF_VIRTUALDESK;
 
+        nint foreground = NativeMethods.GetForegroundWindow();
+        NativeMethods.GetWindowThreadProcessId(foreground, out uint foregroundProcessId);
+        nint windowAtTarget = NativeMethods.WindowFromPoint(
+            new NativeMethods.POINT { X = target.X, Y = target.Y });
+        NativeMethods.GetWindowThreadProcessId(windowAtTarget, out uint targetProcessId);
+        FileLogger.LogInfo(
+            $"SendInput starting (kind={clickKind}, target=({target.X}, {target.Y}), " +
+            $"foreground=0x{foreground.ToInt64():X}, foregroundPid={foregroundProcessId}, " +
+            $"windowAtTarget=0x{windowAtTarget.ToInt64():X}, targetPid={targetProcessId}).");
+
         uint sent = _sendInput((uint)inputs.Length, inputs, Marshal.SizeOf<NativeMethods.INPUT>());
+        FileLogger.LogInfo($"SendInput returned (requested={inputs.Length}, sent={sent}).");
         bool succeeded = sent == inputs.Length;
         if (succeeded)
         {
