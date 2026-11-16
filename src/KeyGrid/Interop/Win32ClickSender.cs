@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using System.Text;
 using KeyGrid.Core.Abstractions;
 using KeyGrid.Core.Calculation;
 using KeyGrid.Core.Geometry;
@@ -68,8 +69,8 @@ public class Win32ClickSender : IClickSender
         NativeMethods.GetWindowThreadProcessId(windowAtTarget, out uint targetProcessId);
         FileLogger.LogInfo(
             $"SendInput starting (kind={clickKind}, target=({target.X}, {target.Y}), " +
-            $"foreground=0x{foreground.ToInt64():X}, foregroundPid={foregroundProcessId}, " +
-            $"windowAtTarget=0x{windowAtTarget.ToInt64():X}, targetPid={targetProcessId}).");
+            $"foreground={DescribeWindow(foreground)}, foregroundPid={foregroundProcessId}, " +
+            $"windowAtTarget={DescribeWindow(windowAtTarget)}, targetPid={targetProcessId}).");
 
         uint sent = _sendInput((uint)inputs.Length, inputs, Marshal.SizeOf<NativeMethods.INPUT>());
         FileLogger.LogInfo($"SendInput returned (requested={inputs.Length}, sent={sent}).");
@@ -88,5 +89,22 @@ public class Win32ClickSender : IClickSender
         }
 
         return succeeded;
+    }
+
+    private static string DescribeWindow(nint window)
+    {
+        if (window == nint.Zero)
+        {
+            return "0x0";
+        }
+
+        var className = new StringBuilder(256);
+        int classNameLength = NativeMethods.GetClassName(window, className, className.Capacity);
+        string classDescription = classNameLength > 0 ? className.ToString() : "unknown";
+        string boundsDescription = NativeMethods.GetWindowRect(window, out var bounds)
+            ? $"[{bounds.Left},{bounds.Top},{bounds.Right},{bounds.Bottom}]"
+            : "unknown";
+
+        return $"0x{window.ToInt64():X} class={classDescription} bounds={boundsDescription}";
     }
 }

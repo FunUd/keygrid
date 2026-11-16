@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using System.Text;
 
 namespace KeyGrid.Interop;
 
@@ -71,6 +72,12 @@ internal static class NativeMethods
 
     [DllImport("user32.dll")]
     public static extern nint WindowFromPoint(POINT point);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    public static extern bool GetWindowRect(nint hWnd, out RECT lpRect);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    public static extern int GetClassName(nint hWnd, StringBuilder lpClassName, int nMaxCount);
 
     [StructLayout(LayoutKind.Sequential)]
     public struct POINT
