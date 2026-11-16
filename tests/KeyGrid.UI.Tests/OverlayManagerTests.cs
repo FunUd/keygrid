@@ -32,8 +32,6 @@ public class OverlayManagerTests
                 Assert.Equal(1, window.ShowCount);
                 Assert.Equal(1, window.RenderUpdateCount);
             });
-            Assert.Equal(1, factory.Windows.Single(window => window.IsPrimary).TryReactivateCount);
-
             UiTestThread.DrainDispatcher();
 
             Assert.All(factory.Windows, window =>
@@ -275,7 +273,7 @@ public class OverlayManagerTests
             Assert.True(manager.IsActive);
             Assert.Equal(SelectionState.Selecting, manager.SelectionManager.State);
             Assert.Single(manager.SelectionManager.History);
-            Assert.Equal(2, primary.TryReactivateCount);
+            Assert.Equal(1, primary.TryReactivateCount);
             Assert.Equal(0, primary.CloseCount);
 
             manager.CloseOverlays();

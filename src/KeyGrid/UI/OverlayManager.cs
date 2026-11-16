@@ -136,13 +136,6 @@ public class OverlayManager
             overlay.UpdateRenderState(_selectionManager, _activeMonitorRects);
         }
 
-        if (_primaryOverlay != null)
-        {
-            bool focusAcquired = _primaryOverlay.TryReactivate();
-            FileLogger.LogInfo(
-                $"Primary overlay focus acquisition after all overlays were shown: success={focusAcquired}.");
-        }
-
         // Defer enabling DPI notifications until the overlays have completed their
         // initial per-monitor placement. The expected-DPI check in the overlay also
         // filters normal startup WM_DPICHANGED messages.

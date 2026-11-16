@@ -113,6 +113,7 @@ public partial class OverlayWindow : Window, IOverlayWindowSurface
             _originalHImc = NativeMethods.ImmAssociateContext(hwnd, nint.Zero);
             _imeDisabled = true;
 
+            TryReactivate();
         }
     }
 
@@ -123,10 +124,11 @@ public partial class OverlayWindow : Window, IOverlayWindowSurface
         bool handled = _keyHandler.HandleKeyDown(e.Key, modifiers, e.IsRepeat);
         e.Handled = handled;
 
-        if (e.Key == Key.Enter || e.SystemKey == Key.Enter)
+        if (IsPrimary)
         {
+            Key key = e.Key == Key.System ? e.SystemKey : e.Key;
             FileLogger.LogInfo(
-                $"Enter key received by overlay (primary={IsPrimary}, key={e.Key}, modifiers={modifiers}, " +
+                $"Primary overlay WPF keydown (category={GetKeyCategory(key)}, modifiers={modifiers}, " +
                 $"repeat={e.IsRepeat}, handled={handled}).");
         }
     }
@@ -180,6 +182,8 @@ public partial class OverlayWindow : Window, IOverlayWindowSurface
         const int WM_SETFOCUS = 0x0007;
         const int WM_KILLFOCUS = 0x0008;
         const int WM_ACTIVATEAPP = 0x001C;
+        const int WM_KEYDOWN = 0x0100;
+        const int WM_SYSKEYDOWN = 0x0104;
 
         if (!_isClosing)
         {
@@ -204,7 +208,13 @@ public partial class OverlayWindow : Window, IOverlayWindowSurface
 
         if (IsPrimary && !_isClosing)
         {
-            if (msg == WM_SETFOCUS)
+            if (msg == WM_KEYDOWN || msg == WM_SYSKEYDOWN)
+            {
+                uint virtualKey = unchecked((uint)wParam.ToInt64());
+                FileLogger.LogInfo(
+                    $"Primary overlay native keydown (category={GetVirtualKeyCategory(virtualKey)}).");
+            }
+            else if (msg == WM_SETFOCUS)
             {
                 FileLogger.LogInfo(
                     $"Primary overlay received WM_SETFOCUS (previousFocus=0x{wParam.ToInt64():X}).");
@@ -231,6 +241,40 @@ public partial class OverlayWindow : Window, IOverlayWindowSurface
         }
 
         return nint.Zero;
+    }
+
+    private static string GetKeyCategory(Key key)
+    {
+        if (key >= Key.A && key <= Key.Z)
+        {
+            return "Letter";
+        }
+
+        return key switch
+        {
+            Key.Enter => "Enter",
+            Key.Left or Key.Right or Key.Up or Key.Down => "Arrow",
+            Key.Back => "Backspace",
+            Key.Escape => "Escape",
+            _ => "Other"
+        };
+    }
+
+    private static string GetVirtualKeyCategory(uint virtualKey)
+    {
+        if (virtualKey is >= 0x41 and <= 0x5A)
+        {
+            return "Letter";
+        }
+
+        return virtualKey switch
+        {
+            0x0D => "Enter",
+            0x25 or 0x26 or 0x27 or 0x28 => "Arrow",
+            0x08 => "Backspace",
+            0x1B => "Escape",
+            _ => "Other"
+        };
     }
 
     protected override void OnClosed(EventArgs e)
