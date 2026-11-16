@@ -6,6 +6,7 @@ using KeyGrid.Core.Abstractions;
 using KeyGrid.Core.Geometry;
 using KeyGrid.Core.Selection;
 using KeyGrid.Interop;
+using KeyGrid.Services;
 
 namespace KeyGrid.UI;
 
@@ -110,7 +111,16 @@ public partial class OverlayWindow : Window, IOverlayWindowSurface
     protected override void OnKeyDown(KeyEventArgs e)
     {
         base.OnKeyDown(e);
-        e.Handled = _keyHandler.HandleKeyDown(e.Key, Keyboard.Modifiers, e.IsRepeat);
+        ModifierKeys modifiers = Keyboard.Modifiers;
+        bool handled = _keyHandler.HandleKeyDown(e.Key, modifiers, e.IsRepeat);
+        e.Handled = handled;
+
+        if (e.Key == Key.Enter || e.SystemKey == Key.Enter)
+        {
+            FileLogger.LogInfo(
+                $"Enter key received by overlay (primary={IsPrimary}, key={e.Key}, modifiers={modifiers}, " +
+                $"repeat={e.IsRepeat}, handled={handled}).");
+        }
     }
 
     protected override void OnMouseDown(MouseButtonEventArgs e)
@@ -185,6 +195,8 @@ public partial class OverlayWindow : Window, IOverlayWindowSurface
         {
             // Focus loss may be transient (for example an IME/TSF helper window).
             // OverlayManager decides whether to reclaim focus or cancel.
+            FileLogger.LogInfo(
+                $"Primary overlay received WM_KILLFOCUS (newFocus=0x{wParam.ToInt64():X}).");
             FocusLost?.Invoke();
         }
 

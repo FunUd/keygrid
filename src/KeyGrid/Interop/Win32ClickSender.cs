@@ -2,6 +2,7 @@ using System.Runtime.InteropServices;
 using KeyGrid.Core.Abstractions;
 using KeyGrid.Core.Calculation;
 using KeyGrid.Core.Geometry;
+using KeyGrid.Services;
 
 namespace KeyGrid.Interop;
 
@@ -61,6 +62,20 @@ public class Win32ClickSender : IClickSender
                                NativeMethods.MOUSEEVENTF_VIRTUALDESK;
 
         uint sent = _sendInput((uint)inputs.Length, inputs, Marshal.SizeOf<NativeMethods.INPUT>());
-        return sent == inputs.Length;
+        bool succeeded = sent == inputs.Length;
+        if (succeeded)
+        {
+            FileLogger.LogInfo(
+                $"SendInput click sequence succeeded (kind={clickKind}, target=({target.X}, {target.Y}), " +
+                $"requested={inputs.Length}, sent={sent}).");
+        }
+        else
+        {
+            FileLogger.LogWarning(
+                $"SendInput click sequence incomplete (kind={clickKind}, target=({target.X}, {target.Y}), " +
+                $"requested={inputs.Length}, sent={sent}, lastError={Marshal.GetLastWin32Error()}).");
+        }
+
+        return succeeded;
     }
 }

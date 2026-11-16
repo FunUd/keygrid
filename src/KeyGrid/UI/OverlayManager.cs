@@ -29,6 +29,7 @@ public class OverlayManager
     private int? _focusLossPendingGeneration;
     private bool _isDisplayChangePending = false;
     private int _selectionGeneration;
+    private int _confirmationAttempt;
 
     public event Action<string>? ErrorOccurred;
 
@@ -70,6 +71,8 @@ public class OverlayManager
         if (!IsActive)
         {
             _originatingForegroundWindow = _windowFocusService.GetForegroundWindow();
+            FileLogger.LogInfo(
+                $"Selection opening: originating foreground HWND={FormatWindowHandle(_originatingForegroundWindow)}.");
         }
 
         int generation = ++_selectionGeneration;
@@ -173,10 +176,20 @@ public class OverlayManager
 
     private void OnConfirmRequested(ClickKind clickKind)
     {
-        if (_selectionManager.ProcessEnter())
+        int attempt = ++_confirmationAttempt;
+        FileLogger.LogInfo(
+            $"Confirmation #{attempt} received (kind={clickKind}, state={_selectionManager.State}, " +
+            $"historyLength={_selectionManager.History.Count}).");
+
+        if (!_selectionManager.ProcessEnter())
         {
-            ExecuteConfirmedClick(clickKind);
+            FileLogger.LogInfo($"Confirmation #{attempt} ignored because the selection is not confirmable.");
+            return;
         }
+
+        FileLogger.LogInfo(
+            $"Confirmation #{attempt} accepted (target={_selectionManager.TargetCoordinate}).");
+        ExecuteConfirmedClick(clickKind, attempt);
     }
 
     private void OnBackspacePressed()
@@ -229,6 +242,10 @@ public class OverlayManager
                 foregroundPid,
                 (uint)Environment.ProcessId,
                 foregroundIsVisible);
+
+            FileLogger.LogInfo(
+                $"Focus loss evaluated (foreground={FormatWindowHandle(foreground)}, " +
+                $"pid={foregroundPid}, visible={foregroundIsVisible}, action={action}).");
 
             if (action == FocusLossAction.ReactivateOverlay
                 && _primaryOverlay != null
@@ -309,10 +326,11 @@ public class OverlayManager
         }
     }
 
-    private void ExecuteConfirmedClick(ClickKind clickKind)
+    private void ExecuteConfirmedClick(ClickKind clickKind, int attempt)
     {
         if (!_selectionManager.TargetCoordinate.HasValue)
         {
+            FileLogger.LogWarning($"Confirmation #{attempt} was accepted without a target coordinate.");
             CloseOverlays();
             _selectionManager.CompleteClick();
             return;
@@ -322,21 +340,36 @@ public class OverlayManager
         var virtualScreen = _selectionManager.VirtualScreenBoundingBox;
 
         bool success;
+        FileLogger.LogInfo(
+            $"Click attempt #{attempt} started (kind={clickKind}, target=({target.X}, {target.Y}), " +
+            $"virtualScreen={virtualScreen}).");
         try
         {
             success = _clickExecutor.ExecuteClick(
                 target,
                 virtualScreen,
                 clickKind,
-                hideOverlaysAction: CloseOverlaysWithoutRestore,
-                waitAfterHideAction: () => Dispatcher.CurrentDispatcher.Invoke(() => { }, DispatcherPriority.Render));
+                hideOverlaysAction: () =>
+                {
+                    FileLogger.LogInfo($"Click attempt #{attempt}: closing overlays.");
+                    CloseOverlaysWithoutRestore();
+                },
+                waitAfterHideAction: () =>
+                {
+                    FileLogger.LogInfo($"Click attempt #{attempt}: waiting for overlay render.");
+                    Dispatcher.CurrentDispatcher.Invoke(() => { }, DispatcherPriority.Render);
+                    FileLogger.LogInfo($"Click attempt #{attempt}: overlay render wait completed.");
+                });
+            FileLogger.LogInfo($"Click attempt #{attempt}: click sender returned success={success}.");
         }
         finally
         {
+            FileLogger.LogInfo($"Click attempt #{attempt}: restoring originating foreground window.");
             RestoreOriginatingForegroundWindow();
         }
 
         _selectionManager.CompleteClick();
+        FileLogger.LogInfo($"Click attempt #{attempt} completed; selection returned to standby.");
 
         if (!success)
         {
@@ -392,7 +425,14 @@ public class OverlayManager
             return;
         }
 
-        if (_windowFocusService.TryRestoreForegroundWindow(target))
+        nint foregroundBeforeRestore = _windowFocusService.GetForegroundWindow();
+        bool restored = _windowFocusService.TryRestoreForegroundWindow(target);
+        nint foregroundAfterRestore = _windowFocusService.GetForegroundWindow();
+        FileLogger.LogInfo(
+            $"Foreground restore result={restored} (target={FormatWindowHandle(target)}, " +
+            $"before={FormatWindowHandle(foregroundBeforeRestore)}, after={FormatWindowHandle(foregroundAfterRestore)}).");
+
+        if (restored)
         {
             FileLogger.LogInfo("Restored the foreground window that was active before selection.");
         }
@@ -402,4 +442,6 @@ public class OverlayManager
                 "Could not restore the foreground window that was active before selection; it may no longer be available.");
         }
     }
+
+    private static string FormatWindowHandle(nint window) => $"0x{window.ToInt64():X}";
 }
