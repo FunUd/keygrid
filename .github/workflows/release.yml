@@ -1,0 +1,97 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Validate tag and prepare release notes
+        id: metadata
+        shell: pwsh
+        run: |
+          $tag = $env:GITHUB_REF_NAME
+          if ($tag -notmatch '^v(?<version>\d+\.\d+\.\d+)$') {
+            throw "Release tag '$tag' must use the vMAJOR.MINOR.PATCH format."
+          }
+
+          $version = $Matches.version
+          [xml]$props = Get-Content Directory.Build.props -Raw
+          $versionNode = $props.SelectSingleNode('/Project/PropertyGroup/Version')
+          if ($null -eq $versionNode -or $versionNode.InnerText.Trim() -ne $version) {
+            throw "Release tag '$tag' does not match the version in Directory.Build.props."
+          }
+
+          $changelog = @(Get-Content CHANGELOG.md)
+          $headingPattern = '^## \[{0}\](?:\s|$)' -f [regex]::Escape($version)
+          $start = -1
+          for ($i = 0; $i -lt $changelog.Count; $i++) {
+            if ($changelog[$i] -match $headingPattern) {
+              $start = $i
+              break
+            }
+          }
+          if ($start -lt 0) {
+            throw "CHANGELOG.md has no section for version $version."
+          }
+
+          $end = $changelog.Count
+          for ($i = $start + 1; $i -lt $changelog.Count; $i++) {
+            if ($changelog[$i] -match '^## ') {
+              $end = $i
+              break
+            }
+          }
+
+          $notesLines = @()
+          if ($end -gt ($start + 1)) {
+            $notesLines = $changelog[($start + 1)..($end - 1)]
+          }
+          $notes = ($notesLines -join "`n").Trim()
+          if ([string]::IsNullOrWhiteSpace($notes)) {
+            throw "CHANGELOG.md has no release notes for version $version."
+          }
+
+          Set-Content -Path (Join-Path $env:RUNNER_TEMP 'release-notes.md') -Value $notes -Encoding utf8
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "version=$version" -Encoding utf8
+
+      - name: Test
+        run: dotnet test KeyGrid.slnx --configuration Release
+
+      - name: Publish and package
+        shell: pwsh
+        env:
+          VERSION: ${{ steps.metadata.outputs.version }}
+        run: |
+          dotnet publish src/KeyGrid/KeyGrid.csproj --configuration Release --runtime win-x64 --self-contained false --output .dist\publish
+          if ($LASTEXITCODE -ne 0) {
+            throw "dotnet publish failed with exit code $LASTEXITCODE."
+          }
+
+          $archivePath = ".dist\KeyGrid-$env:VERSION-win-x64.zip"
+          Compress-Archive -Path .dist\publish\* -DestinationPath $archivePath -CompressionLevel Optimal
+
+      - name: Create GitHub Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.metadata.outputs.version }}
+        run: |
+          $tag = $env:GITHUB_REF_NAME
+          $archivePath = ".dist\KeyGrid-$env:VERSION-win-x64.zip"
+          gh release create $tag $archivePath --title "KeyGrid $env:VERSION" --notes-file (Join-Path $env:RUNNER_TEMP 'release-notes.md')
+          if ($LASTEXITCODE -ne 0) {
+            throw "GitHub Release creation failed with exit code $LASTEXITCODE."
+          }

@@ -18,7 +18,8 @@ KeyGrid is a lightweight, resident Windows 11 utility that enables mouse-free le
 ## Requirements
 
 - **Operating System**: Windows 11 (x64)
-- **Runtime / SDK**: [.NET 10 SDK](https://dotnet.microsoft.com/download) (or .NET 10 Desktop Runtime)
+- **Build**: [.NET 10 SDK](https://dotnet.microsoft.com/download)
+- **Running a release**: .NET 10 Desktop Runtime
 - **Privileges**: Standard user permissions (Administrator privileges not required)
 
 ---
@@ -37,13 +38,17 @@ dotnet test
 
 ### Publishing a Release Binary
 
-To publish the application for release:
+To publish and package the application for Windows x64:
 
 ```powershell
-dotnet publish src/KeyGrid/KeyGrid.csproj -c Release -o .dist
+dotnet publish src/KeyGrid/KeyGrid.csproj -c Release -r win-x64 --self-contained false -o .dist\publish
+$version = ([xml](Get-Content Directory.Build.props -Raw)).Project.PropertyGroup.Version
+Compress-Archive -Path .dist\publish\* -DestinationPath ".dist\KeyGrid-$version-win-x64.zip"
 ```
 
-The resulting executable will be available at `.dist\KeyGrid.exe`.
+The resulting archive contains the complete publish output, including `KeyGrid.exe`. It requires the .NET 10 Desktop Runtime on the target machine.
+
+The application version is defined in `Directory.Build.props`, and release notes are maintained in `CHANGELOG.md`. Pushing a tag in the `vMAJOR.MINOR.PATCH` format runs the Windows test and publish workflow and creates a GitHub Release with the packaged application. The tag must match the project version and have a corresponding changelog section.
 
 ---
 
@@ -57,13 +62,13 @@ dotnet run --project src/KeyGrid/KeyGrid.csproj
 
 ### Running the Published Binary
 
-Double-click `.dist\KeyGrid.exe` or execute it from PowerShell:
+Extract the release archive, then double-click `KeyGrid.exe` or execute it from PowerShell:
 
 ```powershell
-.\.dist\KeyGrid.exe
+.\KeyGrid.exe
 ```
 
-The publish output folder is portable; no installer is required. Keep the folder in a permanent location and create a shortcut if desired.
+The extracted publish folder is portable; no installer is required. Keep it in a permanent location and create a shortcut if desired.
 
 KeyGrid runs as a background process and displays an icon in the Windows system notification tray. If KeyGrid is already running, starting a second instance will display a notification and exit immediately.
 
