@@ -262,6 +262,7 @@ Backspace undoes one Stage 1 keystroke. In Stage 2 it removes the Stage 1 row ke
 6. End selection mode and return to standby.
 
 - Do not restore the pointer to its original position after the click.
+- After successful input dispatch, do not restore the window that was foreground before selection; this can undo target activation before it processes the click. Restore it only when dispatch fails.
 - Transient races with physical mouse input are acceptable in the initial version.
 
 ---

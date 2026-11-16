@@ -111,7 +111,34 @@ public class OverlayManagerTests
             Assert.Equal(new PixelRect(0, 0, 1920, 1080), clickSender.LastVirtualScreen);
             Assert.NotNull(clickSender.LastTarget);
             Assert.Null(error);
+            Assert.Equal(nint.Zero, focus.LastRestoredWindow);
+        });
+    }
+
+    [Fact]
+    public void PrimarySurfaceSendFailure_RestoresOriginatingForegroundAndRaisesError()
+    {
+        UiTestThread.Run(() =>
+        {
+            var monitorProvider = SingleMonitorProvider();
+            var factory = new FakeOverlayFactory();
+            var focus = new FakeWindowFocusService { ForegroundWindow = new nint(71) };
+            var clickSender = new FakeClickSender { ReturnResult = false };
+            var manager = CreateManager(monitorProvider, factory, focus, clickSender);
+            manager.ShowOverlays();
+            UiTestThread.DrainDispatcher();
+            var primary = Assert.Single(factory.Windows);
+            string? error = null;
+            manager.ErrorOccurred += message => error = message;
+
+            primary.RaiseKey(manager.SelectionManager.ColumnKeys[0]);
+            primary.RaiseKey(manager.SelectionManager.RowKeys[0]);
+            primary.RaiseConfirm(ClickKind.Left);
+
+            Assert.False(manager.IsActive);
+            Assert.Equal(SelectionState.Standby, manager.SelectionManager.State);
             Assert.Equal(new nint(71), focus.LastRestoredWindow);
+            Assert.Contains("Failed to dispatch click", error);
         });
     }
 
@@ -438,6 +465,7 @@ public class OverlayManagerTests
     private sealed class FakeClickSender : IClickSender
     {
         public bool Called { get; private set; }
+        public bool ReturnResult { get; set; } = true;
         public bool OverlaysWereClosedBeforeSend { get; private set; }
         public Func<bool>? AreAllOverlaysClosed { get; set; }
         public PixelPoint? LastTarget { get; private set; }
@@ -451,7 +479,7 @@ public class OverlayManagerTests
             LastVirtualScreen = virtualScreen;
             LastClickKind = clickKind;
             OverlaysWereClosedBeforeSend = AreAllOverlaysClosed?.Invoke() ?? false;
-            return true;
+            return ReturnResult;
         }
     }
 }

@@ -362,9 +362,25 @@ public class OverlayManager
                 });
             FileLogger.LogInfo($"Click attempt #{attempt}: click sender returned success={success}.");
         }
-        finally
+        catch
         {
-            FileLogger.LogInfo($"Click attempt #{attempt}: restoring originating foreground window.");
+            FileLogger.LogWarning(
+                $"Click attempt #{attempt} threw before completing; restoring originating foreground window.");
+            RestoreOriginatingForegroundWindow();
+            throw;
+        }
+
+        if (success)
+        {
+            nint foreground = _windowFocusService.GetForegroundWindow();
+            FileLogger.LogInfo(
+                $"Click attempt #{attempt}: keeping post-click foreground window " +
+                $"{FormatWindowHandle(foreground)}.");
+        }
+        else
+        {
+            FileLogger.LogInfo(
+                $"Click attempt #{attempt}: restoring originating foreground window after SendInput failure.");
             RestoreOriginatingForegroundWindow();
         }
 
