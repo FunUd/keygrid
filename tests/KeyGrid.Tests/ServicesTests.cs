@@ -40,7 +40,7 @@ public class ServicesTests
             screen,
             ClickKind.Right,
             hideOverlaysAction: () => overlayHidden = true,
-            waitAfterHideAction: null);
+            prepareClickAction: null);
 
         Assert.True(result);
         Assert.True(overlayHidden);
@@ -61,7 +61,11 @@ public class ServicesTests
             new PixelRect(0, 0, 1920, 1080),
             ClickKind.Left,
             hideOverlaysAction: () => calls.Add("hide"),
-            waitAfterHideAction: () => calls.Add("wait"));
+            prepareClickAction: () =>
+            {
+                calls.Add("wait");
+                return true;
+            });
 
         Assert.True(result);
         Assert.Equal(new[] { "hide", "wait", "send" }, calls);
@@ -78,7 +82,7 @@ public class ServicesTests
             new PixelRect(0, 0, 1920, 1080),
             ClickKind.Left,
             hideOverlaysAction: () => { },
-            waitAfterHideAction: null);
+            prepareClickAction: null);
 
         Assert.False(result);
     }
@@ -94,8 +98,25 @@ public class ServicesTests
             new PixelRect(0, 0, 1920, 1080),
             ClickKind.Left,
             hideOverlaysAction: () => { },
-            waitAfterHideAction: () => throw new InvalidOperationException("Render wait failed.")));
+            prepareClickAction: () => throw new InvalidOperationException("Render wait failed.")));
 
+        Assert.DoesNotContain("send", fakeSender.Calls);
+    }
+
+    [Fact]
+    public void ClickExecutor_WhenPreparationFails_DoesNotSendClick()
+    {
+        var fakeSender = new FakeClickSender();
+        var executor = new ClickExecutor(fakeSender);
+
+        bool result = executor.ExecuteClick(
+            new PixelPoint(100, 100),
+            new PixelRect(0, 0, 1920, 1080),
+            ClickKind.Left,
+            hideOverlaysAction: () => { },
+            prepareClickAction: () => false);
+
+        Assert.False(result);
         Assert.DoesNotContain("send", fakeSender.Calls);
     }
 }

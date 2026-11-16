@@ -89,6 +89,7 @@ public class OverlayManager
         {
             ErrorOccurred?.Invoke("No active displays found.");
             RestoreOriginatingForegroundWindow();
+            _originatingForegroundWindow = nint.Zero;
             return;
         }
 
@@ -105,6 +106,7 @@ public class OverlayManager
         {
             ErrorOccurred?.Invoke("Failed to initialize selection area.");
             RestoreOriginatingForegroundWindow();
+            _originatingForegroundWindow = nint.Zero;
             return;
         }
 
@@ -134,6 +136,17 @@ public class OverlayManager
             _overlays.Add(overlay);
             overlay.Show();
             overlay.UpdateRenderState(_selectionManager, _activeMonitorRects);
+        }
+
+        if (_primaryOverlay == null || !_primaryOverlay.TryReactivate())
+        {
+            FileLogger.LogWarning("Could not focus the primary overlay after showing all overlays.");
+            _selectionManager.Cancel();
+            CloseOverlaysWithoutRestore();
+            RestoreOriginatingForegroundWindow();
+            _originatingForegroundWindow = nint.Zero;
+            ErrorOccurred?.Invoke("Failed to focus the selection overlay.");
+            return;
         }
 
         // Defer enabling DPI notifications until the overlays have completed their
@@ -349,6 +362,7 @@ public class OverlayManager
         var virtualScreen = _selectionManager.VirtualScreenBoundingBox;
 
         bool success;
+        bool foregroundRestored = false;
         FileLogger.LogInfo(
             $"Click attempt #{attempt} started (kind={clickKind}, target=({target.X}, {target.Y}), " +
             $"virtualScreen={virtualScreen}).");
@@ -363,27 +377,32 @@ public class OverlayManager
                     FileLogger.LogInfo($"Click attempt #{attempt}: closing overlays.");
                     CloseOverlaysWithoutRestore();
                 },
-                waitAfterHideAction: () =>
+                prepareClickAction: () =>
                 {
                     FileLogger.LogInfo($"Click attempt #{attempt}: waiting for overlay render.");
                     Dispatcher.CurrentDispatcher.Invoke(() => { }, DispatcherPriority.Render);
                     FileLogger.LogInfo($"Click attempt #{attempt}: overlay render wait completed.");
                     FileLogger.LogInfo(
                         $"Click attempt #{attempt}: restoring originating foreground window before SendInput.");
-                    RestoreOriginatingForegroundWindow();
+                    foregroundRestored = RestoreOriginatingForegroundWindow();
+                    return foregroundRestored;
                 });
-            FileLogger.LogInfo($"Click attempt #{attempt}: click sender returned success={success}.");
+            FileLogger.LogInfo(
+                $"Click attempt #{attempt}: click execution returned success={success} " +
+                $"(foregroundRestored={foregroundRestored}).");
         }
         catch
         {
             FileLogger.LogWarning(
                 $"Click attempt #{attempt} threw before completing; restoring originating foreground window.");
             RestoreOriginatingForegroundWindow();
+            _originatingForegroundWindow = nint.Zero;
             throw;
         }
 
         if (success)
         {
+            _originatingForegroundWindow = nint.Zero;
             nint foreground = _windowFocusService.GetForegroundWindow();
             FileLogger.LogInfo(
                 $"Click attempt #{attempt}: keeping post-click foreground window " +
@@ -392,14 +411,19 @@ public class OverlayManager
         else
         {
             FileLogger.LogInfo(
-                $"Click attempt #{attempt}: restoring originating foreground window after SendInput failure.");
+                $"Click attempt #{attempt}: restoring originating foreground window after unsuccessful click execution.");
             RestoreOriginatingForegroundWindow();
+            _originatingForegroundWindow = nint.Zero;
         }
 
         _selectionManager.CompleteClick();
         FileLogger.LogInfo($"Click attempt #{attempt} completed; selection returned to standby.");
 
-        if (!success)
+        if (!foregroundRestored)
+        {
+            ErrorOccurred?.Invoke("Could not restore the window that was active before selection. The click was not sent.");
+        }
+        else if (!success)
         {
             ErrorOccurred?.Invoke($"Failed to dispatch click to ({target.X}, {target.Y}). The target window may require higher integrity level (UIPI).");
         }
@@ -409,6 +433,7 @@ public class OverlayManager
     {
         CloseOverlaysWithoutRestore();
         RestoreOriginatingForegroundWindow();
+        _originatingForegroundWindow = nint.Zero;
     }
 
     private void CloseOverlaysWithoutRestore()
@@ -450,32 +475,35 @@ public class OverlayManager
         }
     }
 
-    private void RestoreOriginatingForegroundWindow()
+    private bool RestoreOriginatingForegroundWindow()
     {
         nint target = _originatingForegroundWindow;
-        _originatingForegroundWindow = nint.Zero;
-
         if (target == nint.Zero)
         {
-            return;
+            FileLogger.LogWarning("No originating foreground window is available to restore.");
+            return false;
         }
 
         nint foregroundBeforeRestore = _windowFocusService.GetForegroundWindow();
-        bool restored = _windowFocusService.TryRestoreForegroundWindow(target);
+        bool restored = foregroundBeforeRestore == target
+            || _windowFocusService.TryRestoreForegroundWindow(target);
         nint foregroundAfterRestore = _windowFocusService.GetForegroundWindow();
+        bool succeeded = restored && foregroundAfterRestore == target;
         FileLogger.LogInfo(
-            $"Foreground restore result={restored} (target={FormatWindowHandle(target)}, " +
+            $"Foreground restore result={succeeded} (target={FormatWindowHandle(target)}, " +
             $"before={FormatWindowHandle(foregroundBeforeRestore)}, after={FormatWindowHandle(foregroundAfterRestore)}).");
 
-        if (restored)
+        if (succeeded)
         {
-            FileLogger.LogInfo("Restored the foreground window that was active before selection.");
+            FileLogger.LogInfo("The foreground window that was active before selection is active.");
         }
         else
         {
             FileLogger.LogWarning(
                 "Could not restore the foreground window that was active before selection; it may no longer be available.");
         }
+
+        return succeeded;
     }
 
     private static string FormatWindowHandle(nint window) => $"0x{window.ToInt64():X}";

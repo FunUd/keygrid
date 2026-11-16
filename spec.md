@@ -209,6 +209,7 @@ Backspace undoes one Stage 1 keystroke. In Stage 2 it removes the Stage 1 row ke
 - 各モニターに1つのオーバーレイウィンドウを表示する。
 - 画面全体を覆い、最前面に表示する。背景は半透明とする。
 - キーボード入力を受け取るのは主オーバーレイ1つのみとする。主オーバーレイはプライマリモニター上に配置する。
+- すべてのオーバーレイを表示した後、主オーバーレイがフォーカスを取得する。取得できない場合は選択を破棄してオーバーレイを閉じる。
 - 主オーバーレイ以外は表示専用とし、マウス入力を遮断する。キーボード入力は受け取らない。
 - 主オーバーレイへのフォーカス取得は、Phase 1で確認する（15章）。
 
@@ -264,6 +265,7 @@ Backspace undoes one Stage 1 keystroke. In Stage 2 it removes the Stage 1 row ke
 - Do not restore the pointer to its original position after the click.
 - Do not restore the pre-selection window after the click; this can undo target activation before it processes the click. If dispatch fails, leave the pre-selection window active.
 - Before sending the click, restore the window that was foreground before selection after hiding the overlays. This prevents a different window activated during teardown from receiving the click.
+- Verify that the pre-selection window is foreground before dispatching. If it cannot be restored, do not send the click and report the failure. If input dispatch fails, retry restoring the pre-selection window.
 - Transient races with physical mouse input are acceptable in the initial version.
 
 ---

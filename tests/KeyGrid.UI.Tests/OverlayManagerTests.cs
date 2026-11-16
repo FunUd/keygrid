@@ -32,6 +32,8 @@ public class OverlayManagerTests
                 Assert.Equal(1, window.ShowCount);
                 Assert.Equal(1, window.RenderUpdateCount);
             });
+            Assert.Equal(1, factory.Windows[1].TryReactivateCount);
+            Assert.Equal(0, factory.Windows[0].TryReactivateCount);
             UiTestThread.DrainDispatcher();
 
             Assert.All(factory.Windows, window =>
@@ -44,6 +46,28 @@ public class OverlayManagerTests
             manager.CloseOverlays();
             Assert.False(manager.IsActive);
             Assert.All(factory.Windows, window => Assert.Equal(1, window.CloseCount));
+        });
+    }
+
+    [Fact]
+    public void ShowOverlays_WhenPrimaryCannotAcquireFocus_ClosesOverlays()
+    {
+        UiTestThread.Run(() =>
+        {
+            var factory = new FakeOverlayFactory { TryReactivateResult = false };
+            var focus = new FakeWindowFocusService { ForegroundWindow = new nint(71) };
+            var manager = CreateManager(SingleMonitorProvider(), factory, focus, new FakeClickSender());
+            string? error = null;
+            manager.ErrorOccurred += message => error = message;
+
+            manager.ShowOverlays();
+
+            var primary = Assert.Single(factory.Windows);
+            Assert.Equal(1, primary.TryReactivateCount);
+            Assert.Equal(1, primary.CloseCount);
+            Assert.False(manager.IsActive);
+            Assert.Equal(SelectionState.Standby, manager.SelectionManager.State);
+            Assert.Equal("Failed to focus the selection overlay.", error);
         });
     }
 
@@ -80,7 +104,7 @@ public class OverlayManagerTests
             var focus = new FakeWindowFocusService { ForegroundWindow = new nint(71) };
             var clickSender = new FakeClickSender();
             clickSender.WasOriginatingForegroundRestored = () =>
-                focus.LastRestoredWindow == new nint(71);
+                focus.ForegroundWindow == new nint(71);
             clickSender.AreAllOverlaysClosed = () =>
                 factory.Windows.Count > 0 && factory.Windows.All(window => window.CloseCount > 0);
             var manager = CreateManager(monitorProvider, factory, focus, clickSender);
@@ -113,7 +137,7 @@ public class OverlayManagerTests
             Assert.NotNull(clickSender.LastTarget);
             Assert.Null(error);
             Assert.True(clickSender.OriginatingForegroundWasRestoredBeforeSend);
-            Assert.Equal(new nint(71), focus.LastRestoredWindow);
+            Assert.Equal(new nint(71), focus.ForegroundWindow);
         });
     }
 
@@ -127,7 +151,7 @@ public class OverlayManagerTests
             var focus = new FakeWindowFocusService { ForegroundWindow = new nint(71) };
             var clickSender = new FakeClickSender { ReturnResult = false };
             clickSender.WasOriginatingForegroundRestored = () =>
-                focus.LastRestoredWindow == new nint(71);
+                focus.ForegroundWindow == new nint(71);
             var manager = CreateManager(monitorProvider, factory, focus, clickSender);
             manager.ShowOverlays();
             UiTestThread.DrainDispatcher();
@@ -142,8 +166,39 @@ public class OverlayManagerTests
             Assert.False(manager.IsActive);
             Assert.Equal(SelectionState.Standby, manager.SelectionManager.State);
             Assert.True(clickSender.OriginatingForegroundWasRestoredBeforeSend);
-            Assert.Equal(new nint(71), focus.LastRestoredWindow);
+            Assert.Equal(new nint(71), focus.ForegroundWindow);
             Assert.Contains("Failed to dispatch click", error);
+        });
+    }
+
+    [Fact]
+    public void PrimarySurface_WhenOriginatingWindowCannotBeRestored_DoesNotSendClick()
+    {
+        UiTestThread.Run(() =>
+        {
+            var focus = new FakeWindowFocusService
+            {
+                ForegroundWindow = new nint(71),
+                RestoreResult = false
+            };
+            var factory = new FakeOverlayFactory();
+            var clickSender = new FakeClickSender();
+            var manager = CreateManager(SingleMonitorProvider(), factory, focus, clickSender);
+            manager.ShowOverlays();
+            UiTestThread.DrainDispatcher();
+            var primary = Assert.Single(factory.Windows);
+            string? error = null;
+            manager.ErrorOccurred += message => error = message;
+
+            primary.RaiseKey(manager.SelectionManager.ColumnKeys[0]);
+            primary.RaiseKey(manager.SelectionManager.RowKeys[0]);
+            focus.ForegroundWindow = new nint(99);
+            primary.RaiseConfirm(ClickKind.Left);
+
+            Assert.False(manager.IsActive);
+            Assert.False(clickSender.Called);
+            Assert.Equal(new nint(99), focus.ForegroundWindow);
+            Assert.Contains("The click was not sent", error);
         });
     }
 
@@ -154,10 +209,11 @@ public class OverlayManagerTests
         {
             var monitorProvider = SingleMonitorProvider();
             var factory = new FakeOverlayFactory();
+            var focus = new FakeWindowFocusService { ForegroundWindow = new nint(71) };
             var clickSender = new FakeClickSender();
             clickSender.AreAllOverlaysClosed = () =>
                 factory.Windows.Count > 0 && factory.Windows.All(window => window.CloseCount > 0);
-            var manager = CreateManager(monitorProvider, factory, new FakeWindowFocusService(), clickSender);
+            var manager = CreateManager(monitorProvider, factory, focus, clickSender);
             manager.ShowOverlays();
             UiTestThread.DrainDispatcher();
             var primary = Assert.Single(factory.Windows);
@@ -280,7 +336,7 @@ public class OverlayManagerTests
             Assert.True(manager.IsActive);
             Assert.Equal(SelectionState.Selecting, manager.SelectionManager.State);
             Assert.Single(manager.SelectionManager.History);
-            Assert.Equal(1, primary.TryReactivateCount);
+            Assert.Equal(2, primary.TryReactivateCount);
             Assert.Equal(0, primary.CloseCount);
 
             manager.CloseOverlays();
@@ -370,10 +426,12 @@ public class OverlayManagerTests
     private sealed class FakeOverlayFactory
     {
         public List<FakeOverlayWindowSurface> Windows { get; } = new();
+        public bool TryReactivateResult { get; set; } = true;
 
         public IOverlayWindowSurface Create(PixelRect rect, bool isPrimary, double dpiScale)
         {
             var window = new FakeOverlayWindowSurface(rect, isPrimary, dpiScale);
+            window.TryReactivateResult = TryReactivateResult;
             Windows.Add(window);
             return window;
         }
@@ -399,7 +457,7 @@ public class OverlayManagerTests
         public int RenderUpdateCount { get; private set; }
         public int RefreshExpectedDpiCount { get; private set; }
         public bool DpiNotificationsEnabled { get; private set; }
-        public bool TryReactivateResult { get; set; } = true;
+        public bool TryReactivateResult { get; set; }
         public int TryReactivateCount { get; private set; }
 
         public bool TryReactivate()
@@ -443,6 +501,7 @@ public class OverlayManagerTests
         public nint ForegroundWindow { get; set; }
         public uint ForegroundProcessId { get; set; }
         public bool ForegroundIsVisible { get; set; }
+        public bool RestoreResult { get; set; } = true;
         public int GetForegroundWindowCalls { get; private set; }
         public nint LastProcessWindow { get; private set; }
         public nint LastRestoredWindow { get; private set; }
@@ -464,7 +523,12 @@ public class OverlayManagerTests
         public bool TryRestoreForegroundWindow(nint window)
         {
             LastRestoredWindow = window;
-            return true;
+            if (RestoreResult)
+            {
+                ForegroundWindow = window;
+            }
+
+            return RestoreResult;
         }
     }
 
