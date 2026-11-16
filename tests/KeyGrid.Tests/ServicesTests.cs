@@ -11,14 +11,16 @@ public class ServicesTests
     {
         public PixelPoint? LastTarget { get; private set; }
         public PixelRect? LastVirtualScreen { get; private set; }
+        public ClickKind? LastClickKind { get; private set; }
         public bool ReturnResult { get; set; } = true;
         public List<string> Calls { get; } = new();
 
-        public bool SendLeftClick(PixelPoint target, PixelRect virtualScreen)
+        public bool SendClick(PixelPoint target, PixelRect virtualScreen, ClickKind clickKind)
         {
             Calls.Add("send");
             LastTarget = target;
             LastVirtualScreen = virtualScreen;
+            LastClickKind = clickKind;
             return ReturnResult;
         }
     }
@@ -36,6 +38,7 @@ public class ServicesTests
         bool result = executor.ExecuteClick(
             target,
             screen,
+            ClickKind.Right,
             hideOverlaysAction: () => overlayHidden = true,
             waitAfterHideAction: null);
 
@@ -43,6 +46,7 @@ public class ServicesTests
         Assert.True(overlayHidden);
         Assert.Equal(target, fakeSender.LastTarget);
         Assert.Equal(screen, fakeSender.LastVirtualScreen);
+        Assert.Equal(ClickKind.Right, fakeSender.LastClickKind);
     }
 
     [Fact]
@@ -55,6 +59,7 @@ public class ServicesTests
         bool result = executor.ExecuteClick(
             new PixelPoint(500, 400),
             new PixelRect(0, 0, 1920, 1080),
+            ClickKind.Left,
             hideOverlaysAction: () => calls.Add("hide"),
             waitAfterHideAction: () => calls.Add("wait"));
 
@@ -71,6 +76,7 @@ public class ServicesTests
         bool result = executor.ExecuteClick(
             new PixelPoint(100, 100),
             new PixelRect(0, 0, 1920, 1080),
+            ClickKind.Left,
             hideOverlaysAction: () => { },
             waitAfterHideAction: null);
 
@@ -86,6 +92,7 @@ public class ServicesTests
         Assert.Throws<InvalidOperationException>(() => executor.ExecuteClick(
             new PixelPoint(100, 100),
             new PixelRect(0, 0, 1920, 1080),
+            ClickKind.Left,
             hideOverlaysAction: () => { },
             waitAfterHideAction: () => throw new InvalidOperationException("Render wait failed.")));
 

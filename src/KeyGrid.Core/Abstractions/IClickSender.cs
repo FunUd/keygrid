@@ -2,11 +2,18 @@ using KeyGrid.Core.Geometry;
 
 namespace KeyGrid.Core.Abstractions;
 
+public enum ClickKind
+{
+    Left,
+    Right
+}
+
 public interface IClickSender
 {
     /// <summary>
-    /// Sends a mouse move and left click (down + up) at the specified physical pixel target
+    /// Sends a mouse move and click (down + up) at the specified physical pixel target
     /// relative to the given virtual screen bounding box. Returns true if SendInput succeeded.
     /// </summary>
-    bool SendLeftClick(PixelPoint target, PixelRect virtualScreen);
+    /// <param name="clickKind">Mouse button to send.</param>
+    bool SendClick(PixelPoint target, PixelRect virtualScreen, ClickKind clickKind);
 }

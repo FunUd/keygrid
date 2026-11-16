@@ -1,3 +1,4 @@
+using KeyGrid.Core.Abstractions;
 using KeyGrid.Core.Geometry;
 using KeyGrid.Core.Selection;
 
@@ -7,7 +8,7 @@ public interface IOverlayWindowSurface
 {
     event Action<char>? KeyPressed;
     event Action<int, int>? MoveRequested;
-    event Action? EnterPressed;
+    event Action<ClickKind>? ConfirmRequested;
     event Action? BackspacePressed;
     event Action? CancelRequested;
     event Action? FocusLost;

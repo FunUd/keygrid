@@ -22,12 +22,14 @@ public class ClickExecutor
     /// </summary>
     /// <param name="target">Target physical pixel coordinate.</param>
     /// <param name="virtualScreen">Virtual screen bounding box.</param>
+    /// <param name="clickKind">Mouse button to send.</param>
     /// <param name="hideOverlaysAction">Action to hide all overlays.</param>
     /// <param name="waitAfterHideAction">Optional action to wait for visual render cycle before sending input.</param>
     /// <returns>True if SendInput succeeded; false otherwise.</returns>
     public bool ExecuteClick(
         PixelPoint target,
         PixelRect virtualScreen,
+        ClickKind clickKind,
         Action hideOverlaysAction,
         Action? waitAfterHideAction = null)
     {
@@ -38,7 +40,7 @@ public class ClickExecutor
         waitAfterHideAction?.Invoke();
 
         // 3. Dispatch click
-        bool success = _clickSender.SendLeftClick(target, virtualScreen);
+        bool success = _clickSender.SendClick(target, virtualScreen, clickKind);
         return success;
     }
 }

@@ -1,6 +1,6 @@
-# KeyGrid 仕様書 v1.7（矢印キー操作実験）
+# KeyGrid Specification v1.8
 
-**Version:** 1.6
+**Version:** 1.8
 **対象OS:** Windows 11（x64）
 **アプリケーション名:** KeyGrid
 **実装言語:** C#
@@ -37,9 +37,9 @@
 
 ## 1. 目的
 
-KeyGridは、マウスを使わずキーボードだけで、通常の画面操作で届く位置を左クリックする常駐型ツールである。
+KeyGrid is a resident utility for left- and right-clicking accessible screen locations using only the keyboard.
 
-画面全体に列・行ラベルを表示し、第1段階で列キーと行キーを1回ずつ押して領域を絞り込む。第2段階では5×5グリッド上の選択カーソルを矢印キーで動かし、Enterでクリックする。
+It displays column and row labels across the virtual screen. The user narrows the target area with one column key and one row key, then moves a cursor through a 5×5 grid with the arrow keys. `Enter` performs a left click; `Shift+Enter` performs a right click.
 
 ### 基本方針
 
@@ -88,10 +88,10 @@ KeyGridは、マウスを使わずキーボードだけで、通常の画面操�
 2. 第1段階の有効セルに列キー＋行キーの2文字ラベルを表示する。
 3. 列キー、行キーの順で入力し、第1段階の領域を選択する。
 4. 第2段階では選択領域を5×5に分割し、有効セルのうち中央に最も近いセルを初期カーソル位置として赤く表示する。
-5. 矢印キーでカーソルを移動し、Enterで確定座標を算出して左クリックする。モニター間の空白など無効セルは飛び越す。
+5. Move the cursor with the arrow keys. Use `Enter` to left-click or `Shift+Enter` to right-click the resolved coordinate. Invalid cells, including gaps between monitors, are skipped.
 6. オーバーレイを終了し、通常状態に戻る。
 
-第1段階が完了した直後にEnterを押した場合は、初期位置の中央に最も近い有効な第2段階セルをクリックする。
+Immediately after Stage 1, either confirmation key uses the initially selected valid Stage 2 cell nearest the center.
 
 ### 3.3 選択キー
 
@@ -107,30 +107,32 @@ KeyGridは、マウスを使わずキーボードだけで、通常の画面操�
 - 列が右ブロックを借用していない場合、行数Rが11以下なら行には右ブロックの先頭R個を使う。Rが11を超える場合は右ブロックの11個すべてと、列が使っていない左ブロックのキーを左ブロック順に使う。
 - 列が右ブロックを借用している場合、行には右ブロックの残りを元の順で使う。
 - C + R ≤ 26を満たすため、必要なキーは必ず確保できる。列と行のキー集合は重複しない。
-- キー割当は第1段階だけに使用する。第2段階は矢印キーとEnterを使用する。
+- Key allocation is used only in Stage 1. Stage 2 uses arrow keys, `Enter`, and `Shift+Enter`.
 - 例：1920×1080では第1段階は16×10。列・行キーは上記のブロックから重複なく割り当てる。
 - キーの並びは画面上の位置と対応しない。その代わり、列ラベルと行ラベルを画面に表示して、押すキーを示す。
 - ブロックはQWERTY/JIS配列の物理的な段を前提とする。AZERTYなど文字配置が異なる配列では、ラベルの文字と物理キー位置が一致しない場合がある。
-- 第1段階では割り当てられていないキーを無視する。第2段階では矢印キーとEnterのみを操作に使い、文字キーなどは無視する。
+- Unassigned keys are ignored in Stage 1. In Stage 2, only the arrow keys and the supported confirmation keys are used; other keys are ignored.
 
 ### 3.4 確定と終了条件
 
-- 第2段階では矢印キーで選択カーソルを移動し、Enterでそのセルを確定して左クリックする。
-- 第1段階が終わった後であれば、Enterで選択領域の基準点をクリックできる。
-- 第1段階が終わる前（打鍵履歴が0〜1個のとき）、Enterは無効とする。
+- In Stage 2, arrow keys move the cursor. `Enter` confirms the cell with a left click; `Shift+Enter` confirms it with a right click.
+- After Stage 1 is complete, either confirmation key can click the selection region's reference point.
+- Before Stage 1 is complete (keystroke history length 0 or 1), both confirmation keys are ignored.
+- `Enter` is accepted only with no modifiers. `Shift+Enter` is accepted with Shift alone; combinations with Ctrl, Alt, or the Windows key are ignored.
 - 段階数は2回で固定する。第2段階のカーソル移動回数に上限は設けない。
 
 ### 3.5 キー操作
 
-| キー | 動作 |
+| Key | Action |
 |---|---|
-| 列・行のキー | 第1段階で列・行を順に選択する |
-| 矢印キー | 第2段階のカーソルを有効セル間で移動する |
-| Enter | 第2段階でカーソル位置を確定する。第1段階完了直後は初期カーソル位置を確定する |
-| Backspace | 第1段階の最後のキーを1つ取り消す。矢印移動は取り消し履歴に含めない |
-| Esc | 選択を破棄して終了 |
+| Column / row keys | Select a Stage 1 column and row in order |
+| Arrow keys | Move the Stage 2 cursor between valid cells |
+| `Enter` | Confirm with a left click; accepted without modifiers |
+| `Shift+Enter` | Confirm with a right click; accepted with Shift alone |
+| `Backspace` | Undo the last Stage 1 key. Arrow movement is not part of the undo history |
+| `Esc` | Discard the selection and exit |
 
-Backspaceは第1段階の打鍵履歴を1つ戻す。第2段階では第1段階の行キーを取り消して第1段階へ戻る。矢印移動は履歴に記録しない。
+Backspace undoes one Stage 1 keystroke. In Stage 2 it removes the Stage 1 row key and returns to Stage 1. Arrow movement is not recorded in the history.
 
 ---
 
@@ -252,15 +254,15 @@ Backspaceは第1段階の打鍵履歴を1つ戻す。第2段階では第1段階�
 
 ### 6.3 最終クリック
 
-1. 第2段階のEnter、または第1段階後のEnterで確定座標を決める（4.4）。
-2. 全オーバーレイを非表示にし、非表示の反映が完了するまで待つ（Dispatcherで描画処理の完了を待つ）。
-3. 確定座標を仮想画面基準の絶対座標に変換する（12.1）。
-4. SendInputで、移動と左ボタンの押下・解放を送信する。
-5. SendInputの戻り値が送信件数と一致しない場合は失敗とし、トレイ通知で知らせる（UIPIによる遮断を含む）。
-6. 選択モードを終了し、待機状態に戻る。
+1. `Enter` or `Shift+Enter` in Stage 2, or after Stage 1, resolves the target coordinate (Section 4.4) and click kind.
+2. Hide all overlays and wait for the hide to complete (wait for the Dispatcher render cycle).
+3. Convert the target coordinate to an absolute virtual-screen coordinate (Section 12.1).
+4. Use `SendInput` to move the pointer and send the selected mouse button down and up.
+5. If the `SendInput` return count does not match the requested count, report failure through a tray notification, including UIPI blocking.
+6. End selection mode and return to standby.
 
-- クリック後のカーソルは元の位置に戻さない（初期バージョン）。
-- 物理マウス入力との瞬間的な競合は、初期バージョンでは許容する。
+- Do not restore the pointer to its original position after the click.
+- Transient races with physical mouse input are acceptable in the initial version.
 
 ---
 
@@ -305,10 +307,11 @@ Backspaceは第1段階の打鍵履歴を1つ戻す。第2段階では第1段階�
 | 選択中 | 無効な列・行キー | 変化なし | 無視 |
 | 選択中（履歴2個） | 有効セルへの矢印移動 | 選択中 | 次の有効セルへ選択カーソルを移動。空白領域のセルは飛び越す |
 | 選択中（履歴2個） | 境界・無効セル方向への矢印移動 | 変化なし | 無視 |
-| 選択中（履歴2個） | Enter | クリック実行中 | カーソルのセルで確定 |
+| Selecting (history length 2) | `Enter` | Executing click | Confirm the cursor cell with a left click |
+| Selecting (history length 2) | `Shift+Enter` | Executing click | Confirm the cursor cell with a right click |
 | 選択中（履歴2個） | Backspace | 選択中（履歴1個） | 第1段階へ戻り、領域を再計算 |
 | 選択中（履歴0・1個） | Backspace | 選択中 | 履歴の末尾を取り消す。履歴が空なら変更なし |
-| 選択中（履歴0・1個） | Enter | 変化なし | 無視 |
+| Selecting (history length 0 or 1) | `Enter` or `Shift+Enter` | No change | Ignore |
 | 選択中 | Esc | 待機 | 選択を破棄し、オーバーレイを終了 |
 | 選択中 | ホットキー | 選択中（履歴0個） | 現在の選択を破棄し、オーバーレイを再表示してフォーカスを取得 |
 | クリック実行中 | ホットキー | 変化なし | 無視 |
@@ -351,11 +354,11 @@ Backspaceは第1段階の打鍵履歴を1つ戻す。第2段階では第1段階�
 | 段階数 | 2（固定） |
 | 列数・行数 | 第1段階は画面寸法から自動算出、第2段階は固定5×5（4.1） |
 | 選択キー | 3.3の割り当て規則に従い、列キーと行キーを重複なく割り当てる（最大26キー） |
-| 確定キー | Enter（第2段階カーソル、または第1段階選択領域を確定） |
+| Confirmation keys | `Enter` for left click; `Shift+Enter` for right click |
 | カーソル移動 | 第2段階で矢印キー。有効セルを順に移動 |
 | 戻るキー | Backspace（第1段階の打鍵履歴を戻す） |
 | キャンセルキー | Esc |
-| クリック種別 | 左クリック |
+| Click kinds | Left click and right click |
 | 確定後の動作 | オーバーレイ終了。カーソルは元の位置に戻さない |
 
 将来、以下の機能を追加できる構造とする。
@@ -364,7 +367,7 @@ Backspaceは第1段階の打鍵履歴を1つ戻す。第2段階では第1段階�
 - 段階数の変更（3段階にして精度を上げる）
 - 選択キー配置の変更（ホームポジション寄りの配置など）
 - 第2段階グリッドサイズの変更
-- 右クリック・ダブルクリック
+- Double-click
 - ドラッグ操作
 - スクロール操作
 - 連続モード
@@ -465,8 +468,8 @@ Visual Studio Codeをメインのエディタとして使用する。使用す�
 - SelectionManagerは、開始時にKeyLayout.Allocateで列キー・行キーを決定し、セッション中は同じ割り当てを使う。列キーは行キーとして受け付けず、その逆も同様とする。
 - SelectionManagerは、第1段階の選択領域を第2段階の5×5グリッドへ進め、矢印移動では有効セルをスキップする。
 - GridCalculatorは、幅・高さと固定の第2段階分割数を使って第1段階の最適分割数を計算し、Win32には依存しない。
-- OverlayManagerはSelectionManagerの状態（選択領域・履歴）を表示し、確定時にはClickExecutorへクリックを依頼する。
-- ClickExecutorは確定座標を受け取り、IClickSender経由で送信する。
+- OverlayManager displays SelectionManager state (the selected region and history) and asks ClickExecutor to send the selected click kind on confirmation.
+- ClickExecutor receives the target coordinate and click kind, then dispatches them through IClickSender.
 - HotkeyManagerは操作をApplicationへ通知する。
 
 画面表示、選択ロジック（純粋計算と状態遷移）、Windows API連携を分離する。
@@ -475,7 +478,7 @@ Visual Studio Codeをメインのエディタとして使用する。使用す�
 
 - **IMonitorProvider**：モニター情報の取得（GetMonitors）、構成変更の通知（Changed）
 - **MonitorInfo**：モニターの物理表示領域、実効DPI倍率、プライマリ判定を保持する
-- **IClickSender**：指定した仮想画面座標での左クリック送信（SendLeftClick。成否を返す）
+- **IClickSender**: Sends a left or right click at a specified virtual-screen coordinate and returns whether dispatch succeeded.
 - **IHotkeyRegistrar**：ホットキーの登録・解除（Register、Unregister）
 - **PixelRect**：物理ピクセルの矩形。[左, 右) × [上, 下) の半開区間とする
 - **KeyLayout / KeyAllocation**：左ブロックと右ブロックから重複しない列キー・行キーを割り当て、キーから列・行の番号に変換する
@@ -525,6 +528,8 @@ Win32に依存しない部分を対象とする。
 - QWERTY/JIS配列での列・行キーの押しやすさと、AZERTYなど異なる配列での既知の制約
 - ホットキー競合
 - Esc・Backspace・Enter
+- Shift+Enter right-click selection and rejection of other modifier combinations
+- Left- and right-button SendInput down/up sequences and partial-send failure handling
 - フォーカス喪失（可視アプリへの切り替え、IME/TSFの非表示ウィンドウへの一時的な移動）
 - 選択中のモニター抜き差し、DPI変更
 - スリープ復帰、RDP接続
@@ -565,7 +570,7 @@ Win32に依存しない部分を対象とする。
 - 第1段階の列・行ラベルと、第2段階の赤い選択カーソル表示
 - 第1段階の2打鍵による領域選択、第2段階の矢印キー移動
 - 第1段階の打鍵履歴とBackspaceによる取り消し
-- Enterによる確定（第2段階カーソル、または第1段階領域）
+- Enter and Shift+Enter confirmation (Stage 2 cursor or Stage 1 region)
 - Escによるキャンセル
 - 最終クリック（6.3の手順）
 

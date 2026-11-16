@@ -1,5 +1,11 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+
+- Add keyboard-triggered right-click support with `Shift+Enter`.
+
 ## [0.0.1]
 
 ### Added

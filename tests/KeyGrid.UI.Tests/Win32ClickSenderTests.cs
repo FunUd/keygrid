@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using KeyGrid.Core.Abstractions;
 using KeyGrid.Core.Calculation;
 using KeyGrid.Core.Geometry;
 using KeyGrid.Interop;
@@ -7,8 +8,13 @@ namespace KeyGrid.UI.Tests;
 
 public class Win32ClickSenderTests
 {
-    [Fact]
-    public void SendLeftClick_EmitsVirtualDesktopMoveDownAndUpAtNormalizedPoint()
+    [Theory]
+    [InlineData(ClickKind.Left, NativeMethods.MOUSEEVENTF_LEFTDOWN, NativeMethods.MOUSEEVENTF_LEFTUP)]
+    [InlineData(ClickKind.Right, NativeMethods.MOUSEEVENTF_RIGHTDOWN, NativeMethods.MOUSEEVENTF_RIGHTUP)]
+    public void SendClick_EmitsVirtualDesktopMoveDownAndUpAtNormalizedPoint(
+        ClickKind clickKind,
+        uint buttonDownFlag,
+        uint buttonUpFlag)
     {
         UiTestThread.Run(() =>
         {
@@ -24,9 +30,10 @@ public class Win32ClickSenderTests
             });
             var virtualScreen = new PixelRect(-1920, -200, 3840, 2160);
 
-            bool succeeded = sender.SendLeftClick(
+            bool succeeded = sender.SendClick(
                 new PixelPoint(1919, 1959),
-                virtualScreen);
+                virtualScreen,
+                clickKind);
 
             Assert.True(succeeded);
             Assert.Equal(3u, capturedCount);
@@ -40,8 +47,8 @@ public class Win32ClickSenderTests
                 new[]
                 {
                     commonFlags | NativeMethods.MOUSEEVENTF_MOVE,
-                    commonFlags | NativeMethods.MOUSEEVENTF_LEFTDOWN,
-                    commonFlags | NativeMethods.MOUSEEVENTF_LEFTUP
+                    commonFlags | buttonDownFlag,
+                    commonFlags | buttonUpFlag
                 },
                 capturedInputs.Select(input => input.mi.dwFlags));
             Assert.All(capturedInputs, input =>
@@ -54,7 +61,7 @@ public class Win32ClickSenderTests
     }
 
     [Fact]
-    public void SendLeftClick_PartialSendInputResultReturnsFalse()
+    public void SendClick_PartialSendInputResultReturnsFalse()
     {
         UiTestThread.Run(() =>
         {
@@ -65,9 +72,10 @@ public class Win32ClickSenderTests
                 return count - 1;
             });
 
-            bool succeeded = sender.SendLeftClick(
+            bool succeeded = sender.SendClick(
                 new PixelPoint(0, 0),
-                new PixelRect(0, 0, 1920, 1080));
+                new PixelRect(0, 0, 1920, 1080),
+                ClickKind.Left);
 
             Assert.False(succeeded);
             Assert.Equal(3u, requestedCount);
@@ -75,7 +83,7 @@ public class Win32ClickSenderTests
     }
 
     [Fact]
-    public void SendLeftClick_EmptyVirtualScreenDoesNotCallNativeSender()
+    public void SendClick_EmptyVirtualScreenDoesNotCallNativeSender()
     {
         UiTestThread.Run(() =>
         {
@@ -87,7 +95,7 @@ public class Win32ClickSenderTests
             });
 
             Assert.Throws<ArgumentException>(() =>
-                sender.SendLeftClick(new PixelPoint(0, 0), PixelRect.Empty));
+                sender.SendClick(new PixelPoint(0, 0), PixelRect.Empty, ClickKind.Left));
             Assert.False(called);
         });
     }

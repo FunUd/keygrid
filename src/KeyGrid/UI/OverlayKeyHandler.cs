@@ -1,4 +1,5 @@
 using System.Windows.Input;
+using KeyGrid.Core.Abstractions;
 
 namespace KeyGrid.UI;
 
@@ -8,7 +9,7 @@ internal sealed class OverlayKeyHandler
 
     public event Action<char>? KeyPressed;
     public event Action<int, int>? MoveRequested;
-    public event Action? EnterPressed;
+    public event Action<ClickKind>? ConfirmRequested;
     public event Action? BackspacePressed;
     public event Action? CancelRequested;
 
@@ -17,7 +18,7 @@ internal sealed class OverlayKeyHandler
         _isPrimary = isPrimary;
     }
 
-    public bool HandleKeyDown(Key key, bool isRepeat)
+    public bool HandleKeyDown(Key key, ModifierKeys modifiers, bool isRepeat)
     {
         if (!_isPrimary)
         {
@@ -38,7 +39,14 @@ internal sealed class OverlayKeyHandler
                 BackspacePressed?.Invoke();
                 return true;
             case Key.Enter:
-                EnterPressed?.Invoke();
+                if (modifiers == ModifierKeys.None)
+                {
+                    ConfirmRequested?.Invoke(ClickKind.Left);
+                }
+                else if (modifiers == ModifierKeys.Shift)
+                {
+                    ConfirmRequested?.Invoke(ClickKind.Right);
+                }
                 return true;
             case Key.Left:
                 MoveRequested?.Invoke(-1, 0);

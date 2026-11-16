@@ -1,4 +1,5 @@
 using System.Windows.Input;
+using KeyGrid.Core.Abstractions;
 using KeyGrid.UI;
 
 namespace KeyGrid.UI.Tests;
@@ -14,21 +15,32 @@ public class OverlayKeyHandlerTests
             var events = new List<string>();
             handler.KeyPressed += key => events.Add($"key:{key}");
             handler.MoveRequested += (column, row) => events.Add($"move:{column},{row}");
-            handler.EnterPressed += () => events.Add("enter");
+            handler.ConfirmRequested += clickKind => events.Add($"confirm:{clickKind}");
             handler.BackspacePressed += () => events.Add("backspace");
             handler.CancelRequested += () => events.Add("cancel");
 
-            Assert.True(handler.HandleKeyDown(Key.Q, isRepeat: false));
-            Assert.True(handler.HandleKeyDown(Key.Right, isRepeat: false));
-            Assert.True(handler.HandleKeyDown(Key.Left, isRepeat: false));
-            Assert.True(handler.HandleKeyDown(Key.Down, isRepeat: false));
-            Assert.True(handler.HandleKeyDown(Key.Up, isRepeat: false));
-            Assert.True(handler.HandleKeyDown(Key.Enter, isRepeat: false));
-            Assert.True(handler.HandleKeyDown(Key.Back, isRepeat: false));
-            Assert.True(handler.HandleKeyDown(Key.Escape, isRepeat: false));
+            Assert.True(handler.HandleKeyDown(Key.Q, ModifierKeys.None, isRepeat: false));
+            Assert.True(handler.HandleKeyDown(Key.Right, ModifierKeys.None, isRepeat: false));
+            Assert.True(handler.HandleKeyDown(Key.Left, ModifierKeys.None, isRepeat: false));
+            Assert.True(handler.HandleKeyDown(Key.Down, ModifierKeys.None, isRepeat: false));
+            Assert.True(handler.HandleKeyDown(Key.Up, ModifierKeys.None, isRepeat: false));
+            Assert.True(handler.HandleKeyDown(Key.Enter, ModifierKeys.None, isRepeat: false));
+            Assert.True(handler.HandleKeyDown(Key.Enter, ModifierKeys.Shift, isRepeat: false));
+            foreach (var modifiers in new[]
+            {
+                ModifierKeys.Control,
+                ModifierKeys.Alt,
+                ModifierKeys.Windows,
+                ModifierKeys.Shift | ModifierKeys.Control
+            })
+            {
+                Assert.True(handler.HandleKeyDown(Key.Enter, modifiers, isRepeat: false));
+            }
+            Assert.True(handler.HandleKeyDown(Key.Back, ModifierKeys.None, isRepeat: false));
+            Assert.True(handler.HandleKeyDown(Key.Escape, ModifierKeys.None, isRepeat: false));
 
             Assert.Equal(
-                new[] { "key:Q", "move:1,0", "move:-1,0", "move:0,1", "move:0,-1", "enter", "backspace", "cancel" },
+                new[] { "key:Q", "move:1,0", "move:-1,0", "move:0,1", "move:0,-1", "confirm:Left", "confirm:Right", "backspace", "cancel" },
                 events);
         });
     }
@@ -41,10 +53,11 @@ public class OverlayKeyHandlerTests
             var handler = new OverlayKeyHandler(isPrimary: true);
             int dispatchCount = 0;
             handler.KeyPressed += _ => dispatchCount++;
-            handler.EnterPressed += () => dispatchCount++;
+            handler.ConfirmRequested += _ => dispatchCount++;
 
-            Assert.True(handler.HandleKeyDown(Key.Q, isRepeat: true));
-            Assert.True(handler.HandleKeyDown(Key.F1, isRepeat: false));
+            Assert.True(handler.HandleKeyDown(Key.Q, ModifierKeys.None, isRepeat: true));
+            Assert.True(handler.HandleKeyDown(Key.Enter, ModifierKeys.Shift, isRepeat: true));
+            Assert.True(handler.HandleKeyDown(Key.F1, ModifierKeys.None, isRepeat: false));
 
             Assert.Equal(0, dispatchCount);
         });
@@ -59,8 +72,8 @@ public class OverlayKeyHandlerTests
             int dispatchCount = 0;
             handler.KeyPressed += _ => dispatchCount++;
 
-            Assert.False(handler.HandleKeyDown(Key.Q, isRepeat: false));
-            Assert.False(handler.HandleKeyDown(Key.Q, isRepeat: true));
+            Assert.False(handler.HandleKeyDown(Key.Q, ModifierKeys.None, isRepeat: false));
+            Assert.False(handler.HandleKeyDown(Key.Q, ModifierKeys.None, isRepeat: true));
 
             Assert.Equal(0, dispatchCount);
         });

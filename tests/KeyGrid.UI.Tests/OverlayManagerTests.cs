@@ -100,17 +100,46 @@ public class OverlayManagerTests
             primary.RaiseMove(1, 0);
             Assert.Equal(afterColumnUpdateCount + 2, primary.RenderUpdateCount);
 
-            primary.RaiseEnter();
+            primary.RaiseConfirm(ClickKind.Left);
 
             Assert.False(manager.IsActive);
             Assert.Equal(SelectionState.Standby, manager.SelectionManager.State);
             Assert.Equal(1, primary.CloseCount);
             Assert.True(clickSender.Called);
+            Assert.Equal(ClickKind.Left, clickSender.LastClickKind);
             Assert.True(clickSender.OverlaysWereClosedBeforeSend);
             Assert.Equal(new PixelRect(0, 0, 1920, 1080), clickSender.LastVirtualScreen);
             Assert.NotNull(clickSender.LastTarget);
             Assert.Null(error);
             Assert.Equal(new nint(71), focus.LastRestoredWindow);
+        });
+    }
+
+    [Fact]
+    public void PrimarySurfaceConfirmWithShiftEnterDispatchesRightClick()
+    {
+        UiTestThread.Run(() =>
+        {
+            var monitorProvider = SingleMonitorProvider();
+            var factory = new FakeOverlayFactory();
+            var clickSender = new FakeClickSender();
+            clickSender.AreAllOverlaysClosed = () =>
+                factory.Windows.Count > 0 && factory.Windows.All(window => window.CloseCount > 0);
+            var manager = CreateManager(monitorProvider, factory, new FakeWindowFocusService(), clickSender);
+            manager.ShowOverlays();
+            UiTestThread.DrainDispatcher();
+            var primary = Assert.Single(factory.Windows);
+
+            primary.RaiseKey(manager.SelectionManager.ColumnKeys[0]);
+            primary.RaiseKey(manager.SelectionManager.RowKeys[0]);
+            primary.RaiseConfirm(ClickKind.Right);
+
+            Assert.False(manager.IsActive);
+            Assert.Equal(SelectionState.Standby, manager.SelectionManager.State);
+            Assert.True(clickSender.Called);
+            Assert.Equal(ClickKind.Right, clickSender.LastClickKind);
+            Assert.True(clickSender.OverlaysWereClosedBeforeSend);
+            Assert.NotNull(clickSender.LastTarget);
         });
     }
 
@@ -324,7 +353,7 @@ public class OverlayManagerTests
     {
         public event Action<char>? KeyPressed;
         public event Action<int, int>? MoveRequested;
-        public event Action? EnterPressed;
+        public event Action<ClickKind>? ConfirmRequested;
         public event Action? BackspacePressed;
         public event Action? CancelRequested;
         public event Action? FocusLost;
@@ -365,7 +394,7 @@ public class OverlayManagerTests
 
         public void RaiseMove(int columnDelta, int rowDelta) => MoveRequested?.Invoke(columnDelta, rowDelta);
 
-        public void RaiseEnter() => EnterPressed?.Invoke();
+        public void RaiseConfirm(ClickKind clickKind) => ConfirmRequested?.Invoke(clickKind);
 
         public void RaiseBackspace() => BackspacePressed?.Invoke();
 
@@ -413,12 +442,14 @@ public class OverlayManagerTests
         public Func<bool>? AreAllOverlaysClosed { get; set; }
         public PixelPoint? LastTarget { get; private set; }
         public PixelRect? LastVirtualScreen { get; private set; }
+        public ClickKind? LastClickKind { get; private set; }
 
-        public bool SendLeftClick(PixelPoint target, PixelRect virtualScreen)
+        public bool SendClick(PixelPoint target, PixelRect virtualScreen, ClickKind clickKind)
         {
             Called = true;
             LastTarget = target;
             LastVirtualScreen = virtualScreen;
+            LastClickKind = clickKind;
             OverlaysWereClosedBeforeSend = AreAllOverlaysClosed?.Invoke() ?? false;
             return true;
         }

@@ -6,7 +6,7 @@ using KeyGrid.Core.Geometry;
 namespace KeyGrid.Interop;
 
 /// <summary>
-/// Dispatches left click events using Win32 SendInput with MOUSEEVENTF_VIRTUALDESK.
+/// Dispatches left or right click events using Win32 SendInput with MOUSEEVENTF_VIRTUALDESK.
 /// </summary>
 public class Win32ClickSender : IClickSender
 {
@@ -23,11 +23,17 @@ public class Win32ClickSender : IClickSender
         _sendInput = sendInput;
     }
 
-    public bool SendLeftClick(PixelPoint target, PixelRect virtualScreen)
+    public bool SendClick(PixelPoint target, PixelRect virtualScreen, ClickKind clickKind)
     {
+        var (buttonDownFlag, buttonUpFlag) = clickKind switch
+        {
+            ClickKind.Left => (NativeMethods.MOUSEEVENTF_LEFTDOWN, NativeMethods.MOUSEEVENTF_LEFTUP),
+            ClickKind.Right => (NativeMethods.MOUSEEVENTF_RIGHTDOWN, NativeMethods.MOUSEEVENTF_RIGHTUP),
+            _ => throw new ArgumentOutOfRangeException(nameof(clickKind), clickKind, "Unsupported click kind.")
+        };
         var (normX, normY) = CoordinateConverter.ToNormalizedVirtualDesktop(target, virtualScreen);
 
-        // Sequence: Move -> LeftDown -> LeftUp
+        // Sequence: Move -> ButtonDown -> ButtonUp
         var inputs = new NativeMethods.INPUT[3];
 
         // 1. Move to absolute normalized position on virtual desktop
@@ -43,15 +49,15 @@ public class Win32ClickSender : IClickSender
         inputs[1].mi.dx = normX;
         inputs[1].mi.dy = normY;
         inputs[1].mi.dwFlags = NativeMethods.MOUSEEVENTF_ABSOLUTE |
-                               NativeMethods.MOUSEEVENTF_LEFTDOWN |
+                               buttonDownFlag |
                                NativeMethods.MOUSEEVENTF_VIRTUALDESK;
 
-        // 3. Left button up
+        // 3. Button up
         inputs[2].type = NativeMethods.INPUT_MOUSE;
         inputs[2].mi.dx = normX;
         inputs[2].mi.dy = normY;
         inputs[2].mi.dwFlags = NativeMethods.MOUSEEVENTF_ABSOLUTE |
-                               NativeMethods.MOUSEEVENTF_LEFTUP |
+                               buttonUpFlag |
                                NativeMethods.MOUSEEVENTF_VIRTUALDESK;
 
         uint sent = _sendInput((uint)inputs.Length, inputs, Marshal.SizeOf<NativeMethods.INPUT>());

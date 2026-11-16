@@ -2,6 +2,7 @@ using System.Windows;
 using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
+using KeyGrid.Core.Abstractions;
 using KeyGrid.Core.Geometry;
 using KeyGrid.Core.Selection;
 using KeyGrid.Interop;
@@ -15,7 +16,7 @@ public partial class OverlayWindow : Window, IOverlayWindowSurface
 
     public event Action<char>? KeyPressed;
     public event Action<int, int>? MoveRequested;
-    public event Action? EnterPressed;
+    public event Action<ClickKind>? ConfirmRequested;
     public event Action? BackspacePressed;
     public event Action? CancelRequested;
     public event Action? FocusLost;
@@ -37,7 +38,7 @@ public partial class OverlayWindow : Window, IOverlayWindowSurface
         _keyHandler = new OverlayKeyHandler(isPrimary);
         _keyHandler.KeyPressed += key => KeyPressed?.Invoke(key);
         _keyHandler.MoveRequested += (columnDelta, rowDelta) => MoveRequested?.Invoke(columnDelta, rowDelta);
-        _keyHandler.EnterPressed += () => EnterPressed?.Invoke();
+        _keyHandler.ConfirmRequested += clickKind => ConfirmRequested?.Invoke(clickKind);
         _keyHandler.BackspacePressed += () => BackspacePressed?.Invoke();
         _keyHandler.CancelRequested += () => CancelRequested?.Invoke();
 
@@ -109,7 +110,7 @@ public partial class OverlayWindow : Window, IOverlayWindowSurface
     protected override void OnKeyDown(KeyEventArgs e)
     {
         base.OnKeyDown(e);
-        e.Handled = _keyHandler.HandleKeyDown(e.Key, e.IsRepeat);
+        e.Handled = _keyHandler.HandleKeyDown(e.Key, Keyboard.Modifiers, e.IsRepeat);
     }
 
     protected override void OnMouseDown(MouseButtonEventArgs e)

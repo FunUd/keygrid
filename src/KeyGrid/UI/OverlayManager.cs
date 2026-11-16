@@ -122,7 +122,7 @@ public class OverlayManager
                 _primaryOverlay = overlay;
                 overlay.KeyPressed += OnKeyPressed;
                 overlay.MoveRequested += OnMoveRequested;
-                overlay.EnterPressed += OnEnterPressed;
+                overlay.ConfirmRequested += OnConfirmRequested;
                 overlay.BackspacePressed += OnBackspacePressed;
                 overlay.CancelRequested += OnCancelRequested;
                 overlay.FocusLost += () => OnFocusLost(generation);
@@ -171,11 +171,11 @@ public class OverlayManager
         }
     }
 
-    private void OnEnterPressed()
+    private void OnConfirmRequested(ClickKind clickKind)
     {
         if (_selectionManager.ProcessEnter())
         {
-            ExecuteConfirmedClick();
+            ExecuteConfirmedClick(clickKind);
         }
     }
 
@@ -309,7 +309,7 @@ public class OverlayManager
         }
     }
 
-    private void ExecuteConfirmedClick()
+    private void ExecuteConfirmedClick(ClickKind clickKind)
     {
         if (!_selectionManager.TargetCoordinate.HasValue)
         {
@@ -327,6 +327,7 @@ public class OverlayManager
             success = _clickExecutor.ExecuteClick(
                 target,
                 virtualScreen,
+                clickKind,
                 hideOverlaysAction: CloseOverlaysWithoutRestore,
                 waitAfterHideAction: () => Dispatcher.CurrentDispatcher.Invoke(() => { }, DispatcherPriority.Render));
         }
