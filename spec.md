@@ -1,6 +1,6 @@
-# KeyGrid Specification v1.9
+# KeyGrid Specification v1.10
 
-**Version:** 1.9
+**Version:** 1.10
 **対象OS:** Windows 11（x64）
 **アプリケーション名:** KeyGrid
 **実装言語:** C#
@@ -31,6 +31,7 @@
 | 基準点 | 外接矩形の中心（4.4の規則で有効座標に補正する） |
 | 確定座標 | 最終的にクリックする座標 |
 | 確定キー | `Enter`（左クリック）、`Shift+Enter`（右クリック）、`Ctrl+Enter`（中クリック）の総称 |
+| 連続モード | 確定後も選択を終了せず、第1段階から選択をやり直すモード。グリッド表示中にTabで切り替える |
 | 主オーバーレイ | キーボード入力を受け取るオーバーレイウィンドウ（1つ） |
 | 表示専用オーバーレイ | 主オーバーレイ以外。マウス入力を遮断し、描画のみ行う |
 
@@ -90,7 +91,7 @@ It displays column and row labels across the virtual screen. The user narrows th
 3. 列キー、行キーの順で入力し、第1段階の領域を選択する。
 4. 第2段階では選択領域を5×5に分割し、有効セルのうち中央に最も近いセルを初期カーソル位置として赤く表示する。
 5. Move the cursor with the arrow keys. Use `Enter` to left-click, `Shift+Enter` to right-click, or `Ctrl+Enter` to middle-click the resolved coordinate. Invalid cells, including gaps between monitors, are skipped.
-6. オーバーレイを終了し、通常状態に戻る。
+6. 通常モードではオーバーレイを終了し、通常状態に戻る。連続モードではクリック送信後にオーバーレイを再表示し、第1段階（打鍵履歴0個）から選択をやり直す。
 
 Immediately after Stage 1, any confirmation key uses the initially selected valid Stage 2 cell nearest the center.
 
@@ -122,6 +123,10 @@ Immediately after Stage 1, any confirmation key uses the initially selected vali
 - `Enter` is accepted only with no modifiers. `Shift+Enter` is accepted with Shift alone; `Ctrl+Enter` is accepted with Ctrl alone. Combinations with other modifiers, including Ctrl+Shift, Alt, or the Windows key, are ignored.
 - The click kind is captured when `Enter` is pressed. Releasing the modifier before `Enter` does not change the selected click kind; this lets the user release the modifier before the click is dispatched.
 - 段階数は2回で固定する。第2段階のカーソル移動回数に上限は設けない。
+- 連続モードでは、確定キーによるクリック後も選択を終了せず、第1段階から再開する。1回の選択は通常モードと同じ2段階で、連続モードはその繰り返しである。
+- 連続モードはグリッド表示中にTabでON/OFFする。初期状態はOFFとし、ホットキーによる新規開始時はOFFに戻る。
+- 連続モードでもEscは選択を破棄して終了する。
+- 連続モードでクリックを送信できなかった場合も第1段階から再開し、エラーを通知する。
 
 ### 3.5 キー操作
 
@@ -133,7 +138,8 @@ Immediately after Stage 1, any confirmation key uses the initially selected vali
 | `Shift+Enter` | Confirm with a right click; accepted with Shift alone |
 | `Ctrl+Enter` | Confirm with a middle (wheel) click; accepted with Ctrl alone |
 | `Backspace` | Undo the last Stage 1 key. Arrow movement is not part of the undo history |
-| `Esc` | Discard the selection and exit |
+| `Tab` | Toggle continuous mode while the grid is visible. Only an unmodified Tab press is accepted |
+| `Esc` | Discard the selection and exit, including continuous mode |
 
 Backspace undoes one Stage 1 keystroke. In Stage 2 it removes the Stage 1 row key and returns to Stage 1. Arrow movement is not recorded in the history.
 
@@ -225,17 +231,20 @@ Backspace undoes one Stage 1 keystroke. In Stage 2 it removes the Stage 1 row ke
 - 選択領域の外側は暗くし、選択領域を明るく表示する。外接矩形の枠線も表示する。
 - グリッド線は細く、視認性を損なわない色にする。
 - 第2段階で確定キーを押すと、選択カーソルのセルを確定し、`Enter`は左、`Shift+Enter`は右、`Ctrl+Enter`は中（ホイール）クリックする。
+- 連続モードがONの間は、プライマリモニターのオーバーレイに「連続モード」と表示する。表示は簡易的なテキストバッジとし、選択操作を妨げない。
 - 色・透明度は初期バージョンでは固定値とする。背景色に応じた自動色変更は行わない。
 
 ### 5.3 表示終了
 
 以下の場合にオーバーレイを終了する。
 
-- クリックの確定または完了
-- Escによるキャンセル
+- 通常モードでのクリックの確定または完了
+- Escによるキャンセル（連続モードを含む）
 - オーバーレイがフォーカスを失い、可視の他アプリケーションへ移った場合
 - モニター構成またはDPIの変更
 - アプリケーションの異常終了
+
+連続モードでは、クリック送信のために一時的にオーバーレイを非表示にした後、第1段階のグリッドを再表示して選択を継続する。再表示に失敗した場合は選択を破棄して待機する。
 
 フォーカスが自プロセスのウィンドウ、または非表示のヘルパーウィンドウ（IME/TSFのMSCTFIME UIなど）へ移った場合は、ユーザー操作による切り替えとみなさない。この場合は選択状態を破棄せず、主オーバーレイのフォーカスを再取得する。可視の他アプリケーションへフォーカスが移った場合は、フォーカスを奪い返さず、選択状態を破棄して終了する。
 
@@ -267,8 +276,9 @@ Backspace undoes one Stage 1 keystroke. In Stage 2 it removes the Stage 1 row ke
 5. Convert the target coordinate to an absolute virtual-screen coordinate (Section 12.1).
 6. Use `SendInput` to move the pointer and send the selected mouse button down and up.
 7. If the `SendInput` return count does not match the requested count, report failure through a tray notification, including UIPI blocking.
-8. End selection mode and return to standby.
+8. 通常モードでは選択モードを終了して待機に戻る。連続モードではクリック入力の処理を待ってからオーバーレイを再表示し、第1段階から選択を再開する。
 
+- 連続モードでは、クリック送信後に主オーバーレイがフォーカスを取得し直す。Escで終了した場合は、直前にクリックしたウィンドウへフォーカスを戻す。
 - Do not restore the pointer to its original position after the click.
 - Do not restore the pre-selection window before dispatch. The pre-selection window can cover the selected coordinate after it is raised and receive the click instead of the window under the target.
 - Do not restore the pre-selection window after a successful click; this can undo target activation before it processes the click. If the click is not sent or dispatch fails, restore the pre-selection window.
@@ -285,6 +295,7 @@ Backspace undoes one Stage 1 keystroke. In Stage 2 it removes the Stage 1 row ke
 - 表示中は主オーバーレイのIMEを無効化し（ImmAssociateContext(hwnd, IntPtr.Zero)）、表示終了時に元の状態に戻す。
 - キーの判定は文字ではなくキーコードで行う。第1段階の列・行キーは3.3の対応表で番号に変換し、第2段階は矢印キーと確定キーで操作する。IMEが処理したキーは元のキーコードで判定する。
 - キーリピート（IsRepeat）による入力は無視する。
+- Tabは修飾キーなしの場合のみ連続モードの切り替えに使う。キーリピートは無視する。修飾キー付きのTabは連続モードを切り替えない。
 
 ### 7.2 ホットキー
 
@@ -302,9 +313,10 @@ Backspace undoes one Stage 1 keystroke. In Stage 2 it removes the Stage 1 row ke
 
 - **待機**：オーバーレイなし。ホットキーを待つ。
 - **選択中**：オーバーレイ表示中。第1段階の打鍵履歴（0〜2個）と、第2段階の選択カーソルを持つ。
+- **連続モード**：選択中のセッション単位のフラグ。ONの間は確定後も待機に戻らず、第1段階から選択を再開する。Esc、ホットキーによる再開始、フォーカス喪失、モニター変更でOFFに戻る。
 - **クリック実行中**：第2段階または第1段階後の確定キーで確定座標を決めた後。オーバーレイ非表示からクリック送信までの間。
 
-第1段階では履歴0個のとき列キー、履歴1個のとき行キーを受け付ける。Backspace時は履歴から選択領域を再計算する。第2段階の矢印移動は打鍵履歴に含めない。
+第1段階では履歴0個のとき列キー、履歴1個のとき行キーを受け付ける。Backspace時は履歴から選択領域を再計算する。第2段階の矢印移動は打鍵履歴に含めない。連続モードの切り替えは打鍵履歴と選択カーソルを変更しない。
 
 ### 8.2 遷移表
 
@@ -315,6 +327,7 @@ Backspace undoes one Stage 1 keystroke. In Stage 2 it removes the Stage 1 row ke
 | 選択中（履歴0個） | 有効な列キー | 選択中（履歴1個） | 列を履歴に追加し、列をハイライト |
 | 選択中（履歴1個） | 有効な行キー | 選択中（履歴2個） | 行を履歴に追加し、選択領域を第2段階の5×5グリッドへ進める |
 | 選択中 | 無効な列・行キー | 変化なし | 無視 |
+| 選択中 | Tab（修飾なし） | 選択中 | 連続モードを切り替える。履歴と選択カーソルは維持 |
 | 選択中（履歴2個） | 有効セルへの矢印移動 | 選択中 | 次の有効セルへ選択カーソルを移動。空白領域のセルは飛び越す |
 | 選択中（履歴2個） | 境界・無効セル方向への矢印移動 | 変化なし | 無視 |
 | Selecting (history length 2) | `Enter` | Executing click | Confirm the cursor cell with a left click |
@@ -323,15 +336,19 @@ Backspace undoes one Stage 1 keystroke. In Stage 2 it removes the Stage 1 row ke
 | 選択中（履歴2個） | Backspace | 選択中（履歴1個） | 第1段階へ戻り、領域を再計算 |
 | 選択中（履歴0・1個） | Backspace | 選択中 | 履歴の末尾を取り消す。履歴が空なら変更なし |
 | Selecting (history length 0 or 1) | Any confirmation key | No change | Ignore |
-| 選択中 | Esc | 待機 | 選択を破棄し、オーバーレイを終了 |
-| 選択中 | ホットキー | 選択中（履歴0個） | 現在の選択を破棄し、オーバーレイを再表示してフォーカスを取得 |
+| 選択中 | Esc | 待機 | 選択を破棄し、連続モードをOFFにしてオーバーレイを終了 |
+| 選択中 | ホットキー | 選択中（履歴0個） | 現在の選択を破棄し、連続モードをOFFにしてオーバーレイを再表示してフォーカスを取得 |
 | クリック実行中 | ホットキー | 変化なし | 無視 |
-| 選択中 | フォーカス喪失（可視の他プロセス） | 待機 | フォーカスを奪い返さず、選択を破棄してオーバーレイを終了 |
+| 選択中 | フォーカス喪失（可視の他プロセス） | 待機 | フォーカスを奪い返さず、選択を破棄し、連続モードをOFFにしてオーバーレイを終了 |
 | 選択中 | フォーカス喪失（自プロセスまたは非表示ウィンドウ） | 選択中 | 主オーバーレイのフォーカスを再取得。再取得に失敗した場合は選択を破棄して待機 |
-| 選択中 | モニター構成変更、DPI変更 | 待機 | 選択を破棄し、オーバーレイを終了 |
-| クリック実行中 | SendInput成功 | 待機 | 通常状態に戻る |
-| クリック実行中 | SendInput失敗 | 待機 | トレイ通知 |
+| 選択中 | モニター構成変更、DPI変更 | 待機 | 選択を破棄し、連続モードをOFFにしてオーバーレイを終了 |
+| クリック実行中 | SendInput成功（通常モード） | 待機 | 通常状態に戻る |
+| クリック実行中 | SendInput成功（連続モード） | 選択中（履歴0個） | 第1段階のオーバーレイを再表示し、連続モードを維持 |
+| クリック実行中 | SendInput失敗（通常モード） | 待機 | トレイ通知 |
+| クリック実行中 | SendInput失敗（連続モード） | 選択中（履歴0個） | トレイ通知し、第1段階のオーバーレイを再表示 |
 | クリック実行中 | 入力・構成変更のイベント | クリック実行中 | 無視 |
+
+連続モードがONの場合、確定キーによるクリック実行中からは、クリック完了後に待機ではなく選択中（履歴0個）へ戻る。
 
 ### 8.3 異常時の後始末
 
@@ -368,9 +385,10 @@ Backspace undoes one Stage 1 keystroke. In Stage 2 it removes the Stage 1 row ke
 | Confirmation keys | `Enter` for left click; `Shift+Enter` for right click; `Ctrl+Enter` for middle (wheel) click |
 | カーソル移動 | 第2段階で矢印キー。有効セルを順に移動 |
 | 戻るキー | Backspace（第1段階の打鍵履歴を戻す） |
-| キャンセルキー | Esc |
+| キャンセルキー | Esc（連続モードでも終了） |
+| 連続モード | 初期値OFF。グリッド表示中にTabでON/OFF。ONの間は確定後も第1段階へ戻る |
 | Click kinds | Left, right, and middle (wheel) clicks |
-| 確定後の動作 | オーバーレイ終了。カーソルは元の位置に戻さない |
+| 確定後の動作 | 通常モードはオーバーレイ終了。連続モードは第1段階へ戻る。カーソルは元の位置に戻さない |
 
 将来、以下の機能を追加できる構造とする。
 
@@ -381,7 +399,6 @@ Backspace undoes one Stage 1 keystroke. In Stage 2 it removes the Stage 1 row ke
 - Double-click
 - ドラッグ操作
 - スクロール操作
-- 連続モード
 - 表示デザインの変更
 
 ---
@@ -464,7 +481,7 @@ Visual Studio Codeをメインのエディタとして使用する。使用す�
 |---|---|---|
 | Application | 起動・終了管理、多重起動防止、異常時の後始末 | 各マネージャ |
 | HotkeyManager | ホットキーの登録・解除、登録失敗の通知 | IHotkeyRegistrar |
-| OverlayManager | 列・行ラベルとカーソルの描画、ハイライト、キー入力の受け取り | SelectionManager、IMonitorProvider |
+| OverlayManager | 列・行ラベルとカーソルの描画、ハイライト、キー入力の受け取り、連続モードの管理 | SelectionManager、IMonitorProvider |
 | SelectionManager | 第1段階の打鍵履歴、矢印カーソルの状態、状態遷移（8章）、履歴からの領域再計算 | GridCalculator、KeyLayout |
 | GridCalculator | 第1段階の分割数最適化、境界計算、セル・有効セル、基準点と確定座標の計算 | なし（純粋計算、Win32非依存） |
 | KeyLayout | 列・行キーのブロック割り当てと、キーから列・行の番号への対応 | なし（純粋計算） |
@@ -480,6 +497,7 @@ Visual Studio Codeをメインのエディタとして使用する。使用す�
 - SelectionManagerは、第1段階の選択領域を第2段階の5×5グリッドへ進め、矢印移動では有効セルをスキップする。
 - GridCalculatorは、幅・高さと固定の第2段階分割数を使って第1段階の最適分割数を計算し、Win32には依存しない。
 - OverlayManager displays SelectionManager state (the selected region and history) and asks ClickExecutor to send the selected click kind on confirmation.
+- OverlayManagerは連続モードをセッション単位で保持する。連続モードの確定後はSelectionManagerをリセットし、オーバーレイを再表示して第1段階から再開する。
 - ClickExecutor receives the target coordinate and click kind, then dispatches them through IClickSender.
 - HotkeyManagerは操作をApplicationへ通知する。
 
@@ -518,6 +536,11 @@ Win32に依存しない部分を対象とする。
 - 第1段階の前の確定キーが無効、第1段階の後の確定キーで途中確定できること
 - 第2段階で矢印キーを押すと、有効セル間でカーソルが移動し、無効セルは飛び越すこと
 - 第2段階の `Enter` / `Shift+Enter` / `Ctrl+Enter` でカーソル位置が確定され、それぞれ左・右・中クリックのクリック実行状態へ移ること
+- Tabで連続モードが切り替わり、修飾キー付き・リピートのTabが無視されること
+- 連続モードの確定後にクリックが送信され、第1段階へ戻ること
+- 連続モードをOFFに戻した場合、確定後に待機へ戻ること
+- 連続モードのEsc、ホットキー再開始、フォーカス喪失、モニター変更でモードが解除されること
+- 連続モードでクリック失敗時も第1段階へ戻ること
 - フォーカス喪失の判定：可視の他プロセスなら破棄、自プロセスまたは非表示ウィンドウなら再取得、連続再取得の上限
 - 基準点（中心）の算出（偶数幅・奇数幅・1px）
 - 空白領域の基準点から最近点を求める処理、同距離の場合の優先規則（y優先、次にx）
@@ -549,6 +572,10 @@ Win32に依存しない部分を対象とする。
 - 列・行ラベルの視認性（モニター境界付近を含む）
 - 1920×1080・4Kの第1段階での選択しやすさ、および第2段階カーソルの操作性
 - クリック後の通常状態への復帰
+- 連続モードのTab切り替えと「連続モード」表示
+- 連続モードで左・右・中クリックを繰り返し、毎回第1段階へ戻ること
+- 連続モードのEsc、ホットキー再開始、フォーカス喪失、モニター変更
+- 連続モードのクリック失敗時の再表示と通知
 - 分割数と第2段階後のセル寸法の実測（4.1の表と比較）
 - クリック精度：クリック座標を記録する検証用ウィンドウを使い、確定座標と実際のクリック位置を自動比較する
 
@@ -616,6 +643,9 @@ Win32に依存しない部分を対象とする。
 - 第2段階の選択セルを確定キーで正しくクリックできる（左・右・中）。
 - 第1段階の後であれば、確定キーで選択領域を確定してクリックできる（左・右・中）。
 - Backspaceで第1段階の打鍵履歴を1つずつ取り消せる。
+- グリッド表示中にTabで連続モードをON/OFFできる。
+- 連続モードでは確定後に第1段階のグリッドが再表示され、続けてクリックできる。
+- 連続モードでもEscで正常に終了できる。
 - Escで正常にキャンセルできる。
 - モニター間の空白領域をクリックしない。
 - オーバーレイ表示中に物理マウス入力が背後のアプリに伝わらない。

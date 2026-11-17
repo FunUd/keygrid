@@ -14,6 +14,10 @@ namespace KeyGrid.UI;
 /// </summary>
 public class OverlayManager
 {
+    // SendInput queues the click asynchronously. Keep the overlays hidden briefly
+    // so a re-shown topmost overlay cannot receive the button-up event.
+    private const int ContinuousModeClickSettleMilliseconds = 50;
+
     private readonly IMonitorProvider _monitorProvider;
     private readonly SelectionManager _selectionManager;
     private readonly ClickExecutor _clickExecutor;
@@ -27,12 +31,19 @@ public class OverlayManager
     private int _isClosing;
     private int? _focusLossPendingGeneration;
     private bool _isDisplayChangePending = false;
+    private bool _continuousMode;
     private int _selectionGeneration;
     private int _confirmationAttempt;
 
     public event Action<string>? ErrorOccurred;
 
     public bool IsActive => _overlays.Count > 0;
+
+    /// <summary>
+    /// Whether a successful confirmation keeps the selection session alive.
+    /// The flag belongs to the current overlay session and is reset on exit.
+    /// </summary>
+    internal bool IsContinuousMode => _continuousMode;
 
     private bool IsClosing => Volatile.Read(ref _isClosing) != 0;
 
@@ -67,6 +78,13 @@ public class OverlayManager
 
     public void ShowOverlays()
     {
+        // A hotkey start or explicit restart always begins in normal mode.
+        _continuousMode = false;
+        ShowOverlaysCore();
+    }
+
+    private void ShowOverlaysCore()
+    {
         if (!IsActive)
         {
             _originatingForegroundWindow = _windowFocusService.GetForegroundWindow();
@@ -86,6 +104,7 @@ public class OverlayManager
             .ToList();
         if (monitors.Count == 0)
         {
+            _continuousMode = false;
             ErrorOccurred?.Invoke("No active displays found.");
             RestoreOriginatingForegroundWindow();
             _originatingForegroundWindow = nint.Zero;
@@ -103,6 +122,7 @@ public class OverlayManager
         _activeMonitorRects = monitorRects;
         if (!_selectionManager.StartSelection(monitorRects))
         {
+            _continuousMode = false;
             ErrorOccurred?.Invoke("Failed to initialize selection area.");
             RestoreOriginatingForegroundWindow();
             _originatingForegroundWindow = nint.Zero;
@@ -111,8 +131,9 @@ public class OverlayManager
 
         FileLogger.LogInfo(
             $"Selection started on {monitors.Count} monitor(s) with " +
-            $"Stage 1 grid {_selectionManager.ColumnCount}x{_selectionManager.RowCount} and " +
-            $"Stage 2 grid {SelectionManager.Stage2ColumnCount}x{SelectionManager.Stage2RowCount}.");
+            $"Stage 1 grid {_selectionManager.ColumnCount}x{_selectionManager.RowCount}, " +
+            $"Stage 2 grid {SelectionManager.Stage2ColumnCount}x{SelectionManager.Stage2RowCount}, " +
+            $"continuousMode={_continuousMode}.");
 
         for (int i = 0; i < monitors.Count; i++)
         {
@@ -129,17 +150,19 @@ public class OverlayManager
                 overlay.ConfirmRequested += OnConfirmRequested;
                 overlay.BackspacePressed += OnBackspacePressed;
                 overlay.CancelRequested += OnCancelRequested;
+                overlay.ContinuousModeToggleRequested += OnContinuousModeToggleRequested;
                 overlay.FocusLost += () => OnFocusLost(generation);
             }
 
             _overlays.Add(overlay);
             overlay.Show();
-            overlay.UpdateRenderState(_selectionManager, _activeMonitorRects);
+            overlay.UpdateRenderState(_selectionManager, _activeMonitorRects, _continuousMode);
         }
 
         if (_primaryOverlay == null || !_primaryOverlay.TryReactivate())
         {
             FileLogger.LogWarning("Could not focus the primary overlay after showing all overlays.");
+            _continuousMode = false;
             _selectionManager.Cancel();
             CloseOverlaysWithoutRestore();
             RestoreOriginatingForegroundWindow();
@@ -196,6 +219,22 @@ public class OverlayManager
         {
             UpdateAllOverlays();
         }
+    }
+
+    private void OnContinuousModeToggleRequested()
+    {
+        if (IsClosing
+            || !IsActive
+            || _selectionManager.State != SelectionState.Selecting)
+        {
+            return;
+        }
+
+        _continuousMode = !_continuousMode;
+        FileLogger.LogInfo(
+            $"Continuous mode {(_continuousMode ? "enabled" : "disabled")} " +
+            $"(stage={_selectionManager.CurrentStage}, historyLength={_selectionManager.History.Count}).");
+        UpdateAllOverlays();
     }
 
     private void OnConfirmRequested(ClickKind clickKind)
@@ -320,6 +359,7 @@ public class OverlayManager
 
             FileLogger.LogInfo(
                 $"Focus loss cancelled selection (foreground PID {foregroundPid}, visible={foregroundIsVisible}).");
+            _continuousMode = false;
             _selectionManager.Cancel();
             if (action == FocusLossAction.CancelSelection)
             {
@@ -431,7 +471,7 @@ public class OverlayManager
     {
         foreach (var overlay in _overlays)
         {
-            overlay.UpdateRenderState(_selectionManager, _activeMonitorRects);
+            overlay.UpdateRenderState(_selectionManager, _activeMonitorRects, _continuousMode);
         }
     }
 
@@ -440,11 +480,13 @@ public class OverlayManager
         if (!_selectionManager.TargetCoordinate.HasValue)
         {
             FileLogger.LogWarning($"Confirmation #{attempt} was accepted without a target coordinate.");
+            _continuousMode = false;
             CloseOverlays();
             _selectionManager.CompleteClick();
             return;
         }
 
+        bool continueSelection = _continuousMode;
         var target = _selectionManager.TargetCoordinate.Value;
         var virtualScreen = _selectionManager.VirtualScreenBoundingBox;
 
@@ -507,6 +549,7 @@ public class OverlayManager
         {
             FileLogger.LogWarning(
                 $"Click attempt #{attempt} threw before completing; restoring originating foreground window.");
+            _continuousMode = false;
             RestoreOriginatingForegroundWindow();
             _originatingForegroundWindow = nint.Zero;
             throw;
@@ -529,7 +572,23 @@ public class OverlayManager
         }
 
         _selectionManager.CompleteClick();
-        FileLogger.LogInfo($"Click attempt #{attempt} completed; selection returned to standby.");
+        if (continueSelection)
+        {
+            // Rebuild the overlay session from Stage 1. The click target remains
+            // the foreground window until the new primary overlay reclaims focus.
+            FileLogger.LogInfo(
+                $"Click attempt #{attempt} completed in continuous mode; reopening Stage 1.");
+            Thread.Sleep(ContinuousModeClickSettleMilliseconds);
+            ShowOverlaysCore();
+            if (!IsActive)
+            {
+                _continuousMode = false;
+            }
+        }
+        else
+        {
+            FileLogger.LogInfo($"Click attempt #{attempt} completed; selection returned to standby.");
+        }
 
         if (!clickTargetReady)
         {
@@ -544,6 +603,7 @@ public class OverlayManager
 
     public void CloseOverlays()
     {
+        _continuousMode = false;
         CloseOverlaysWithoutRestore();
         RestoreOriginatingForegroundWindow();
         _originatingForegroundWindow = nint.Zero;

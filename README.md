@@ -11,6 +11,7 @@ KeyGrid is a lightweight, resident Windows 11 utility that enables mouse-free le
 - **Background Resident Utility**: Runs silently in the system tray with near-zero CPU and memory overhead while idle.
 - **IME & Repeat Protection**: Automatically suppresses IME during grid selection and ignores accidental key repeats.
 - **Safe Fallback**: Excludes gaps between disjoint monitors, snapping center reference points to the closest valid display pixel.
+- **Continuous Mode**: Press `Tab` while the grid is visible to keep it open after each click and return to Stage 1 for the next selection. Press `Tab` again for normal mode, or `Esc` to exit.
 - **Undo & Cancellation**: Step back through Stage 1 with `Backspace` or cancel immediately with `Esc`.
 
 ---
@@ -110,13 +111,15 @@ The blocks assume the physical rows of a QWERTY or JIS keyboard. On layouts such
 - **Confirm Without Moving**: Use `Enter`, `Shift+Enter`, or `Ctrl+Enter` as soon as Stage 2 appears to click its initially highlighted, center-most valid cell.
 - The same confirmation keys work immediately after the two Stage 1 keys. Other modifier combinations with `Enter` are ignored.
 - The click kind is captured when `Enter` is pressed. If the target should not see the modifier held during the click (for example `Ctrl`+middle-click), release the modifier before releasing `Enter`; the selected click kind does not change.
+- **Continuous Mode**: Press `Tab` while the grid is visible. After each click, the grid returns to Stage 1 for the next selection. A `連続モード` badge appears on the primary monitor while the mode is on. Press `Tab` again for normal mode, or `Esc` to exit.
 
 ### 4. Correcting and Cancelling
 
 | Key | Action |
 |---|---|
 | **`Backspace`** | Returns to the previous Stage 1 selection step and recalculates the active selection area. Arrow movement is not part of the undo history. |
-| **`Esc`** | Cancels the selection mode and returns to standby. |
+| **`Tab`** | Toggles continuous mode while the grid is visible. In continuous mode, each click returns to Stage 1 instead of exiting. |
+| **`Esc`** | Cancels the selection mode (including continuous mode) and returns to standby. |
 | **Focus Loss** | Switching to a visible application cancels selection. Transient focus loss to hidden Windows/IME helper windows is recovered automatically. |
 
 If the grid remains visible but no longer receives keyboard input, press **`Ctrl + Shift + Space`** again to restart the selection from the beginning and restore focus to the grid.
@@ -167,6 +170,7 @@ Logs are retained for 7 days and automatically cleaned up on application startup
 |---|---|
 | The hotkey does nothing | Another application may already own `Ctrl + Shift + Space`. The tray tooltip and context menu show whether hotkey registration failed. Close the conflicting application and restart KeyGrid. |
 | The overlay closes immediately | Focus moved to a visible application, which deliberately cancels selection. Transient focus changes to IME/TSF helper windows are recovered automatically. |
+| The grid returns after every click | Continuous mode is on. Press `Tab` while the grid is visible to return to normal mode, or `Esc` to exit. |
 | Column or row keys feel physically shifted | The key blocks assume QWERTY/JIS physical rows. On AZERTY and other remapped letter layouts, labels use characters rather than physical scan-code positions. |
 | The click is not delivered | The target may run at a higher integrity level (for example, elevated). Windows UIPI blocks synthetic input to such windows; run both applications at the same integrity level. |
 | A second launch exits immediately | KeyGrid is already running. Only one instance is allowed. |

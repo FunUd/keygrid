@@ -20,6 +20,7 @@ public partial class OverlayWindow : Window, IOverlayWindowSurface
     public event Action<ClickKind>? ConfirmRequested;
     public event Action? BackspacePressed;
     public event Action? CancelRequested;
+    public event Action? ContinuousModeToggleRequested;
     public event Action? FocusLost;
     public event Action? DisplayConfigurationChanged;
 
@@ -42,6 +43,7 @@ public partial class OverlayWindow : Window, IOverlayWindowSurface
         _keyHandler.ConfirmRequested += clickKind => ConfirmRequested?.Invoke(clickKind);
         _keyHandler.BackspacePressed += () => BackspacePressed?.Invoke();
         _keyHandler.CancelRequested += () => CancelRequested?.Invoke();
+        _keyHandler.ContinuousModeToggleRequested += () => ContinuousModeToggleRequested?.Invoke();
 
         Focusable = isPrimary;
         ShowActivated = isPrimary;
@@ -79,9 +81,17 @@ public partial class OverlayWindow : Window, IOverlayWindowSurface
         return focused;
     }
 
-    public void UpdateRenderState(SelectionManager selectionManager, IReadOnlyList<PixelRect> monitorRects)
+    public void UpdateRenderState(
+        SelectionManager selectionManager,
+        IReadOnlyList<PixelRect> monitorRects,
+        bool isContinuousMode)
     {
-        RenderElement.UpdateState(MonitorRect, monitorRects, selectionManager);
+        RenderElement.UpdateState(
+            MonitorRect,
+            monitorRects,
+            selectionManager,
+            IsPrimary,
+            isContinuousMode);
     }
 
     protected override void OnSourceInitialized(EventArgs e)
@@ -313,6 +323,7 @@ public partial class OverlayWindow : Window, IOverlayWindowSurface
             Key.Left or Key.Right or Key.Up or Key.Down => "Arrow",
             Key.Back => "Backspace",
             Key.Escape => "Escape",
+            Key.Tab => "Tab",
             _ => "Other"
         };
     }
@@ -330,6 +341,7 @@ public partial class OverlayWindow : Window, IOverlayWindowSurface
             0x25 or 0x26 or 0x27 or 0x28 => "Arrow",
             0x08 => "Backspace",
             0x1B => "Escape",
+            0x09 => "Tab",
             _ => "Other"
         };
     }

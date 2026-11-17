@@ -76,6 +76,29 @@ public class OverlayRenderElementTests
 
     }
 
+    [Fact]
+    public void ContinuousModeIndicator_IsDrawnOnlyOnThePrimaryOverlayWhenEnabled()
+    {
+        var selection = CreateSelection();
+
+        string primaryText = new(
+            RenderGlyphDetails(LeftMonitor, selection, isPrimary: true, isContinuousMode: true)
+                .Select(glyph => glyph.Character)
+                .ToArray());
+        string secondaryText = new(
+            RenderGlyphDetails(RightMonitor, selection, isPrimary: false, isContinuousMode: true)
+                .Select(glyph => glyph.Character)
+                .ToArray());
+        string normalText = new(
+            RenderGlyphDetails(LeftMonitor, selection, isPrimary: true, isContinuousMode: false)
+                .Select(glyph => glyph.Character)
+                .ToArray());
+
+        Assert.Contains("連続モード", primaryText);
+        Assert.DoesNotContain("連続モード", secondaryText);
+        Assert.DoesNotContain("連続モード", normalText);
+    }
+
     private static SelectionManager CreateSelection()
     {
         var selection = new SelectionManager();
@@ -99,13 +122,21 @@ public class OverlayRenderElementTests
             .ToArray();
     }
 
-    private static RenderedGlyph[] RenderGlyphDetails(PixelRect monitor, SelectionManager selection)
+    private static RenderedGlyph[] RenderGlyphDetails(
+        PixelRect monitor,
+        SelectionManager selection,
+        bool isPrimary = false,
+        bool isContinuousMode = false)
     {
-        DrawingGroup drawing = RenderDrawings(monitor, selection);
+        DrawingGroup drawing = RenderDrawings(monitor, selection, isPrimary, isContinuousMode);
         return GetGlyphs(drawing).ToArray();
     }
 
-    private static DrawingGroup RenderDrawings(PixelRect monitor, SelectionManager selection)
+    private static DrawingGroup RenderDrawings(
+        PixelRect monitor,
+        SelectionManager selection,
+        bool isPrimary = false,
+        bool isContinuousMode = false)
     {
         DrawingGroup? drawing = null;
         Exception? error = null;
@@ -114,7 +145,7 @@ public class OverlayRenderElementTests
             try
             {
                 var element = new TestOverlayRenderElement();
-                element.UpdateState(monitor, Monitors, selection);
+                element.UpdateState(monitor, Monitors, selection, isPrimary, isContinuousMode);
                 var result = new DrawingGroup();
                 using (var context = result.Open())
                 {

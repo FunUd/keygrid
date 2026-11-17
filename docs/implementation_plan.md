@@ -202,3 +202,10 @@ KeyGrid is designed around strict separation of concerns to maximize testability
 - [x] Full Checklist Verification against `spec.md` Section 16 (Completion Criteria).
 - [x] Release Publishing:
   - [x] Configure and verify release build (`dotnet publish -c Release -o .dist`).
+
+### Phase 6: Continuous Mode
+- [x] Keep the selection session alive after a click and restart from Stage 1.
+- [x] Toggle continuous mode with `Tab` and show a simple primary-monitor badge.
+- [x] Reset continuous mode on `Esc`, hotkey restart, focus loss, or display change.
+- [x] Reopen the grid after a failed click dispatch and report the error.
+- [x] Add key-handler, overlay-manager, and render tests for the new behavior.

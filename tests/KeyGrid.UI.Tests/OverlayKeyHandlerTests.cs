@@ -50,6 +50,25 @@ public class OverlayKeyHandlerTests
     }
 
     [Fact]
+    public void PrimaryOverlay_TabTogglesContinuousModeAndIgnoresModifiedOrRepeatedTabs()
+    {
+        UiTestThread.Run(() =>
+        {
+            var handler = new OverlayKeyHandler(isPrimary: true);
+            int toggleCount = 0;
+            handler.ContinuousModeToggleRequested += () => toggleCount++;
+
+            Assert.True(handler.HandleKeyDown(Key.Tab, ModifierKeys.None, isRepeat: false));
+            Assert.True(handler.HandleKeyDown(Key.Tab, ModifierKeys.None, isRepeat: true));
+            Assert.True(handler.HandleKeyDown(Key.Tab, ModifierKeys.Shift, isRepeat: false));
+            Assert.True(handler.HandleKeyDown(Key.Tab, ModifierKeys.Control, isRepeat: false));
+            Assert.False(handler.HandleKeyUp(Key.Tab, ModifierKeys.None));
+
+            Assert.Equal(1, toggleCount);
+        });
+    }
+
+    [Fact]
     public void PrimaryOverlay_ConsumesRepeatedAndUnmappedKeysWithoutDispatching()
     {
         UiTestThread.Run(() =>
@@ -97,9 +116,11 @@ public class OverlayKeyHandlerTests
             var handler = new OverlayKeyHandler(isPrimary: false);
             int dispatchCount = 0;
             handler.KeyPressed += _ => dispatchCount++;
+            handler.ContinuousModeToggleRequested += () => dispatchCount++;
 
             Assert.False(handler.HandleKeyDown(Key.Q, ModifierKeys.None, isRepeat: false));
             Assert.False(handler.HandleKeyDown(Key.Q, ModifierKeys.None, isRepeat: true));
+            Assert.False(handler.HandleKeyDown(Key.Tab, ModifierKeys.None, isRepeat: false));
             Assert.False(handler.HandleKeyUp(Key.Enter, ModifierKeys.None));
 
             Assert.Equal(0, dispatchCount);

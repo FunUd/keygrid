@@ -17,6 +17,8 @@ public class OverlayRenderElement : FrameworkElement
     private IReadOnlyList<PixelRect> _monitorRects = Array.Empty<PixelRect>();
     private SelectionManager? _selectionManager;
     private double _pixelsPerDip = 1.0;
+    private bool _isPrimary;
+    private bool _isContinuousMode;
 
     private readonly Brush _dimBrush = new SolidColorBrush(Color.FromArgb(145, 10, 15, 25));
     private readonly Brush _columnHighlightBrush = new SolidColorBrush(Color.FromArgb(55, 0, 229, 255));
@@ -40,7 +42,13 @@ public class OverlayRenderElement : FrameworkElement
     private readonly Brush _columnKeyBrush = new SolidColorBrush(Color.FromRgb(0, 229, 255));
     private readonly Brush _rowKeyBrush = new SolidColorBrush(Color.FromRgb(255, 200, 87));
 
+    // Simple continuous-mode status badge. It is drawn only on the primary overlay.
+    private readonly Brush _statusTextBrush = new SolidColorBrush(Color.FromRgb(255, 255, 255));
+    private readonly Brush _statusBackgroundBrush = new SolidColorBrush(Color.FromArgb(225, 12, 16, 24));
+    private readonly Pen _statusBorderPen = new(new SolidColorBrush(Color.FromRgb(0, 229, 255)), 1.0);
+
     private readonly Typeface _labelTypeface = new(new FontFamily("Segoe UI"), FontStyles.Normal, FontWeights.Bold, FontStretches.Normal);
+    private readonly Typeface _statusTypeface = new(new FontFamily("Yu Gothic UI"), FontStyles.Normal, FontWeights.Bold, FontStretches.Normal);
 
     // Reuse glyph layouts across labels and renders. The key includes DPI because
     // FormattedText stores a pixelsPerDip value that changes with per-monitor DPI.
@@ -61,16 +69,23 @@ public class OverlayRenderElement : FrameworkElement
         _activeBadgeBorderPen.Freeze();
         _columnKeyBrush.Freeze();
         _rowKeyBrush.Freeze();
+        _statusTextBrush.Freeze();
+        _statusBackgroundBrush.Freeze();
+        _statusBorderPen.Freeze();
     }
 
     public void UpdateState(
         PixelRect monitorRect,
         IReadOnlyList<PixelRect> monitorRects,
-        SelectionManager selectionManager)
+        SelectionManager selectionManager,
+        bool isPrimary = false,
+        bool isContinuousMode = false)
     {
         _monitorRect = monitorRect;
         _monitorRects = monitorRects;
         _selectionManager = selectionManager;
+        _isPrimary = isPrimary;
+        _isContinuousMode = isContinuousMode;
         InvalidateVisual();
     }
 
@@ -193,6 +208,40 @@ public class OverlayRenderElement : FrameworkElement
         {
             DrawCellSectionLabels(dc, dpiX, dpiY);
         }
+
+        // 6. Draw the continuous-mode status badge on the primary overlay only.
+        if (_isPrimary && _isContinuousMode && _selectionManager.State == SelectionState.Selecting)
+        {
+            DrawContinuousModeIndicator(dc);
+        }
+    }
+
+    /// <summary>
+    /// Draws a small status badge so the user can tell whether a confirmation
+    /// will keep the grid open. The badge is intentionally simple and uses the
+    /// same dark pill treatment as the key labels.
+    /// </summary>
+    private void DrawContinuousModeIndicator(DrawingContext dc)
+    {
+        const double margin = 12.0;
+        const double paddingX = 10.0;
+        const double paddingY = 6.0;
+        const double fontSize = 14.0;
+
+        var text = new FormattedText(
+            "連続モード",
+            CultureInfo.InvariantCulture,
+            FlowDirection.LeftToRight,
+            _statusTypeface,
+            fontSize,
+            _statusTextBrush,
+            _pixelsPerDip);
+
+        double width = text.Width + (paddingX * 2);
+        double height = text.Height + (paddingY * 2);
+        var badgeRect = new Rect(margin, margin, width, height);
+        dc.DrawRoundedRectangle(_statusBackgroundBrush, _statusBorderPen, badgeRect, 4, 4);
+        dc.DrawText(text, new Point(badgeRect.Left + paddingX, badgeRect.Top + paddingY));
     }
 
     /// <summary>

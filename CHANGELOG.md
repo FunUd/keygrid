@@ -4,6 +4,7 @@
 
 ### Added
 
+- Add continuous mode: press `Tab` while the grid is visible to return to Stage 1 after each click; press `Tab` again for normal mode. `Esc` still exits.
 - Add keyboard-triggered right-click support with `Shift+Enter`.
 - Add keyboard-triggered middle (wheel) click support with `Ctrl+Enter`.
 

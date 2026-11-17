@@ -11,12 +11,16 @@ public interface IOverlayWindowSurface
     event Action<ClickKind>? ConfirmRequested;
     event Action? BackspacePressed;
     event Action? CancelRequested;
+    event Action? ContinuousModeToggleRequested;
     event Action? FocusLost;
     event Action? DisplayConfigurationChanged;
 
     nint Handle { get; }
     bool TryReactivate();
-    void UpdateRenderState(SelectionManager selectionManager, IReadOnlyList<PixelRect> monitorRects);
+    void UpdateRenderState(
+        SelectionManager selectionManager,
+        IReadOnlyList<PixelRect> monitorRects,
+        bool isContinuousMode);
     void RefreshExpectedDpi();
     void EnableDpiChangeNotifications();
     void Show();

@@ -13,6 +13,7 @@ internal sealed class OverlayKeyHandler
     public event Action<ClickKind>? ConfirmRequested;
     public event Action? BackspacePressed;
     public event Action? CancelRequested;
+    public event Action? ContinuousModeToggleRequested;
 
     public OverlayKeyHandler(bool isPrimary)
     {
@@ -33,6 +34,15 @@ internal sealed class OverlayKeyHandler
 
         switch (key)
         {
+            case Key.Tab:
+                // Only plain Tab toggles continuous mode; modified Tab combinations
+                // are consumed so they cannot move focus away from the overlay.
+                if (modifiers == ModifierKeys.None)
+                {
+                    ContinuousModeToggleRequested?.Invoke();
+                }
+
+                return true;
             case Key.Escape:
                 CancelRequested?.Invoke();
                 return true;

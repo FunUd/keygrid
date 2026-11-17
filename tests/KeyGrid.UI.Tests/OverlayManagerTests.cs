@@ -324,6 +324,8 @@ public class OverlayManagerTests
             var manager = CreateManager(monitorProvider, factory, focus, new FakeClickSender());
             manager.ShowOverlays();
             var primary = Assert.Single(factory.Windows);
+            primary.RaiseContinuousModeToggle();
+            Assert.True(manager.IsContinuousMode);
             focus.ForegroundWindow = new nint(99);
             focus.FocusedWindow = new nint(0x777);
             focus.ForegroundProcessId = 999;
@@ -333,6 +335,7 @@ public class OverlayManagerTests
             UiTestThread.DrainDispatcher();
 
             Assert.False(manager.IsActive);
+            Assert.False(manager.IsContinuousMode);
             Assert.Equal(SelectionState.Standby, manager.SelectionManager.State);
             Assert.Equal(1, primary.CloseCount);
             Assert.Equal(new nint(99), focus.LastProcessWindow);
@@ -351,6 +354,8 @@ public class OverlayManagerTests
             var manager = CreateManager(monitorProvider, factory, focus, new FakeClickSender());
             manager.ShowOverlays();
             var primary = Assert.Single(factory.Windows);
+            primary.RaiseContinuousModeToggle();
+            Assert.True(manager.IsContinuousMode);
             Assert.True(manager.SelectionManager.ProcessKey('Q'));
             focus.ForegroundWindow = new nint(99);
             focus.FocusedWindow = new nint(0x777);
@@ -361,6 +366,7 @@ public class OverlayManagerTests
             UiTestThread.DrainDispatcher();
 
             Assert.True(manager.IsActive);
+            Assert.True(manager.IsContinuousMode);
             Assert.Equal(SelectionState.Selecting, manager.SelectionManager.State);
             Assert.Single(manager.SelectionManager.History);
             Assert.Equal(2, primary.TryReactivateCount);
@@ -493,6 +499,8 @@ public class OverlayManagerTests
                 new FakeClickSender());
             manager.ShowOverlays();
             var primary = Assert.Single(factory.Windows);
+            primary.RaiseContinuousModeToggle();
+            Assert.True(manager.IsContinuousMode);
 
             primary.RaiseDisplayConfigurationChanged();
 
@@ -500,8 +508,221 @@ public class OverlayManagerTests
             UiTestThread.DrainDispatcher();
 
             Assert.False(manager.IsActive);
+            Assert.False(manager.IsContinuousMode);
             Assert.Equal(SelectionState.Standby, manager.SelectionManager.State);
             Assert.Equal(1, primary.CloseCount);
+        });
+    }
+
+    [Fact]
+    public void Tab_TogglesContinuousModeAndUpdatesTheRenderedIndicator()
+    {
+        UiTestThread.Run(() =>
+        {
+            var factory = new FakeOverlayFactory();
+            var manager = CreateManager(
+                SingleMonitorProvider(),
+                factory,
+                new FakeWindowFocusService(),
+                new FakeClickSender());
+            manager.ShowOverlays();
+            UiTestThread.DrainDispatcher();
+            var primary = Assert.Single(factory.Windows);
+            Assert.False(manager.IsContinuousMode);
+            Assert.False(primary.LastContinuousMode);
+
+            primary.RaiseContinuousModeToggle();
+            Assert.True(manager.IsContinuousMode);
+            Assert.True(primary.LastContinuousMode);
+
+            primary.RaiseContinuousModeToggle();
+            Assert.False(manager.IsContinuousMode);
+            Assert.False(primary.LastContinuousMode);
+
+            manager.CloseOverlays();
+        });
+    }
+
+    [Fact]
+    public void ContinuousMode_Confirm_ReopensStage1AndAllowsAnotherClick()
+    {
+        UiTestThread.Run(() =>
+        {
+            var factory = new FakeOverlayFactory();
+            var focus = new FakeWindowFocusService { ForegroundWindow = new nint(71) };
+            var clickSender = new FakeClickSender();
+            clickSender.WasClickTargetActivated = () =>
+                focus.ForegroundWindow == new nint(0x500);
+            clickSender.AreAllOverlaysClosed = () =>
+                factory.Windows.Count > 0 && factory.Windows.All(window => window.CloseCount > 0);
+            var manager = CreateManager(SingleMonitorProvider(), factory, focus, clickSender);
+            manager.ShowOverlays();
+            UiTestThread.DrainDispatcher();
+            var firstPrimary = Assert.Single(factory.Windows);
+
+            firstPrimary.RaiseContinuousModeToggle();
+            Assert.True(manager.IsContinuousMode);
+
+            firstPrimary.RaiseKey(manager.SelectionManager.ColumnKeys[0]);
+            firstPrimary.RaiseKey(manager.SelectionManager.RowKeys[0]);
+            firstPrimary.RaiseConfirm(ClickKind.Left);
+
+            Assert.Equal(1, clickSender.CallCount);
+            Assert.True(clickSender.OverlaysWereClosedBeforeSend);
+            Assert.True(manager.IsActive);
+            Assert.True(manager.IsContinuousMode);
+            Assert.Equal(SelectionState.Selecting, manager.SelectionManager.State);
+            Assert.Equal(1, manager.SelectionManager.CurrentStage);
+            Assert.Empty(manager.SelectionManager.History);
+            Assert.Equal(1, firstPrimary.CloseCount);
+
+            Assert.Equal(2, factory.Windows.Count);
+            var secondPrimary = factory.Windows[1];
+            Assert.True(secondPrimary.IsPrimary);
+            Assert.True(secondPrimary.LastContinuousMode);
+            Assert.Equal(1, secondPrimary.ShowCount);
+            Assert.Equal(1, secondPrimary.TryReactivateCount);
+            Assert.Equal(secondPrimary.Handle, focus.ForegroundWindow);
+
+            secondPrimary.RaiseKey(manager.SelectionManager.ColumnKeys[0]);
+            secondPrimary.RaiseKey(manager.SelectionManager.RowKeys[0]);
+            secondPrimary.RaiseConfirm(ClickKind.Right);
+
+            Assert.Equal(2, clickSender.CallCount);
+            Assert.Equal(ClickKind.Right, clickSender.LastClickKind);
+            Assert.True(manager.IsActive);
+            Assert.Equal(3, factory.Windows.Count);
+            Assert.Equal(SelectionState.Selecting, manager.SelectionManager.State);
+            Assert.Equal(1, manager.SelectionManager.CurrentStage);
+
+            manager.CloseOverlays();
+            Assert.False(manager.IsContinuousMode);
+            Assert.False(manager.IsActive);
+        });
+    }
+
+    [Fact]
+    public void ContinuousMode_ToggleOff_RestoresNormalExitAfterConfirmation()
+    {
+        UiTestThread.Run(() =>
+        {
+            var factory = new FakeOverlayFactory();
+            var focus = new FakeWindowFocusService { ForegroundWindow = new nint(71) };
+            var clickSender = new FakeClickSender();
+            clickSender.WasClickTargetActivated = () =>
+                focus.ForegroundWindow == new nint(0x500);
+            var manager = CreateManager(SingleMonitorProvider(), factory, focus, clickSender);
+            manager.ShowOverlays();
+            UiTestThread.DrainDispatcher();
+            var primary = Assert.Single(factory.Windows);
+
+            primary.RaiseContinuousModeToggle();
+            Assert.True(manager.IsContinuousMode);
+            primary.RaiseContinuousModeToggle();
+            Assert.False(manager.IsContinuousMode);
+
+            primary.RaiseKey(manager.SelectionManager.ColumnKeys[0]);
+            primary.RaiseKey(manager.SelectionManager.RowKeys[0]);
+            primary.RaiseConfirm(ClickKind.Left);
+
+            Assert.Equal(1, clickSender.CallCount);
+            Assert.False(manager.IsActive);
+            Assert.False(manager.IsContinuousMode);
+            Assert.Equal(SelectionState.Standby, manager.SelectionManager.State);
+            Assert.Single(factory.Windows);
+        });
+    }
+
+    [Fact]
+    public void ContinuousMode_EscClosesOverlaysAndResetsTheMode()
+    {
+        UiTestThread.Run(() =>
+        {
+            var factory = new FakeOverlayFactory();
+            var focus = new FakeWindowFocusService { ForegroundWindow = new nint(71) };
+            var manager = CreateManager(
+                SingleMonitorProvider(),
+                factory,
+                focus,
+                new FakeClickSender());
+            manager.ShowOverlays();
+            UiTestThread.DrainDispatcher();
+            var primary = Assert.Single(factory.Windows);
+
+            primary.RaiseContinuousModeToggle();
+            Assert.True(manager.IsContinuousMode);
+            primary.RaiseCancel();
+
+            Assert.False(manager.IsActive);
+            Assert.False(manager.IsContinuousMode);
+            Assert.Equal(SelectionState.Standby, manager.SelectionManager.State);
+            Assert.Equal(1, primary.CloseCount);
+            Assert.Equal(new nint(71), focus.ForegroundWindow);
+        });
+    }
+
+    [Fact]
+    public void HotkeyRestart_ResetsContinuousMode()
+    {
+        UiTestThread.Run(() =>
+        {
+            var factory = new FakeOverlayFactory();
+            var focus = new FakeWindowFocusService { ForegroundWindow = new nint(71) };
+            var manager = CreateManager(
+                SingleMonitorProvider(),
+                factory,
+                focus,
+                new FakeClickSender());
+            manager.ShowOverlays();
+            UiTestThread.DrainDispatcher();
+            var firstPrimary = Assert.Single(factory.Windows);
+            firstPrimary.RaiseContinuousModeToggle();
+            Assert.True(manager.IsContinuousMode);
+
+            manager.ShowOverlays();
+            UiTestThread.DrainDispatcher();
+
+            Assert.True(manager.IsActive);
+            Assert.False(manager.IsContinuousMode);
+            Assert.Equal(1, firstPrimary.CloseCount);
+            Assert.Equal(2, factory.Windows.Count);
+            Assert.False(factory.Windows[1].LastContinuousMode);
+
+            manager.CloseOverlays();
+        });
+    }
+
+    [Fact]
+    public void ContinuousMode_WhenClickDispatchFails_ReopensStage1AndReportsError()
+    {
+        UiTestThread.Run(() =>
+        {
+            var factory = new FakeOverlayFactory();
+            var focus = new FakeWindowFocusService { ForegroundWindow = new nint(71) };
+            var clickSender = new FakeClickSender { ReturnResult = false };
+            clickSender.WasClickTargetActivated = () =>
+                focus.ForegroundWindow == new nint(0x500);
+            var manager = CreateManager(SingleMonitorProvider(), factory, focus, clickSender);
+            manager.ShowOverlays();
+            UiTestThread.DrainDispatcher();
+            var primary = Assert.Single(factory.Windows);
+            string? error = null;
+            manager.ErrorOccurred += message => error = message;
+
+            primary.RaiseContinuousModeToggle();
+            primary.RaiseKey(manager.SelectionManager.ColumnKeys[0]);
+            primary.RaiseKey(manager.SelectionManager.RowKeys[0]);
+            primary.RaiseConfirm(ClickKind.Left);
+
+            Assert.Equal(1, clickSender.CallCount);
+            Assert.True(manager.IsActive);
+            Assert.True(manager.IsContinuousMode);
+            Assert.Equal(SelectionState.Selecting, manager.SelectionManager.State);
+            Assert.Equal(1, manager.SelectionManager.CurrentStage);
+            Assert.Equal(2, factory.Windows.Count);
+            Assert.Contains("Failed to dispatch click", error);
+
+            manager.CloseOverlays();
         });
     }
 
@@ -533,6 +754,7 @@ public class OverlayManagerTests
         public OverlayManager Manager { get; }
         public SelectionManager SelectionManager { get; }
         public bool IsActive => Manager.IsActive;
+        public bool IsContinuousMode => Manager.IsContinuousMode;
 
         public event Action<string>? ErrorOccurred
         {
@@ -595,12 +817,14 @@ public class OverlayManagerTests
         public event Action<ClickKind>? ConfirmRequested;
         public event Action? BackspacePressed;
         public event Action? CancelRequested;
+        public event Action? ContinuousModeToggleRequested;
         public event Action? FocusLost;
         public event Action? DisplayConfigurationChanged;
 
         public bool IsPrimary { get; } = isPrimary;
         public double DpiScale { get; } = dpiScale;
         public nint Handle { get; } = handle;
+        public bool LastContinuousMode { get; private set; }
         public int ShowCount { get; private set; }
         public int CloseCount { get; private set; }
         public int RenderUpdateCount { get; private set; }
@@ -625,10 +849,14 @@ public class OverlayManagerTests
             return TryReactivateResult;
         }
 
-        public void UpdateRenderState(SelectionManager selectionManager, IReadOnlyList<PixelRect> monitorRects)
+        public void UpdateRenderState(
+            SelectionManager selectionManager,
+            IReadOnlyList<PixelRect> monitorRects,
+            bool isContinuousMode)
         {
             Assert.NotEqual(SelectionState.Standby, selectionManager.State);
             Assert.Contains(monitorRect, monitorRects);
+            LastContinuousMode = isContinuousMode;
             RenderUpdateCount++;
         }
 
@@ -649,6 +877,8 @@ public class OverlayManagerTests
         public void RaiseBackspace() => BackspacePressed?.Invoke();
 
         public void RaiseCancel() => CancelRequested?.Invoke();
+
+        public void RaiseContinuousModeToggle() => ContinuousModeToggleRequested?.Invoke();
 
         public void RaiseFocusLost() => FocusLost?.Invoke();
 
@@ -721,7 +951,8 @@ public class OverlayManagerTests
 
     private sealed class FakeClickSender : IClickSender
     {
-        public bool Called { get; private set; }
+        public bool Called => CallCount > 0;
+        public int CallCount { get; private set; }
         public bool ReturnResult { get; set; } = true;
         public bool OverlaysWereClosedBeforeSend { get; private set; }
         public bool ClickTargetWasActivatedBeforeSend { get; private set; }
@@ -733,7 +964,7 @@ public class OverlayManagerTests
 
         public bool SendClick(PixelPoint target, PixelRect virtualScreen, ClickKind clickKind)
         {
-            Called = true;
+            CallCount++;
             LastTarget = target;
             LastVirtualScreen = virtualScreen;
             LastClickKind = clickKind;
