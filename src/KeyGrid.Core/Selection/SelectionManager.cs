@@ -245,6 +245,37 @@ public class SelectionManager
     }
 
     /// <summary>
+    /// Resolves the Stage 2 cursor cell to a click coordinate without changing the
+    /// selection state. Range and scroll modes use this to act on the current target.
+    /// </summary>
+    public bool TryGetStage2Target(out PixelPoint target)
+    {
+        target = default;
+        if (State != SelectionState.Selecting
+            || _history.Count != 2
+            || SelectedColumnIndex < 0
+            || SelectedRowIndex < 0)
+        {
+            return false;
+        }
+
+        var selectedCell = GridCalculator.GetCell(
+            XBoundaries,
+            YBoundaries,
+            SelectedColumnIndex,
+            SelectedRowIndex);
+        var selectedArea = GridCalculator.IntersectCellWithSelection(selectedCell, CurrentSelection);
+        var boundingBox = PixelRect.BoundingBox(selectedArea);
+        if (boundingBox.IsEmpty || selectedArea.Count == 0)
+        {
+            return false;
+        }
+
+        target = GridCalculator.ResolveTargetCoordinate(boundingBox, selectedArea);
+        return true;
+    }
+
+    /// <summary>
     /// Confirms the Stage 2 cursor position and resolves its click coordinate.
     /// </summary>
     public bool ProcessEnter()

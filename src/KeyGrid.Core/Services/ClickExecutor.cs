@@ -46,4 +46,26 @@ public class ClickExecutor
         bool success = _clickSender.SendClick(target, virtualScreen, clickKind);
         return success;
     }
+
+    /// <summary>
+    /// Executes a two-point range selection with the same hide/render synchronization
+    /// used for a normal click. The target window validation is supplied by the caller
+    /// because it depends on the window hierarchy after the overlays are hidden.
+    /// </summary>
+    public bool ExecuteRangeClick(
+        PixelPoint start,
+        PixelPoint end,
+        PixelRect virtualScreen,
+        Action hideOverlaysAction,
+        Func<bool>? prepareClickAction = null)
+    {
+        hideOverlaysAction();
+
+        if (prepareClickAction != null && !prepareClickAction())
+        {
+            return false;
+        }
+
+        return _clickSender.SendRangeClick(start, end, virtualScreen);
+    }
 }

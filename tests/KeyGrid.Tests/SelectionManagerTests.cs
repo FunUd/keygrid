@@ -118,6 +118,27 @@ public class SelectionManagerTests
     }
 
     [Fact]
+    public void TryGetStage2Target_ResolvesWithoutChangingSelectionState()
+    {
+        var mgr = new SelectionManager();
+        mgr.StartSelection(_single1080pMonitor);
+
+        Assert.False(mgr.TryGetStage2Target(out _));
+        Assert.True(mgr.ProcessKey('Q'));
+        Assert.False(mgr.TryGetStage2Target(out _));
+
+        Assert.True(mgr.ProcessKey('U'));
+        Assert.True(mgr.MoveStage2Cursor(1, 0));
+        Assert.True(mgr.TryGetStage2Target(out var previewTarget));
+        Assert.Equal(SelectionState.Selecting, mgr.State);
+        Assert.Null(mgr.TargetCoordinate);
+
+        Assert.True(mgr.ProcessEnter());
+        Assert.Equal(SelectionState.ExecutingClick, mgr.State);
+        Assert.Equal(previewTarget, mgr.TargetCoordinate);
+    }
+
+    [Fact]
     public void Stage2Cursor_RejectsInvalidDirectionsAndStopsAtGridEdges()
     {
         var mgr = new SelectionManager();

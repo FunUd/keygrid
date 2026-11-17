@@ -726,6 +726,226 @@ public class OverlayManagerTests
         });
     }
 
+    [Fact]
+    public void RangeStart_SetsAnchorAndEscClearsItBeforeExiting()
+    {
+        UiTestThread.Run(() =>
+        {
+            var factory = new FakeOverlayFactory();
+            var manager = CreateManager(
+                SingleMonitorProvider(),
+                factory,
+                new FakeWindowFocusService(),
+                new FakeClickSender());
+            manager.ShowOverlays();
+            UiTestThread.DrainDispatcher();
+            var primary = Assert.Single(factory.Windows);
+
+            primary.RaiseKey(manager.SelectionManager.ColumnKeys[0]);
+            primary.RaiseKey(manager.SelectionManager.RowKeys[0]);
+            Assert.True(manager.SelectionManager.TryGetStage2Target(out var expectedStart));
+
+            primary.RaiseRangeStart();
+
+            Assert.True(manager.HasRangeSelection);
+            Assert.Equal(expectedStart, primary.LastRangeStartPoint);
+            Assert.True(manager.IsActive);
+
+            primary.RaiseCancel();
+
+            Assert.False(manager.HasRangeSelection);
+            Assert.True(manager.IsActive);
+            Assert.Equal(SelectionState.Selecting, manager.SelectionManager.State);
+            Assert.Equal(2, manager.SelectionManager.CurrentStage);
+            Assert.Null(primary.LastRangeStartPoint);
+            Assert.Equal(0, primary.CloseCount);
+
+            primary.RaiseCancel();
+
+            Assert.False(manager.IsActive);
+            Assert.Equal(SelectionState.Standby, manager.SelectionManager.State);
+            Assert.Equal(1, primary.CloseCount);
+        });
+    }
+
+    [Fact]
+    public void RangeExecution_DispatchesAnchorAndEndpointClicksAndClosesOverlays()
+    {
+        UiTestThread.Run(() =>
+        {
+            var factory = new FakeOverlayFactory();
+            var focus = new FakeWindowFocusService { ForegroundWindow = new nint(71) };
+            var clickSender = new FakeClickSender();
+            var manager = CreateManager(SingleMonitorProvider(), factory, focus, clickSender);
+            manager.ShowOverlays();
+            UiTestThread.DrainDispatcher();
+            var primary = Assert.Single(factory.Windows);
+            clickSender.AreAllOverlaysHidden = () => primary.HideForInputCount > 0;
+
+            primary.RaiseKey(manager.SelectionManager.ColumnKeys[0]);
+            primary.RaiseKey(manager.SelectionManager.RowKeys[0]);
+            Assert.True(manager.SelectionManager.TryGetStage2Target(out var expectedStart));
+            primary.RaiseRangeStart();
+            primary.RaiseMove(1, 0);
+            Assert.True(manager.SelectionManager.TryGetStage2Target(out var expectedEnd));
+            string? error = null;
+            manager.ErrorOccurred += message => error = message;
+
+            primary.RaiseConfirm(ClickKind.Left);
+
+            Assert.Equal(1, clickSender.RangeCallCount);
+            Assert.Equal(expectedStart, clickSender.LastRangeStart);
+            Assert.Equal(expectedEnd, clickSender.LastRangeEnd);
+            Assert.True(clickSender.RangeOverlaysWereHidden);
+            Assert.Equal(0, clickSender.CallCount);
+            Assert.False(manager.IsActive);
+            Assert.False(manager.HasRangeSelection);
+            Assert.Equal(SelectionState.Standby, manager.SelectionManager.State);
+            Assert.Equal(1, primary.HideForInputCount);
+            Assert.Equal(1, primary.CloseCount);
+            Assert.Equal(new nint(0x500), focus.ForegroundWindow);
+            Assert.Null(error);
+        });
+    }
+
+    [Fact]
+    public void RangeExecution_WhenEndpointsUseDifferentWindows_AbortsAndReturnsToStage2()
+    {
+        UiTestThread.Run(() =>
+        {
+            var factory = new FakeOverlayFactory();
+            var focus = new FakeWindowFocusService { ForegroundWindow = new nint(71) };
+            focus.WindowAtPointResults.Enqueue(new nint(0x500));
+            focus.WindowAtPointResults.Enqueue(new nint(0x600));
+            var clickSender = new FakeClickSender();
+            var manager = CreateManager(SingleMonitorProvider(), factory, focus, clickSender);
+            manager.ShowOverlays();
+            UiTestThread.DrainDispatcher();
+            var primary = Assert.Single(factory.Windows);
+
+            primary.RaiseKey(manager.SelectionManager.ColumnKeys[0]);
+            primary.RaiseKey(manager.SelectionManager.RowKeys[0]);
+            primary.RaiseRangeStart();
+            primary.RaiseMove(1, 0);
+            string? error = null;
+            manager.ErrorOccurred += message => error = message;
+
+            primary.RaiseConfirm(ClickKind.Left);
+
+            Assert.Equal(0, clickSender.RangeCallCount);
+            Assert.Equal(0, clickSender.CallCount);
+            Assert.True(manager.IsActive);
+            Assert.False(manager.HasRangeSelection);
+            Assert.Equal(SelectionState.Selecting, manager.SelectionManager.State);
+            Assert.Equal(2, manager.SelectionManager.CurrentStage);
+            Assert.Equal(1, primary.HideForInputCount);
+            Assert.Equal(1, primary.ShowForInputCount);
+            Assert.Equal(0, primary.CloseCount);
+            Assert.Contains("same top-level window", error);
+
+            manager.CloseOverlays();
+        });
+    }
+
+    [Fact]
+    public void RangeSelection_BackspaceIntoStage1KeepsTheStartMarker()
+    {
+        UiTestThread.Run(() =>
+        {
+            var factory = new FakeOverlayFactory();
+            var manager = CreateManager(
+                SingleMonitorProvider(),
+                factory,
+                new FakeWindowFocusService(),
+                new FakeClickSender());
+            manager.ShowOverlays();
+            UiTestThread.DrainDispatcher();
+            var primary = Assert.Single(factory.Windows);
+
+            primary.RaiseKey(manager.SelectionManager.ColumnKeys[0]);
+            primary.RaiseKey(manager.SelectionManager.RowKeys[0]);
+            primary.RaiseRangeStart();
+            Assert.True(manager.SelectionManager.TryGetStage2Target(out var expectedStart));
+            Assert.Equal(expectedStart, primary.LastRangeStartPoint);
+
+            primary.RaiseBackspace();
+
+            Assert.Equal(SelectionState.Selecting, manager.SelectionManager.State);
+            Assert.Equal(1, manager.SelectionManager.CurrentStage);
+            Assert.True(manager.HasRangeSelection);
+            Assert.Equal(expectedStart, primary.LastRangeStartPoint);
+
+            manager.CloseOverlays();
+        });
+    }
+
+    [Fact]
+    public void RangeExecution_IgnoresModifiedConfirmationKeys()
+    {
+        UiTestThread.Run(() =>
+        {
+            var factory = new FakeOverlayFactory();
+            var clickSender = new FakeClickSender();
+            var manager = CreateManager(
+                SingleMonitorProvider(),
+                factory,
+                new FakeWindowFocusService(),
+                clickSender);
+            manager.ShowOverlays();
+            UiTestThread.DrainDispatcher();
+            var primary = Assert.Single(factory.Windows);
+
+            primary.RaiseKey(manager.SelectionManager.ColumnKeys[0]);
+            primary.RaiseKey(manager.SelectionManager.RowKeys[0]);
+            primary.RaiseRangeStart();
+            primary.RaiseConfirm(ClickKind.Right);
+            primary.RaiseConfirm(ClickKind.Middle);
+
+            Assert.Equal(0, clickSender.RangeCallCount);
+            Assert.Equal(0, clickSender.CallCount);
+            Assert.True(manager.IsActive);
+            Assert.True(manager.HasRangeSelection);
+            Assert.Equal(2, manager.SelectionManager.CurrentStage);
+
+            manager.CloseOverlays();
+        });
+    }
+
+    [Fact]
+    public void RangeExecution_InContinuousMode_ReopensStage1()
+    {
+        UiTestThread.Run(() =>
+        {
+            var factory = new FakeOverlayFactory();
+            var focus = new FakeWindowFocusService { ForegroundWindow = new nint(71) };
+            var clickSender = new FakeClickSender();
+            var manager = CreateManager(SingleMonitorProvider(), factory, focus, clickSender);
+            manager.ShowOverlays();
+            UiTestThread.DrainDispatcher();
+            var firstPrimary = Assert.Single(factory.Windows);
+
+            firstPrimary.RaiseContinuousModeToggle();
+            firstPrimary.RaiseKey(manager.SelectionManager.ColumnKeys[0]);
+            firstPrimary.RaiseKey(manager.SelectionManager.RowKeys[0]);
+            firstPrimary.RaiseRangeStart();
+            firstPrimary.RaiseMove(1, 0);
+            firstPrimary.RaiseConfirm(ClickKind.Left);
+
+            Assert.Equal(1, clickSender.RangeCallCount);
+            Assert.True(manager.IsActive);
+            Assert.True(manager.IsContinuousMode);
+            Assert.False(manager.HasRangeSelection);
+            Assert.Equal(SelectionState.Selecting, manager.SelectionManager.State);
+            Assert.Equal(1, manager.SelectionManager.CurrentStage);
+            Assert.Empty(manager.SelectionManager.History);
+            Assert.Equal(2, factory.Windows.Count);
+            Assert.True(factory.Windows[1].LastContinuousMode);
+            Assert.Null(factory.Windows[1].LastRangeStartPoint);
+
+            manager.CloseOverlays();
+        });
+    }
+
     private static FakeMonitorProvider SingleMonitorProvider()
     {
         return new FakeMonitorProvider(
@@ -755,6 +975,7 @@ public class OverlayManagerTests
         public SelectionManager SelectionManager { get; }
         public bool IsActive => Manager.IsActive;
         public bool IsContinuousMode => Manager.IsContinuousMode;
+        public bool HasRangeSelection => Manager.HasRangeSelection;
 
         public event Action<string>? ErrorOccurred
         {
@@ -818,6 +1039,7 @@ public class OverlayManagerTests
         public event Action? BackspacePressed;
         public event Action? CancelRequested;
         public event Action? ContinuousModeToggleRequested;
+        public event Action? RangeStartRequested;
         public event Action? FocusLost;
         public event Action? DisplayConfigurationChanged;
 
@@ -825,9 +1047,12 @@ public class OverlayManagerTests
         public double DpiScale { get; } = dpiScale;
         public nint Handle { get; } = handle;
         public bool LastContinuousMode { get; private set; }
+        public PixelPoint? LastRangeStartPoint { get; private set; }
         public int ShowCount { get; private set; }
         public int CloseCount { get; private set; }
         public int RenderUpdateCount { get; private set; }
+        public int HideForInputCount { get; private set; }
+        public int ShowForInputCount { get; private set; }
         public int RefreshExpectedDpiCount { get; private set; }
         public bool DpiNotificationsEnabled { get; private set; }
         public bool TryReactivateResult { get; set; }
@@ -852,11 +1077,13 @@ public class OverlayManagerTests
         public void UpdateRenderState(
             SelectionManager selectionManager,
             IReadOnlyList<PixelRect> monitorRects,
-            bool isContinuousMode)
+            bool isContinuousMode,
+            PixelPoint? rangeStartPoint = null)
         {
             Assert.NotEqual(SelectionState.Standby, selectionManager.State);
             Assert.Contains(monitorRect, monitorRects);
             LastContinuousMode = isContinuousMode;
+            LastRangeStartPoint = rangeStartPoint;
             RenderUpdateCount++;
         }
 
@@ -865,6 +1092,10 @@ public class OverlayManagerTests
         public void EnableDpiChangeNotifications() => DpiNotificationsEnabled = true;
 
         public void Show() => ShowCount++;
+
+        public void HideForInput() => HideForInputCount++;
+
+        public void ShowForInput() => ShowForInputCount++;
 
         public void Close() => CloseCount++;
 
@@ -879,6 +1110,8 @@ public class OverlayManagerTests
         public void RaiseCancel() => CancelRequested?.Invoke();
 
         public void RaiseContinuousModeToggle() => ContinuousModeToggleRequested?.Invoke();
+
+        public void RaiseRangeStart() => RangeStartRequested?.Invoke();
 
         public void RaiseFocusLost() => FocusLost?.Invoke();
 
@@ -961,6 +1194,11 @@ public class OverlayManagerTests
         public PixelPoint? LastTarget { get; private set; }
         public PixelRect? LastVirtualScreen { get; private set; }
         public ClickKind? LastClickKind { get; private set; }
+        public int RangeCallCount { get; private set; }
+        public PixelPoint? LastRangeStart { get; private set; }
+        public PixelPoint? LastRangeEnd { get; private set; }
+        public bool RangeOverlaysWereHidden { get; private set; }
+        public Func<bool>? AreAllOverlaysHidden { get; set; }
 
         public bool SendClick(PixelPoint target, PixelRect virtualScreen, ClickKind clickKind)
         {
@@ -970,6 +1208,16 @@ public class OverlayManagerTests
             LastClickKind = clickKind;
             OverlaysWereClosedBeforeSend = AreAllOverlaysClosed?.Invoke() ?? false;
             ClickTargetWasActivatedBeforeSend = WasClickTargetActivated?.Invoke() ?? false;
+            return ReturnResult;
+        }
+
+        public bool SendRangeClick(PixelPoint start, PixelPoint end, PixelRect virtualScreen)
+        {
+            RangeCallCount++;
+            LastRangeStart = start;
+            LastRangeEnd = end;
+            LastVirtualScreen = virtualScreen;
+            RangeOverlaysWereHidden = AreAllOverlaysHidden?.Invoke() ?? false;
             return ReturnResult;
         }
     }

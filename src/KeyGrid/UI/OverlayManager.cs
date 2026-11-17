@@ -32,6 +32,8 @@ public class OverlayManager
     private int? _focusLossPendingGeneration;
     private bool _isDisplayChangePending = false;
     private bool _continuousMode;
+    private PixelPoint? _rangeStartPoint;
+    private bool _isInputInProgress;
     private int _selectionGeneration;
     private int _confirmationAttempt;
 
@@ -44,6 +46,11 @@ public class OverlayManager
     /// The flag belongs to the current overlay session and is reset on exit.
     /// </summary>
     internal bool IsContinuousMode => _continuousMode;
+
+    /// <summary>
+    /// Whether a two-point range anchor has been set for the current session.
+    /// </summary>
+    internal bool HasRangeSelection => _rangeStartPoint.HasValue;
 
     private bool IsClosing => Volatile.Read(ref _isClosing) != 0;
 
@@ -85,6 +92,11 @@ public class OverlayManager
 
     private void ShowOverlaysCore()
     {
+        // Every new Stage 1 session starts without sub-mode state. Continuous mode
+        // itself is preserved by the caller when the session is intentionally kept open.
+        _rangeStartPoint = null;
+        _isInputInProgress = false;
+
         if (!IsActive)
         {
             _originatingForegroundWindow = _windowFocusService.GetForegroundWindow();
@@ -151,12 +163,17 @@ public class OverlayManager
                 overlay.BackspacePressed += OnBackspacePressed;
                 overlay.CancelRequested += OnCancelRequested;
                 overlay.ContinuousModeToggleRequested += OnContinuousModeToggleRequested;
+                overlay.RangeStartRequested += OnRangeStartRequested;
                 overlay.FocusLost += () => OnFocusLost(generation);
             }
 
             _overlays.Add(overlay);
             overlay.Show();
-            overlay.UpdateRenderState(_selectionManager, _activeMonitorRects, _continuousMode);
+            overlay.UpdateRenderState(
+                _selectionManager,
+                _activeMonitorRects,
+                _continuousMode,
+                _rangeStartPoint);
         }
 
         if (_primaryOverlay == null || !_primaryOverlay.TryReactivate())
@@ -194,7 +211,9 @@ public class OverlayManager
                 // The foreground can move away immediately after SetForegroundWindow
                 // without a reliable WM_KILLFOCUS. Re-check once the initial activation
                 // has settled so the grid cannot stay visible without keyboard focus.
-                if (!IsPrimaryForegroundAndFocused())
+                // A synthetic input operation intentionally hides the overlays and
+                // temporarily moves focus, so skip the check while it is in progress.
+                if (!_isInputInProgress && !IsPrimaryForegroundAndFocused())
                 {
                     FileLogger.LogWarning(
                         "Primary overlay is not foreground and focused after startup; re-evaluating focus.");
@@ -211,6 +230,40 @@ public class OverlayManager
         }
 
         UpdateAllOverlays();
+    }
+
+    private void OnRangeStartRequested()
+    {
+        if (IsClosing
+            || !IsActive
+            || _isInputInProgress
+            || _selectionManager.State != SelectionState.Selecting)
+        {
+            return;
+        }
+
+        if (_selectionManager.CurrentStage == 2)
+        {
+            // R is unused in Stage 2. Set the anchor once; Esc clears it. Repeating
+            // R must not silently move an anchor that the user may already be relying on.
+            if (_rangeStartPoint.HasValue
+                || !_selectionManager.TryGetStage2Target(out var startPoint))
+            {
+                return;
+            }
+
+            _rangeStartPoint = startPoint;
+            FileLogger.LogInfo($"Range start set at ({startPoint.X}, {startPoint.Y}).");
+            UpdateAllOverlays();
+            return;
+        }
+
+        // In Stage 1, R remains an ordinary column key. This path preserves that
+        // behavior for unmodified R while allowing the range action in Stage 2.
+        if (_selectionManager.ProcessKey('R'))
+        {
+            UpdateAllOverlays();
+        }
     }
 
     private void OnMoveRequested(int columnDelta, int rowDelta)
@@ -244,6 +297,19 @@ public class OverlayManager
             $"Confirmation #{attempt} received (kind={clickKind}, state={_selectionManager.State}, " +
             $"historyLength={_selectionManager.History.Count}).");
 
+        if (_rangeStartPoint.HasValue)
+        {
+            if (clickKind != ClickKind.Left)
+            {
+                FileLogger.LogInfo(
+                    $"Confirmation #{attempt} ignored because range selection uses unmodified Enter.");
+                return;
+            }
+
+            ExecuteRangeSelection(attempt);
+            return;
+        }
+
         if (!_selectionManager.ProcessEnter())
         {
             FileLogger.LogInfo($"Confirmation #{attempt} ignored because the selection is not confirmable.");
@@ -265,7 +331,17 @@ public class OverlayManager
 
     private void OnCancelRequested()
     {
-        if (IsClosing) return;
+        if (IsClosing || _isInputInProgress) return;
+
+        // Esc cancels an active sub-mode before it exits the selection session.
+        if (_rangeStartPoint.HasValue)
+        {
+            _rangeStartPoint = null;
+            FileLogger.LogInfo("Range start cleared by Esc; selection remains active.");
+            UpdateAllOverlays();
+            return;
+        }
+
         _selectionManager.Cancel();
         CloseOverlays();
     }
@@ -275,6 +351,7 @@ public class OverlayManager
         if (generation != _selectionGeneration
             || IsClosing
             || !IsActive
+            || _isInputInProgress
             || _selectionManager.State == SelectionState.ExecutingClick
             || _focusLossPendingGeneration == generation)
         {
@@ -297,6 +374,7 @@ public class OverlayManager
             if (generation != _selectionGeneration
                 || IsClosing
                 || !IsActive
+                || _isInputInProgress
                 || _selectionManager.State == SelectionState.ExecutingClick)
             {
                 return;
@@ -360,6 +438,8 @@ public class OverlayManager
             FileLogger.LogInfo(
                 $"Focus loss cancelled selection (foreground PID {foregroundPid}, visible={foregroundIsVisible}).");
             _continuousMode = false;
+            _rangeStartPoint = null;
+            _isInputInProgress = false;
             _selectionManager.Cancel();
             if (action == FocusLossAction.CancelSelection)
             {
@@ -462,6 +542,8 @@ public class OverlayManager
         if (IsActive && !IsClosing)
         {
             // spec 5.3: Discard selection on monitor / DPI change
+            _rangeStartPoint = null;
+            _isInputInProgress = false;
             _selectionManager.Cancel();
             CloseOverlays();
         }
@@ -471,7 +553,11 @@ public class OverlayManager
     {
         foreach (var overlay in _overlays)
         {
-            overlay.UpdateRenderState(_selectionManager, _activeMonitorRects, _continuousMode);
+            overlay.UpdateRenderState(
+                _selectionManager,
+                _activeMonitorRects,
+                _continuousMode,
+                _rangeStartPoint);
         }
     }
 
@@ -601,9 +687,213 @@ public class OverlayManager
         }
     }
 
+    private void ExecuteRangeSelection(int attempt)
+    {
+        if (!_selectionManager.TryGetStage2Target(out var end))
+        {
+            FileLogger.LogInfo($"Range #{attempt} ignored because the Stage 2 target is not confirmable.");
+            return;
+        }
+
+        var start = _rangeStartPoint!.Value;
+        var virtualScreen = _selectionManager.VirtualScreenBoundingBox;
+        bool continueSelection = _continuousMode;
+        string? preparationFailure = null;
+        bool success;
+
+        FileLogger.LogInfo(
+            $"Range #{attempt} started (start=({start.X}, {start.Y}), " +
+            $"end=({end.X}, {end.Y}), virtualScreen={virtualScreen}).");
+
+        try
+        {
+            success = _clickExecutor.ExecuteRangeClick(
+                start,
+                end,
+                virtualScreen,
+                hideOverlaysAction: HideOverlaysForInput,
+                prepareClickAction: () =>
+                {
+                    FileLogger.LogInfo($"Range #{attempt}: waiting for overlay render.");
+                    Dispatcher.CurrentDispatcher.Invoke(() => { }, DispatcherPriority.Render);
+
+                    // Hiding the overlays makes WindowFromPoint report what a physical
+                    // click would hit. Both endpoints must belong to the same top-level
+                    // window before any synthetic input is dispatched.
+                    nint startWindow = _windowFocusService.GetWindowFromPoint(start);
+                    nint endWindow = _windowFocusService.GetWindowFromPoint(end);
+                    nint startRoot = _windowFocusService.GetRootWindow(startWindow);
+                    nint endRoot = _windowFocusService.GetRootWindow(endWindow);
+
+                    FileLogger.LogInfo(
+                        $"Range #{attempt}: start window={FormatWindowHandle(startWindow)} " +
+                        $"(root={FormatWindowHandle(startRoot)}), " +
+                        $"end window={FormatWindowHandle(endWindow)} " +
+                        $"(root={FormatWindowHandle(endRoot)}).");
+
+                    if (startRoot == nint.Zero || endRoot == nint.Zero)
+                    {
+                        preparationFailure =
+                            "Could not find a window under a range endpoint. The range was cancelled.";
+                        return false;
+                    }
+
+                    if (startRoot != endRoot)
+                    {
+                        preparationFailure =
+                            "Range endpoints must be in the same top-level window. The range was cancelled.";
+                        return false;
+                    }
+
+                    bool activated = RestoreForegroundWindow(startRoot, "Range target");
+                    nint startAfterActivation = _windowFocusService.GetWindowFromPoint(start);
+                    nint endAfterActivation = _windowFocusService.GetWindowFromPoint(end);
+                    bool startStillHit = _windowFocusService.IsWindowOwnedBy(
+                        startAfterActivation,
+                        startRoot);
+                    bool endStillHit = _windowFocusService.IsWindowOwnedBy(
+                        endAfterActivation,
+                        endRoot);
+
+                    FileLogger.LogInfo(
+                        $"Range #{attempt}: target activation result={activated}, " +
+                        $"start matches={startStillHit}, end matches={endStillHit}.");
+
+                    if (!startStillHit || !endStillHit)
+                    {
+                        preparationFailure =
+                            "The window under a range endpoint changed. The range was cancelled.";
+                        return false;
+                    }
+
+                    return true;
+                });
+        }
+        catch
+        {
+            _isInputInProgress = false;
+            _rangeStartPoint = null;
+            _selectionManager.Cancel();
+            CloseOverlaysWithoutRestore();
+            RestoreOriginatingForegroundWindow();
+            _originatingForegroundWindow = nint.Zero;
+            throw;
+        }
+
+        if (preparationFailure != null)
+        {
+            // No click was sent. Restore the same Stage 2 selection so the user can
+            // adjust the endpoints or try again.
+            FileLogger.LogWarning($"Range #{attempt} aborted: {preparationFailure}");
+            if (!ShowOverlaysAfterInput())
+            {
+                return;
+            }
+
+            _rangeStartPoint = null;
+            UpdateAllOverlays();
+            ErrorOccurred?.Invoke(preparationFailure);
+            return;
+        }
+
+        _isInputInProgress = false;
+        _rangeStartPoint = null;
+
+        if (success)
+        {
+            _originatingForegroundWindow = nint.Zero;
+            FileLogger.LogInfo($"Range #{attempt} completed successfully.");
+        }
+        else
+        {
+            FileLogger.LogInfo(
+                $"Range #{attempt} failed; restoring the originating foreground window.");
+            RestoreOriginatingForegroundWindow();
+            _originatingForegroundWindow = nint.Zero;
+        }
+
+        _selectionManager.CompleteClick();
+        CloseOverlaysWithoutRestore();
+
+        if (continueSelection)
+        {
+            FileLogger.LogInfo($"Range #{attempt} completed in continuous mode; reopening Stage 1.");
+            Thread.Sleep(ContinuousModeClickSettleMilliseconds);
+            ShowOverlaysCore();
+            if (!IsActive)
+            {
+                _continuousMode = false;
+            }
+        }
+        else
+        {
+            FileLogger.LogInfo($"Range #{attempt} finished; selection returned to standby.");
+        }
+
+        if (!success)
+        {
+            ErrorOccurred?.Invoke(
+                $"Failed to dispatch range clicks from ({start.X}, {start.Y}) to ({end.X}, {end.Y}). " +
+                "The target window may require a higher integrity level (UIPI).");
+        }
+    }
+
+    /// <summary>
+    /// Temporarily hides every overlay without tearing down the selection. The
+    /// surfaces are kept alive so range validation failures and scroll operations
+    /// can return to the same Stage 2 state.
+    /// </summary>
+    private void HideOverlaysForInput()
+    {
+        _isInputInProgress = true;
+        _windowFocusService.UnlockForeground();
+        foreach (var overlay in _overlays)
+        {
+            overlay.HideForInput();
+        }
+    }
+
+    /// <summary>
+    /// Restores surfaces hidden by <see cref="HideOverlaysForInput"/> and reclaims
+    /// focus for the primary overlay. Returns false after cancelling the session if
+    /// the overlay cannot be focused again.
+    /// </summary>
+    private bool ShowOverlaysAfterInput()
+    {
+        if (IsClosing || _overlays.Count == 0)
+        {
+            _isInputInProgress = false;
+            return false;
+        }
+
+        foreach (var overlay in _overlays)
+        {
+            overlay.ShowForInput();
+        }
+
+        if (_primaryOverlay == null || !_primaryOverlay.TryReactivate())
+        {
+            _isInputInProgress = false;
+            _continuousMode = false;
+            _rangeStartPoint = null;
+            _selectionManager.Cancel();
+            CloseOverlaysWithoutRestore();
+            RestoreOriginatingForegroundWindow();
+            _originatingForegroundWindow = nint.Zero;
+            ErrorOccurred?.Invoke("Failed to restore the selection overlay.");
+            return false;
+        }
+
+        LockPrimaryForeground();
+        _isInputInProgress = false;
+        return true;
+    }
+
     public void CloseOverlays()
     {
         _continuousMode = false;
+        _rangeStartPoint = null;
+        _isInputInProgress = false;
         CloseOverlaysWithoutRestore();
         RestoreOriginatingForegroundWindow();
         _originatingForegroundWindow = nint.Zero;

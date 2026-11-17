@@ -19,6 +19,7 @@ public class OverlayRenderElement : FrameworkElement
     private double _pixelsPerDip = 1.0;
     private bool _isPrimary;
     private bool _isContinuousMode;
+    private PixelPoint? _rangeStartPoint;
 
     private readonly Brush _dimBrush = new SolidColorBrush(Color.FromArgb(145, 10, 15, 25));
     private readonly Brush _columnHighlightBrush = new SolidColorBrush(Color.FromArgb(55, 0, 229, 255));
@@ -42,10 +43,16 @@ public class OverlayRenderElement : FrameworkElement
     private readonly Brush _columnKeyBrush = new SolidColorBrush(Color.FromRgb(0, 229, 255));
     private readonly Brush _rowKeyBrush = new SolidColorBrush(Color.FromRgb(255, 200, 87));
 
-    // Simple continuous-mode status badge. It is drawn only on the primary overlay.
+    // Simple status badges. They are drawn only on the primary overlay.
     private readonly Brush _statusTextBrush = new SolidColorBrush(Color.FromRgb(255, 255, 255));
     private readonly Brush _statusBackgroundBrush = new SolidColorBrush(Color.FromArgb(225, 12, 16, 24));
     private readonly Pen _statusBorderPen = new(new SolidColorBrush(Color.FromRgb(0, 229, 255)), 1.0);
+
+    // The range start marker needs to remain legible over arbitrary content, so a
+    // dark halo is drawn under a bright green ring and crosshair.
+    private readonly Brush _rangeStartFillBrush = new SolidColorBrush(Color.FromArgb(90, 80, 255, 160));
+    private readonly Pen _rangeStartPen = new(new SolidColorBrush(Color.FromRgb(80, 255, 160)), 2.0);
+    private readonly Pen _rangeStartHaloPen = new(new SolidColorBrush(Color.FromArgb(220, 0, 0, 0)), 4.0);
 
     private readonly Typeface _labelTypeface = new(new FontFamily("Segoe UI"), FontStyles.Normal, FontWeights.Bold, FontStretches.Normal);
 
@@ -71,6 +78,9 @@ public class OverlayRenderElement : FrameworkElement
         _statusTextBrush.Freeze();
         _statusBackgroundBrush.Freeze();
         _statusBorderPen.Freeze();
+        _rangeStartFillBrush.Freeze();
+        _rangeStartPen.Freeze();
+        _rangeStartHaloPen.Freeze();
     }
 
     public void UpdateState(
@@ -78,13 +88,15 @@ public class OverlayRenderElement : FrameworkElement
         IReadOnlyList<PixelRect> monitorRects,
         SelectionManager selectionManager,
         bool isPrimary = false,
-        bool isContinuousMode = false)
+        bool isContinuousMode = false,
+        PixelPoint? rangeStartPoint = null)
     {
         _monitorRect = monitorRect;
         _monitorRects = monitorRects;
         _selectionManager = selectionManager;
         _isPrimary = isPrimary;
         _isContinuousMode = isContinuousMode;
+        _rangeStartPoint = rangeStartPoint;
         InvalidateVisual();
     }
 
@@ -208,10 +220,34 @@ public class OverlayRenderElement : FrameworkElement
             DrawCellSectionLabels(dc, dpiX, dpiY);
         }
 
-        // 6. Draw the continuous-mode status badge on the primary overlay only.
-        if (_isPrimary && _isContinuousMode && _selectionManager.State == SelectionState.Selecting)
+        // 6. Draw the range anchor at its exact screen coordinate.
+        if (_rangeStartPoint is { } rangeStart && _selectionManager.State == SelectionState.Selecting)
         {
-            DrawContinuousModeIndicator(dc);
+            DrawRangeStartMarker(dc, rangeStart, dpiX, dpiY);
+        }
+
+        // 7. Draw status badges on the primary overlay only.
+        if (_isPrimary && _selectionManager.State == SelectionState.Selecting)
+        {
+            DrawStatusBadges(dc);
+        }
+    }
+
+    /// <summary>
+    /// Draws the active status badges stacked from the top-left corner. The order
+    /// keeps the mode that changes the next confirmation closest to the grid.
+    /// </summary>
+    private void DrawStatusBadges(DrawingContext dc)
+    {
+        double top = 12.0;
+        if (_rangeStartPoint.HasValue)
+        {
+            top = DrawStatusBadge(dc, "Range: Enter to select", top) + 4.0;
+        }
+
+        if (_isContinuousMode)
+        {
+            DrawStatusBadge(dc, "Continuous Mode", top);
         }
     }
 
@@ -220,7 +256,7 @@ public class OverlayRenderElement : FrameworkElement
     /// will keep the grid open. The badge is intentionally simple and uses the
     /// same dark pill treatment as the key labels.
     /// </summary>
-    private void DrawContinuousModeIndicator(DrawingContext dc)
+    private double DrawStatusBadge(DrawingContext dc, string textValue, double top)
     {
         const double margin = 12.0;
         const double paddingX = 10.0;
@@ -228,7 +264,7 @@ public class OverlayRenderElement : FrameworkElement
         const double fontSize = 14.0;
 
         var text = new FormattedText(
-            "Continuous Mode",
+            textValue,
             CultureInfo.InvariantCulture,
             FlowDirection.LeftToRight,
             _labelTypeface,
@@ -238,9 +274,40 @@ public class OverlayRenderElement : FrameworkElement
 
         double width = text.Width + (paddingX * 2);
         double height = text.Height + (paddingY * 2);
-        var badgeRect = new Rect(margin, margin, width, height);
+        var badgeRect = new Rect(margin, top, width, height);
         dc.DrawRoundedRectangle(_statusBackgroundBrush, _statusBorderPen, badgeRect, 4, 4);
         dc.DrawText(text, new Point(badgeRect.Left + paddingX, badgeRect.Top + paddingY));
+        return badgeRect.Bottom;
+    }
+
+    /// <summary>
+    /// Draws a high-contrast anchor for the start of a two-point range. It is
+    /// rendered on the monitor that owns the point rather than only on the primary.
+    /// </summary>
+    private void DrawRangeStartMarker(
+        DrawingContext dc,
+        PixelPoint point,
+        double dpiX,
+        double dpiY)
+    {
+        if (!_monitorRect.Contains(point))
+        {
+            return;
+        }
+
+        double x = (point.X - _monitorRect.Left) / dpiX;
+        double y = (point.Y - _monitorRect.Top) / dpiY;
+        var center = new Point(x, y);
+        const double ringRadius = 7.0;
+        const double crosshairInner = 10.0;
+        const double crosshairOuter = 15.0;
+
+        dc.DrawEllipse(null, _rangeStartHaloPen, center, ringRadius + 1.5, ringRadius + 1.5);
+        dc.DrawEllipse(_rangeStartFillBrush, _rangeStartPen, center, ringRadius, ringRadius);
+        dc.DrawLine(_rangeStartPen, new Point(x - crosshairOuter, y), new Point(x - crosshairInner, y));
+        dc.DrawLine(_rangeStartPen, new Point(x + crosshairInner, y), new Point(x + crosshairOuter, y));
+        dc.DrawLine(_rangeStartPen, new Point(x, y - crosshairOuter), new Point(x, y - crosshairInner));
+        dc.DrawLine(_rangeStartPen, new Point(x, y + crosshairInner), new Point(x, y + crosshairOuter));
     }
 
     /// <summary>

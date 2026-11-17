@@ -15,12 +15,24 @@ public class ServicesTests
         public bool ReturnResult { get; set; } = true;
         public List<string> Calls { get; } = new();
 
+        public PixelPoint? LastRangeStart { get; private set; }
+        public PixelPoint? LastRangeEnd { get; private set; }
+
         public bool SendClick(PixelPoint target, PixelRect virtualScreen, ClickKind clickKind)
         {
             Calls.Add("send");
             LastTarget = target;
             LastVirtualScreen = virtualScreen;
             LastClickKind = clickKind;
+            return ReturnResult;
+        }
+
+        public bool SendRangeClick(PixelPoint start, PixelPoint end, PixelRect virtualScreen)
+        {
+            Calls.Add("send-range");
+            LastRangeStart = start;
+            LastRangeEnd = end;
+            LastVirtualScreen = virtualScreen;
             return ReturnResult;
         }
     }
@@ -88,6 +100,50 @@ public class ServicesTests
             prepareClickAction: null);
 
         Assert.False(result);
+    }
+
+    [Fact]
+    public void ClickExecutor_RangeHidesWaitsThenSendsBothEndpoints()
+    {
+        var fakeSender = new FakeClickSender();
+        var executor = new ClickExecutor(fakeSender);
+        var start = new PixelPoint(100, 200);
+        var end = new PixelPoint(900, 800);
+        var screen = new PixelRect(0, 0, 1920, 1080);
+
+        bool result = executor.ExecuteRangeClick(
+            start,
+            end,
+            screen,
+            hideOverlaysAction: () => fakeSender.Calls.Add("hide"),
+            prepareClickAction: () =>
+            {
+                fakeSender.Calls.Add("wait");
+                return true;
+            });
+
+        Assert.True(result);
+        Assert.Equal(new[] { "hide", "wait", "send-range" }, fakeSender.Calls);
+        Assert.Equal(start, fakeSender.LastRangeStart);
+        Assert.Equal(end, fakeSender.LastRangeEnd);
+        Assert.Equal(screen, fakeSender.LastVirtualScreen);
+    }
+
+    [Fact]
+    public void ClickExecutor_RangeWhenPreparationFails_DoesNotSendClick()
+    {
+        var fakeSender = new FakeClickSender();
+        var executor = new ClickExecutor(fakeSender);
+
+        bool result = executor.ExecuteRangeClick(
+            new PixelPoint(100, 200),
+            new PixelPoint(900, 800),
+            new PixelRect(0, 0, 1920, 1080),
+            hideOverlaysAction: () => fakeSender.Calls.Add("hide"),
+            prepareClickAction: () => false);
+
+        Assert.False(result);
+        Assert.DoesNotContain("send-range", fakeSender.Calls);
     }
 
     [Fact]

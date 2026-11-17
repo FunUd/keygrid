@@ -140,6 +140,7 @@ internal static class NativeMethods
 
     // SendInput flags
     public const int INPUT_MOUSE = 0;
+    public const int INPUT_KEYBOARD = 1;
     public const uint MOUSEEVENTF_MOVE = 0x0001;
     public const uint MOUSEEVENTF_LEFTDOWN = 0x0002;
     public const uint MOUSEEVENTF_LEFTUP = 0x0004;
@@ -149,6 +150,8 @@ internal static class NativeMethods
     public const uint MOUSEEVENTF_MIDDLEUP = 0x0040;
     public const uint MOUSEEVENTF_ABSOLUTE = 0x8000;
     public const uint MOUSEEVENTF_VIRTUALDESK = 0x4000;
+    public const uint KEYEVENTF_KEYUP = 0x0002;
+    public const ushort VK_SHIFT = 0x10;
 
     // System Metrics
     public const int SM_XVIRTUALSCREEN = 76;
@@ -356,14 +359,29 @@ internal static class NativeMethods
         public nuint dwExtraInfo;
     }
 
+    [StructLayout(LayoutKind.Sequential)]
+    public struct KEYBDINPUT
+    {
+        public ushort wVk;
+        public ushort wScan;
+        public uint dwFlags;
+        public uint time;
+        public nuint dwExtraInfo;
+    }
+
     [StructLayout(LayoutKind.Explicit)]
     public struct INPUT
     {
         [FieldOffset(0)]
         public int type;
 
+        // INPUT contains a union of MOUSEINPUT and KEYBDINPUT. Both start at
+        // offset 8 on x64 after the type field and its alignment padding.
         [FieldOffset(8)]
         public MOUSEINPUT mi;
+
+        [FieldOffset(8)]
+        public KEYBDINPUT ki;
     }
 
     [DllImport("user32.dll", SetLastError = true)]

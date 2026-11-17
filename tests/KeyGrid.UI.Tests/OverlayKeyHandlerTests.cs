@@ -50,6 +50,26 @@ public class OverlayKeyHandlerTests
     }
 
     [Fact]
+    public void PrimaryOverlay_UnmodifiedRRequestsRangeStart()
+    {
+        UiTestThread.Run(() =>
+        {
+            var handler = new OverlayKeyHandler(isPrimary: true);
+            int rangeStartCount = 0;
+            var pressedKeys = new List<char>();
+            handler.RangeStartRequested += () => rangeStartCount++;
+            handler.KeyPressed += key => pressedKeys.Add(key);
+
+            Assert.True(handler.HandleKeyDown(Key.R, ModifierKeys.None, isRepeat: false));
+            Assert.True(handler.HandleKeyDown(Key.R, ModifierKeys.None, isRepeat: true));
+            Assert.True(handler.HandleKeyDown(Key.R, ModifierKeys.Shift, isRepeat: false));
+
+            Assert.Equal(1, rangeStartCount);
+            Assert.Equal(new[] { 'R' }, pressedKeys);
+        });
+    }
+
+    [Fact]
     public void PrimaryOverlay_TabTogglesContinuousModeAndIgnoresModifiedOrRepeatedTabs()
     {
         UiTestThread.Run(() =>

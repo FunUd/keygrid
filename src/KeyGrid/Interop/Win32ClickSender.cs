@@ -93,6 +93,93 @@ public class Win32ClickSender : IClickSender
         return succeeded;
     }
 
+    public bool SendRangeClick(PixelPoint start, PixelPoint end, PixelRect virtualScreen)
+    {
+        var (startX, startY) = CoordinateConverter.ToNormalizedVirtualDesktop(start, virtualScreen);
+        var (endX, endY) = CoordinateConverter.ToNormalizedVirtualDesktop(end, virtualScreen);
+        uint moveFlags = NativeMethods.MOUSEEVENTF_MOVE
+            | NativeMethods.MOUSEEVENTF_ABSOLUTE
+            | NativeMethods.MOUSEEVENTF_VIRTUALDESK;
+        uint buttonFlags = NativeMethods.MOUSEEVENTF_ABSOLUTE
+            | NativeMethods.MOUSEEVENTF_VIRTUALDESK;
+
+        // A text selection starts with a normal click at the anchor and extends it
+        // with Shift+left click at the endpoint. Keep Shift held only for the
+        // second click so the target's own click handling is not altered.
+        var inputs = new NativeMethods.INPUT[8];
+        inputs[0] = CreateMouseInput(startX, startY, moveFlags);
+        inputs[1] = CreateMouseInput(startX, startY, buttonFlags | NativeMethods.MOUSEEVENTF_LEFTDOWN);
+        inputs[2] = CreateMouseInput(startX, startY, buttonFlags | NativeMethods.MOUSEEVENTF_LEFTUP);
+        inputs[3] = CreateKeyInput(NativeMethods.VK_SHIFT, 0);
+        inputs[4] = CreateMouseInput(endX, endY, moveFlags);
+        inputs[5] = CreateMouseInput(endX, endY, buttonFlags | NativeMethods.MOUSEEVENTF_LEFTDOWN);
+        inputs[6] = CreateMouseInput(endX, endY, buttonFlags | NativeMethods.MOUSEEVENTF_LEFTUP);
+        inputs[7] = CreateKeyInput(NativeMethods.VK_SHIFT, NativeMethods.KEYEVENTF_KEYUP);
+
+        FileLogger.LogInfo(
+            $"SendInput range starting (start=({start.X}, {start.Y}), end=({end.X}, {end.Y})).");
+        uint sent = _sendInput((uint)inputs.Length, inputs, Marshal.SizeOf<NativeMethods.INPUT>());
+        bool succeeded = sent == inputs.Length;
+        if (succeeded)
+        {
+            FileLogger.LogInfo(
+                $"SendInput range sequence succeeded (requested={inputs.Length}, sent={sent}).");
+            return true;
+        }
+
+        FileLogger.LogWarning(
+            $"SendInput range sequence incomplete (requested={inputs.Length}, sent={sent}, " +
+            $"lastError={Marshal.GetLastWin32Error()}). Releasing synthetic buttons and Shift.");
+
+        // A partial send can leave either the left button or Shift logically
+        // pressed. Release both, using the endpoint so the mouse-up occurs where
+        // the input stream currently is.
+        var cleanup = new[]
+        {
+            CreateMouseInput(endX, endY, buttonFlags | NativeMethods.MOUSEEVENTF_LEFTUP),
+            CreateKeyInput(NativeMethods.VK_SHIFT, NativeMethods.KEYEVENTF_KEYUP)
+        };
+        uint cleanupSent = _sendInput(
+            (uint)cleanup.Length,
+            cleanup,
+            Marshal.SizeOf<NativeMethods.INPUT>());
+        if (cleanupSent != (uint)cleanup.Length)
+        {
+            FileLogger.LogWarning(
+                $"SendInput range cleanup incomplete (requested={cleanup.Length}, sent={cleanupSent}, " +
+                $"lastError={Marshal.GetLastWin32Error()}).");
+        }
+
+        return false;
+    }
+
+    private static NativeMethods.INPUT CreateMouseInput(int normalizedX, int normalizedY, uint flags)
+    {
+        return new NativeMethods.INPUT
+        {
+            type = NativeMethods.INPUT_MOUSE,
+            mi = new NativeMethods.MOUSEINPUT
+            {
+                dx = normalizedX,
+                dy = normalizedY,
+                dwFlags = flags
+            }
+        };
+    }
+
+    private static NativeMethods.INPUT CreateKeyInput(ushort virtualKey, uint flags)
+    {
+        return new NativeMethods.INPUT
+        {
+            type = NativeMethods.INPUT_KEYBOARD,
+            ki = new NativeMethods.KEYBDINPUT
+            {
+                wVk = virtualKey,
+                dwFlags = flags
+            }
+        };
+    }
+
     private static string DescribeWindow(nint window)
     {
         if (window == nint.Zero)

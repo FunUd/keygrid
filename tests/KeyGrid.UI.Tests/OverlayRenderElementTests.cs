@@ -77,6 +77,44 @@ public class OverlayRenderElementTests
     }
 
     [Fact]
+    public void RangeStartMarker_IsDrawnOnlyOnTheMonitorContainingTheAnchor()
+    {
+        var selection = CreateSelection();
+        var anchor = new PixelPoint(150, 100);
+
+        var leftDrawings = RenderDrawings(LeftMonitor, selection, rangeStartPoint: anchor);
+        var rightDrawings = RenderDrawings(RightMonitor, selection, rangeStartPoint: anchor);
+
+        Assert.Contains(
+            GetGeometryDrawings(leftDrawings),
+            drawing => drawing.Brush is SolidColorBrush brush
+                && brush.Color == Color.FromArgb(90, 80, 255, 160));
+        Assert.DoesNotContain(
+            GetGeometryDrawings(rightDrawings),
+            drawing => drawing.Brush is SolidColorBrush brush
+                && brush.Color == Color.FromArgb(90, 80, 255, 160));
+    }
+
+    [Fact]
+    public void RangeIndicator_IsDrawnOnlyOnThePrimaryOverlayWhenActive()
+    {
+        var selection = CreateSelection();
+        var anchor = new PixelPoint(150, 100);
+
+        string primaryText = new(
+            RenderGlyphDetails(LeftMonitor, selection, isPrimary: true, rangeStartPoint: anchor)
+                .Select(glyph => glyph.Character)
+                .ToArray());
+        string secondaryText = new(
+            RenderGlyphDetails(RightMonitor, selection, isPrimary: false, rangeStartPoint: anchor)
+                .Select(glyph => glyph.Character)
+                .ToArray());
+
+        Assert.Contains("Range: Enter to select", primaryText);
+        Assert.DoesNotContain("Range: Enter to select", secondaryText);
+    }
+
+    [Fact]
     public void ContinuousModeIndicator_IsDrawnOnlyOnThePrimaryOverlayWhenEnabled()
     {
         var selection = CreateSelection();
@@ -126,9 +164,15 @@ public class OverlayRenderElementTests
         PixelRect monitor,
         SelectionManager selection,
         bool isPrimary = false,
-        bool isContinuousMode = false)
+        bool isContinuousMode = false,
+        PixelPoint? rangeStartPoint = null)
     {
-        DrawingGroup drawing = RenderDrawings(monitor, selection, isPrimary, isContinuousMode);
+        DrawingGroup drawing = RenderDrawings(
+            monitor,
+            selection,
+            isPrimary,
+            isContinuousMode,
+            rangeStartPoint);
         return GetGlyphs(drawing).ToArray();
     }
 
@@ -136,7 +180,8 @@ public class OverlayRenderElementTests
         PixelRect monitor,
         SelectionManager selection,
         bool isPrimary = false,
-        bool isContinuousMode = false)
+        bool isContinuousMode = false,
+        PixelPoint? rangeStartPoint = null)
     {
         DrawingGroup? drawing = null;
         Exception? error = null;
@@ -145,7 +190,13 @@ public class OverlayRenderElementTests
             try
             {
                 var element = new TestOverlayRenderElement();
-                element.UpdateState(monitor, Monitors, selection, isPrimary, isContinuousMode);
+                element.UpdateState(
+                    monitor,
+                    Monitors,
+                    selection,
+                    isPrimary,
+                    isContinuousMode,
+                    rangeStartPoint);
                 var result = new DrawingGroup();
                 using (var context = result.Open())
                 {

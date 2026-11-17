@@ -14,6 +14,7 @@ internal sealed class OverlayKeyHandler
     public event Action? BackspacePressed;
     public event Action? CancelRequested;
     public event Action? ContinuousModeToggleRequested;
+    public event Action? RangeStartRequested;
 
     public OverlayKeyHandler(bool isPrimary)
     {
@@ -72,6 +73,11 @@ internal sealed class OverlayKeyHandler
                 return true;
             case Key.Down:
                 MoveRequested?.Invoke(0, 1);
+                return true;
+            case Key.R when modifiers == ModifierKeys.None:
+                // R is also a Stage 1 column key. The manager decides whether this
+                // press starts a range or is part of a Stage 1 selection.
+                RangeStartRequested?.Invoke();
                 return true;
             default:
                 if (key >= Key.A && key <= Key.Z)

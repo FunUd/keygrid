@@ -21,6 +21,7 @@ public partial class OverlayWindow : Window, IOverlayWindowSurface
     public event Action? BackspacePressed;
     public event Action? CancelRequested;
     public event Action? ContinuousModeToggleRequested;
+    public event Action? RangeStartRequested;
     public event Action? FocusLost;
     public event Action? DisplayConfigurationChanged;
 
@@ -44,6 +45,7 @@ public partial class OverlayWindow : Window, IOverlayWindowSurface
         _keyHandler.BackspacePressed += () => BackspacePressed?.Invoke();
         _keyHandler.CancelRequested += () => CancelRequested?.Invoke();
         _keyHandler.ContinuousModeToggleRequested += () => ContinuousModeToggleRequested?.Invoke();
+        _keyHandler.RangeStartRequested += () => RangeStartRequested?.Invoke();
 
         Focusable = isPrimary;
         ShowActivated = isPrimary;
@@ -57,7 +59,7 @@ public partial class OverlayWindow : Window, IOverlayWindowSurface
     /// </summary>
     public bool TryReactivate()
     {
-        if (!IsPrimary || _isClosing || !IsVisible)
+        if (!IsPrimary || _isClosing)
         {
             return false;
         }
@@ -84,14 +86,77 @@ public partial class OverlayWindow : Window, IOverlayWindowSurface
     public void UpdateRenderState(
         SelectionManager selectionManager,
         IReadOnlyList<PixelRect> monitorRects,
-        bool isContinuousMode)
+        bool isContinuousMode,
+        PixelPoint? rangeStartPoint = null)
     {
         RenderElement.UpdateState(
             MonitorRect,
             monitorRects,
             selectionManager,
             IsPrimary,
-            isContinuousMode);
+            isContinuousMode,
+            rangeStartPoint);
+    }
+
+    /// <summary>
+    /// Temporarily hides the overlay so synthetic input can reach the window under
+    /// the selected coordinate. The window itself is kept alive for re-showing.
+    /// </summary>
+    public void HideForInput()
+    {
+        if (_isClosing)
+        {
+            return;
+        }
+
+        var hwnd = Handle;
+        if (hwnd == nint.Zero)
+        {
+            return;
+        }
+
+        NativeMethods.SetWindowPos(
+            hwnd,
+            nint.Zero,
+            0,
+            0,
+            0,
+            0,
+            NativeMethods.SWP_HIDEWINDOW
+            | NativeMethods.SWP_NOACTIVATE
+            | NativeMethods.SWP_NOMOVE
+            | NativeMethods.SWP_NOSIZE
+            | NativeMethods.SWP_NOZORDER);
+    }
+
+    /// <summary>
+    /// Restores a temporarily hidden overlay without activating it. The manager
+    /// explicitly reactivates the primary overlay after all surfaces are visible.
+    /// </summary>
+    public void ShowForInput()
+    {
+        if (_isClosing)
+        {
+            return;
+        }
+
+        var hwnd = Handle;
+        if (hwnd == nint.Zero)
+        {
+            return;
+        }
+
+        NativeMethods.SetWindowPos(
+            hwnd,
+            NativeMethods.HWND_TOPMOST,
+            0,
+            0,
+            0,
+            0,
+            NativeMethods.SWP_SHOWWINDOW
+            | NativeMethods.SWP_NOACTIVATE
+            | NativeMethods.SWP_NOMOVE
+            | NativeMethods.SWP_NOSIZE);
     }
 
     protected override void OnSourceInitialized(EventArgs e)

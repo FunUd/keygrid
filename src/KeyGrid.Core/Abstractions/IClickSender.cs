@@ -17,4 +17,11 @@ public interface IClickSender
     /// </summary>
     /// <param name="clickKind">Mouse button to send.</param>
     bool SendClick(PixelPoint target, PixelRect virtualScreen, ClickKind clickKind);
+
+    /// <summary>
+    /// Sends a two-point text selection: a normal left click at the start point,
+    /// followed by a Shift+left click at the end point. Returns true only when
+    /// the complete SendInput sequence was accepted.
+    /// </summary>
+    bool SendRangeClick(PixelPoint start, PixelPoint end, PixelRect virtualScreen);
 }

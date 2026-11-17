@@ -1,6 +1,6 @@
-# KeyGrid Specification v1.10
+# KeyGrid Specification v1.11
 
-**Version:** 1.10
+**Version:** 1.11
 **対象OS:** Windows 11（x64）
 **アプリケーション名:** KeyGrid
 **実装言語:** C#
@@ -32,6 +32,8 @@
 | 確定座標 | 最終的にクリックする座標 |
 | 確定キー | `Enter`（左クリック）、`Shift+Enter`（右クリック）、`Ctrl+Enter`（中クリック）の総称 |
 | 連続モード | 確定後も選択を終了せず、第1段階から選択をやり直すモード。グリッド表示中にTabで切り替える |
+| Range selection | A two-point selection started with `R` in Stage 2. The first point becomes the anchor and the current Stage 2 target becomes the endpoint. `Enter` performs a left click at the anchor and a Shift+left click at the endpoint |
+| Range anchor | The physical-pixel screen coordinate captured when range selection starts. It remains fixed while the Stage 2 cursor or Stage 1 region changes |
 | 主オーバーレイ | キーボード入力を受け取るオーバーレイウィンドウ（1つ） |
 | 表示専用オーバーレイ | 主オーバーレイ以外。マウス入力を遮断し、描画のみ行う |
 
@@ -41,7 +43,7 @@
 
 KeyGrid is a resident utility for left-, right-, and middle-clicking accessible screen locations using only the keyboard.
 
-It displays column and row labels across the virtual screen. The user narrows the target area with one column key and one row key, then moves a cursor through a 5×5 grid with the arrow keys. `Enter` performs a left click; `Shift+Enter` performs a right click; `Ctrl+Enter` performs a middle (wheel) click.
+It displays column and row labels across the virtual screen. The user narrows the target area with one column key and one row key, then moves a cursor through a 5×5 grid with the arrow keys. `Enter` performs a left click; `Shift+Enter` performs a right click; `Ctrl+Enter` performs a middle (wheel) click. In Stage 2, `R` starts a two-point range selection so the user can extend a browser text selection from an anchor to a second point.
 
 ### 基本方針
 
@@ -91,9 +93,12 @@ It displays column and row labels across the virtual screen. The user narrows th
 3. 列キー、行キーの順で入力し、第1段階の領域を選択する。
 4. 第2段階では選択領域を5×5に分割し、有効セルのうち中央に最も近いセルを初期カーソル位置として赤く表示する。
 5. Move the cursor with the arrow keys. Use `Enter` to left-click, `Shift+Enter` to right-click, or `Ctrl+Enter` to middle-click the resolved coordinate. Invalid cells, including gaps between monitors, are skipped.
-6. 通常モードではオーバーレイを終了し、通常状態に戻る。連続モードではクリック送信後にオーバーレイを再表示し、第1段階（打鍵履歴0個）から選択をやり直す。
+6. In Stage 2, press `R` without modifiers to set the range anchor at the current target. Move the cursor to the endpoint and press `Enter` to perform a normal left click at the anchor followed by a Shift+left click at the endpoint. `Shift+Enter` and `Ctrl+Enter` are ignored while a range anchor is active.
+7. 通常モードではオーバーレイを終了し、通常状態に戻る。連続モードではクリック送信後にオーバーレイを再表示し、第1段階（打鍵履歴0個）から選択をやり直す。
 
 Immediately after Stage 1, any confirmation key uses the initially selected valid Stage 2 cell nearest the center.
+
+The range anchor is captured at the exact resolved target coordinate and does not move when the Stage 2 cursor moves. It survives `Backspace` into Stage 1 so the user can change the endpoint region; the anchor remains visible until `Enter` executes the range or `Esc` clears it.
 
 ### 3.3 選択キー
 
@@ -127,6 +132,11 @@ Immediately after Stage 1, any confirmation key uses the initially selected vali
 - 連続モードはグリッド表示中にTabでON/OFFする。初期状態はOFFとし、ホットキーによる新規開始時はOFFに戻る。
 - 連続モードでもEscは選択を破棄して終了する。
 - 連続モードでクリックを送信できなかった場合も第1段階から再開し、エラーを通知する。
+- Range selection uses plain `Enter` only. The start and end points must resolve to the same top-level window after the overlays are hidden; otherwise no synthetic input is sent, the range is cleared, Stage 2 is restored, and an error is reported.
+- A completed range click follows the same normal/continuous-mode completion rules as a normal click. The range anchor is cleared before the next Stage 1 session starts.
+- `R` in Stage 1 keeps its normal column/row key behavior. It starts a range only in Stage 2 when no anchor is already active.
+- After range selection starts, pressing `Esc` clears the anchor and keeps the selection session open. A second `Esc` exits selection mode.
+- Pressing `R` again while an anchor is active is ignored; the anchor changes only after `Esc` clears it.
 
 ### 3.5 キー操作
 
@@ -137,11 +147,13 @@ Immediately after Stage 1, any confirmation key uses the initially selected vali
 | `Enter` | Confirm with a left click; accepted without modifiers |
 | `Shift+Enter` | Confirm with a right click; accepted with Shift alone |
 | `Ctrl+Enter` | Confirm with a middle (wheel) click; accepted with Ctrl alone |
-| `Backspace` | Undo the last Stage 1 key. Arrow movement is not part of the undo history |
+| `Backspace` | Undo the last Stage 1 key. Arrow movement is not part of the undo history; an active range anchor is preserved |
 | `Tab` | Toggle continuous mode while the grid is visible. Only an unmodified Tab press is accepted |
-| `Esc` | Discard the selection and exit, including continuous mode |
+| `R` (Stage 2) | Set the range anchor at the current target. Only an unmodified press is accepted; ignored while an anchor is already active |
+| `Enter` while a range anchor is active | Execute the range: left click at the anchor, then Shift+left click at the current target |
+| `Esc` | Clear an active range anchor first; when no anchor is active, discard the selection and exit, including continuous mode |
 
-Backspace undoes one Stage 1 keystroke. In Stage 2 it removes the Stage 1 row key and returns to Stage 1. Arrow movement is not recorded in the history.
+Backspace undoes one Stage 1 keystroke. In Stage 2 it removes the Stage 1 row key and returns to Stage 1. Arrow movement is not recorded in the history. Range anchors are independent of the history and remain at their captured screen coordinate.
 
 ---
 
@@ -232,6 +244,8 @@ Backspace undoes one Stage 1 keystroke. In Stage 2 it removes the Stage 1 row ke
 - グリッド線は細く、視認性を損なわない色にする。
 - 第2段階で確定キーを押すと、選択カーソルのセルを確定し、`Enter`は左、`Shift+Enter`は右、`Ctrl+Enter`は中（ホイール）クリックする。
 - 連続モードがONの間は、プライマリモニターのオーバーレイに「Continuous Mode」と表示する。表示は簡易的なテキストバッジとし、選択操作を妨げない。
+- While a range anchor is active, a high-contrast green ring and crosshair are drawn at the anchor's exact physical-pixel coordinate. The marker is drawn by the monitor that contains the point, including when it is not the primary monitor.
+- While a range anchor is active, the primary overlay shows the status badge `Range: Enter to select`. Status badges stack without overlapping, and an active continuous mode is shown below the range badge.
 - 色・透明度は初期バージョンでは固定値とする。背景色に応じた自動色変更は行わない。
 
 ### 5.3 表示終了
@@ -278,6 +292,15 @@ Backspace undoes one Stage 1 keystroke. In Stage 2 it removes the Stage 1 row ke
 7. If the `SendInput` return count does not match the requested count, report failure through a tray notification, including UIPI blocking.
 8. 通常モードでは選択モードを終了して待機に戻る。連続モードではクリック入力の処理を待ってからオーバーレイを再表示し、第1段階から選択を再開する。
 
+For a range confirmation, steps 2-4 are applied to both the anchor and endpoint:
+
+1. Hide all overlays without closing the selection session.
+2. Resolve the root window under the anchor and the root window under the endpoint. If either is missing or the roots differ, send no input, clear the range anchor, restore the Stage 2 overlay, and report the reason.
+3. Activate the shared root window and verify that both endpoints still belong to it immediately before dispatch.
+4. Dispatch a normal left click at the anchor, then a Shift+left click at the endpoint. Shift is held only for the endpoint click and is released in the same input batch.
+5. If `SendInput` is partial, release the synthetic left button and Shift before reporting failure.
+6. On success, follow the normal/continuous-mode completion rules. On dispatch failure, restore the pre-selection foreground window and report failure.
+
 - 連続モードでは、クリック送信後に主オーバーレイがフォーカスを取得し直す。Escで終了した場合は、直前にクリックしたウィンドウへフォーカスを戻す。
 - Do not restore the pointer to its original position after the click.
 - Do not restore the pre-selection window before dispatch. The pre-selection window can cover the selected coordinate after it is raised and receive the click instead of the window under the target.
@@ -296,6 +319,7 @@ Backspace undoes one Stage 1 keystroke. In Stage 2 it removes the Stage 1 row ke
 - キーの判定は文字ではなくキーコードで行う。第1段階の列・行キーは3.3の対応表で番号に変換し、第2段階は矢印キーと確定キーで操作する。IMEが処理したキーは元のキーコードで判定する。
 - キーリピート（IsRepeat）による入力は無視する。
 - Tabは修飾キーなしの場合のみ連続モードの切り替えに使う。キーリピートは無視する。修飾キー付きのTabは連続モードを切り替えない。
+- `R` activates range selection only in Stage 2 with no modifiers. Unmodified `R` in Stage 1 remains an ordinary selection key, and modified `R` is treated as an ordinary letter key.
 
 ### 7.2 ホットキー
 
@@ -314,9 +338,10 @@ Backspace undoes one Stage 1 keystroke. In Stage 2 it removes the Stage 1 row ke
 - **待機**：オーバーレイなし。ホットキーを待つ。
 - **選択中**：オーバーレイ表示中。第1段階の打鍵履歴（0〜2個）と、第2段階の選択カーソルを持つ。
 - **連続モード**：選択中のセッション単位のフラグ。ONの間は確定後も待機に戻らず、第1段階から選択を再開する。Esc、ホットキーによる再開始、フォーカス喪失、モニター変更でOFFに戻る。
+- **範囲選択中**：選択中のセッション単位のフラグ。Stage 2で`R`を押した後にONになり、固定されたアンカー座標を保持する。`Enter`で範囲を実行するか、`Esc`でアンカーを消すまで継続する。
 - **クリック実行中**：第2段階または第1段階後の確定キーで確定座標を決めた後。オーバーレイ非表示からクリック送信までの間。
 
-第1段階では履歴0個のとき列キー、履歴1個のとき行キーを受け付ける。Backspace時は履歴から選択領域を再計算する。第2段階の矢印移動は打鍵履歴に含めない。連続モードの切り替えは打鍵履歴と選択カーソルを変更しない。
+第1段階では履歴0個のとき列キー、履歴1個のとき行キーを受け付ける。Backspace時は履歴から選択領域を再計算する。第2段階の矢印移動は打鍵履歴に含めない。連続モードの切り替えは打鍵履歴と選択カーソルを変更しない。範囲アンカーは打鍵履歴や第2段階カーソルとは独立して保持する。
 
 ### 8.2 遷移表
 
@@ -333,7 +358,15 @@ Backspace undoes one Stage 1 keystroke. In Stage 2 it removes the Stage 1 row ke
 | Selecting (history length 2) | `Enter` | Executing click | Confirm the cursor cell with a left click |
 | Selecting (history length 2) | `Shift+Enter` | Executing click | Confirm the cursor cell with a right click |
 | Selecting (history length 2) | `Ctrl+Enter` | Executing click | Confirm the cursor cell with a middle (wheel) click |
-| 選択中（履歴2個） | Backspace | 選択中（履歴1個） | 第1段階へ戻り、領域を再計算 |
+| Selecting (history length 2, no range anchor) | `R` (no modifiers) | Selecting (range active) | Capture the current target as the range anchor |
+| Selecting (range active) | Arrow keys | Selecting (range active) | Move the endpoint cursor; the anchor stays fixed |
+| Selecting (range active, history length 2) | `Enter` | Executing range | Validate both endpoints, then send left click + Shift+left click |
+| Selecting (range active) | `Shift+Enter`, `Ctrl+Enter` | No change | Ignore; range execution uses unmodified Enter |
+| Selecting (range active, history length 0 or 1) | `Enter` | No change | Ignore until Stage 2 is active |
+| Selecting (range active) | `R` | No change | Ignore; the anchor is already set |
+| Selecting (range active) | `Esc` | Selecting (no range) | Clear the anchor and keep the session open |
+| Selecting (range active) | Backspace | Selecting | Undo one Stage 1 key when possible; keep the anchor while recalculating the region |
+| Selecting (history length 2) | Backspace | 選択中（履歴1個） | 第1段階へ戻り、領域を再計算 |
 | 選択中（履歴0・1個） | Backspace | 選択中 | 履歴の末尾を取り消す。履歴が空なら変更なし |
 | Selecting (history length 0 or 1) | Any confirmation key | No change | Ignore |
 | 選択中 | Esc | 待機 | 選択を破棄し、連続モードをOFFにしてオーバーレイを終了 |
@@ -346,6 +379,10 @@ Backspace undoes one Stage 1 keystroke. In Stage 2 it removes the Stage 1 row ke
 | クリック実行中 | SendInput成功（連続モード） | 選択中（履歴0個） | 第1段階のオーバーレイを再表示し、連続モードを維持 |
 | クリック実行中 | SendInput失敗（通常モード） | 待機 | トレイ通知 |
 | クリック実行中 | SendInput失敗（連続モード） | 選択中（履歴0個） | トレイ通知し、第1段階のオーバーレイを再表示 |
+| 範囲実行中 | Endpoint validation failure | Selecting (Stage 2, no range) | Send no input, clear the anchor, restore the overlay, and report an error |
+| 範囲実行中 | SendInput success (normal mode) | 待機 | Complete the range and close the overlays |
+| 範囲実行中 | SendInput success (continuous mode) | 選択中（履歴0個） | Reopen Stage 1 and keep continuous mode |
+| 範囲実行中 | SendInput failure | 待機 or 選択中（履歴0個） | Release synthetic input, report an error, and apply the normal/continuous completion rule |
 | クリック実行中 | 入力・構成変更のイベント | クリック実行中 | 無視 |
 
 連続モードがONの場合、確定キーによるクリック実行中からは、クリック完了後に待機ではなく選択中（履歴0個）へ戻る。
@@ -388,6 +425,7 @@ Backspace undoes one Stage 1 keystroke. In Stage 2 it removes the Stage 1 row ke
 | キャンセルキー | Esc（連続モードでも終了） |
 | 連続モード | 初期値OFF。グリッド表示中にTabでON/OFF。ONの間は確定後も第1段階へ戻る |
 | Click kinds | Left, right, and middle (wheel) clicks |
+| Range selection | Stage 2で`R`。アンカーは固定し、`Enter`で左クリック＋Shift+左クリック。Escでアンカーを解除 |
 | 確定後の動作 | 通常モードはオーバーレイ終了。連続モードは第1段階へ戻る。カーソルは元の位置に戻さない |
 
 将来、以下の機能を追加できる構造とする。
@@ -418,6 +456,8 @@ Backspace undoes one Stage 1 keystroke. In Stage 2 it removes the Stage 1 row ke
 ### 11.2 安定性
 
 - 不正な座標へのクリックを防止する。確定座標は、モニター表示領域内であることを検証してから使用する。
+- Range execution validates both endpoints after the overlays are hidden. If they resolve to different top-level windows, no input is sent and the range is cancelled with an error.
+- A partial range `SendInput` releases the synthetic left button and Shift so the user's keyboard and mouse state are not left modified.
 - 選択中にモニター構成またはDPIが変わった場合は、選択を破棄して待機状態に戻る。変更はWM_DISPLAYCHANGEとWM_DPICHANGEDで検出する。メッセージ専用ウィンドウにWM_DPICHANGEDが届かない場合があるため、各オーバーレイウィンドウでも同じメッセージを監視する。
 - オーバーレイを各モニターへ初期配置する際に発生するWM_DPICHANGEDは、構成変更とみなさない。初期配置の完了後に検出した変更だけを選択の破棄対象とする。
 - キャンセル時・異常時に、オーバーレイ・IMEの無効化・入力遮断の状態を残さない。
@@ -481,8 +521,8 @@ Visual Studio Codeをメインのエディタとして使用する。使用す�
 |---|---|---|
 | Application | 起動・終了管理、多重起動防止、異常時の後始末 | 各マネージャ |
 | HotkeyManager | ホットキーの登録・解除、登録失敗の通知 | IHotkeyRegistrar |
-| OverlayManager | 列・行ラベルとカーソルの描画、ハイライト、キー入力の受け取り、連続モードの管理 | SelectionManager、IMonitorProvider |
-| SelectionManager | 第1段階の打鍵履歴、矢印カーソルの状態、状態遷移（8章）、履歴からの領域再計算 | GridCalculator、KeyLayout |
+| OverlayManager | 列・行ラベルとカーソルの描画、ハイライト、キー入力の受け取り、連続モードと範囲アンカーの管理 | SelectionManager、IMonitorProvider、ClickExecutor |
+| SelectionManager | 第1段階の打鍵履歴、矢印カーソルの状態、状態遷移（8章）、履歴からの領域再計算、Stage 2 target resolution | GridCalculator、KeyLayout |
 | GridCalculator | 第1段階の分割数最適化、境界計算、セル・有効セル、基準点と確定座標の計算 | なし（純粋計算、Win32非依存） |
 | KeyLayout | 列・行キーのブロック割り当てと、キーから列・行の番号への対応 | なし（純粋計算） |
 | FocusLossPolicy | フォーカス喪失時に再取得するか選択を破棄するかの判定 | なし（純粋計算） |
@@ -498,7 +538,8 @@ Visual Studio Codeをメインのエディタとして使用する。使用す�
 - GridCalculatorは、幅・高さと固定の第2段階分割数を使って第1段階の最適分割数を計算し、Win32には依存しない。
 - OverlayManager displays SelectionManager state (the selected region and history) and asks ClickExecutor to send the selected click kind on confirmation.
 - OverlayManagerは連続モードをセッション単位で保持する。連続モードの確定後はSelectionManagerをリセットし、オーバーレイを再表示して第1段階から再開する。
-- ClickExecutor receives the target coordinate and click kind, then dispatches them through IClickSender.
+- OverlayManager owns the range anchor and validates both endpoints after temporarily hiding the overlays. It asks ClickExecutor to dispatch the two-point range through IClickSender.
+- ClickExecutor receives the target coordinate and click kind, then dispatches them through IClickSender. It also provides the render-synchronized two-point range dispatch path.
 - HotkeyManagerは操作をApplicationへ通知する。
 
 画面表示、選択ロジック（純粋計算と状態遷移）、Windows API連携を分離する。
@@ -507,7 +548,7 @@ Visual Studio Codeをメインのエディタとして使用する。使用す�
 
 - **IMonitorProvider**：モニター情報の取得（GetMonitors）、構成変更の通知（Changed）
 - **MonitorInfo**：モニターの物理表示領域、実効DPI倍率、プライマリ判定を保持する
-- **IClickSender**: Sends a left, right, or middle click at a specified virtual-screen coordinate and returns whether dispatch succeeded.
+- **IClickSender**: Sends a left, right, or middle click at a specified virtual-screen coordinate and returns whether dispatch succeeded. It also sends the two-point range sequence (left click at the anchor, Shift+left click at the endpoint).
 - **IHotkeyRegistrar**：ホットキーの登録・解除（Register、Unregister）
 - **PixelRect**：物理ピクセルの矩形。[左, 右) × [上, 下) の半開区間とする
 - **KeyLayout / KeyAllocation**：左ブロックと右ブロックから重複しない列キー・行キーを割り当て、キーから列・行の番号に変換する
@@ -541,6 +582,13 @@ Win32に依存しない部分を対象とする。
 - 連続モードをOFFに戻した場合、確定後に待機へ戻ること
 - 連続モードのEsc、ホットキー再開始、フォーカス喪失、モニター変更でモードが解除されること
 - 連続モードでクリック失敗時も第1段階へ戻ること
+- `R` in Stage 2 captures the current target as a range anchor without changing selection state, and an unmodified `R` in Stage 1 remains a selection key
+- Range anchors persist across Stage 2 cursor movement and `Backspace` into Stage 1, and `Esc` clears the anchor before exiting
+- Range confirmation uses only unmodified `Enter`; modified confirmation keys are ignored while a range anchor is active
+- Range execution sends a left click at the anchor and a Shift+left click at the endpoint, and follows normal/continuous completion rules
+- Different top-level windows or missing endpoint windows abort range execution without sending input and restore Stage 2
+- A partial range input sequence releases the synthetic left button and Shift
+- Range start marker and `Range: Enter to select` badge are drawn only on the appropriate overlay(s)
 - フォーカス喪失の判定：可視の他プロセスなら破棄、自プロセスまたは非表示ウィンドウなら再取得、連続再取得の上限
 - 基準点（中心）の算出（偶数幅・奇数幅・1px）
 - 空白領域の基準点から最近点を求める処理、同距離の場合の優先規則（y優先、次にx）
@@ -576,6 +624,9 @@ Win32に依存しない部分を対象とする。
 - 連続モードで左・右・中クリックを繰り返し、毎回第1段階へ戻ること
 - 連続モードのEsc、ホットキー再開始、フォーカス喪失、モニター変更
 - 連続モードのクリック失敗時の再表示と通知
+- Browser text selection using `R` + `Enter`, including selections that span lines and reversed anchors
+- Range execution rejection for endpoints in different windows, and recovery to Stage 2
+- Visualization of the range anchor across monitors and with continuous mode enabled
 - 分割数と第2段階後のセル寸法の実測（4.1の表と比較）
 - クリック精度：クリック座標を記録する検証用ウィンドウを使い、確定座標と実際のクリック位置を自動比較する
 
@@ -645,6 +696,10 @@ Win32に依存しない部分を対象とする。
 - Backspaceで第1段階の打鍵履歴を1つずつ取り消せる。
 - グリッド表示中にTabで連続モードをON/OFFできる。
 - 連続モードでは確定後に第1段階のグリッドが再表示され、続けてクリックできる。
+- Stage 2で`R`により範囲アンカーを設定し、`Enter`でアンカーから端点までShift+左クリックの範囲選択を実行できる。
+- 範囲アンカーはBackspace後も保持され、Escで解除できる。
+- 異なるウィンドウにまたがる範囲は入力せずにエラーを通知し、Stage 2へ戻る。
+- 連続モードでも範囲選択を実行でき、実行後は第1段階へ戻る。
 - 連続モードでもEscで正常に終了できる。
 - Escで正常にキャンセルできる。
 - モニター間の空白領域をクリックしない。

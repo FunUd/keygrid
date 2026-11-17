@@ -84,6 +84,110 @@ public class Win32ClickSenderTests
     }
 
     [Fact]
+    public void SendRangeClick_EmitsNormalClickThenShiftClickAtEachEndpoint()
+    {
+        UiTestThread.Run(() =>
+        {
+            NativeMethods.INPUT[]? capturedInputs = null;
+            uint capturedCount = 0;
+            var sender = new Win32ClickSender((count, inputs, _) =>
+            {
+                capturedCount = count;
+                capturedInputs = inputs.ToArray();
+                return count;
+            });
+            var virtualScreen = new PixelRect(-1920, -200, 3840, 2160);
+            var start = new PixelPoint(-100, 50);
+            var end = new PixelPoint(1919, 1959);
+            var (startX, startY) = CoordinateConverter.ToNormalizedVirtualDesktop(start, virtualScreen);
+            var (endX, endY) = CoordinateConverter.ToNormalizedVirtualDesktop(end, virtualScreen);
+
+            bool succeeded = sender.SendRangeClick(start, end, virtualScreen);
+
+            Assert.True(succeeded);
+            Assert.Equal(8u, capturedCount);
+            Assert.NotNull(capturedInputs);
+            Assert.Equal(8, capturedInputs.Length);
+
+            uint commonFlags = NativeMethods.MOUSEEVENTF_ABSOLUTE
+                | NativeMethods.MOUSEEVENTF_VIRTUALDESK;
+            Assert.Equal(
+                new[]
+                {
+                    commonFlags | NativeMethods.MOUSEEVENTF_MOVE,
+                    commonFlags | NativeMethods.MOUSEEVENTF_LEFTDOWN,
+                    commonFlags | NativeMethods.MOUSEEVENTF_LEFTUP,
+                    commonFlags | NativeMethods.MOUSEEVENTF_MOVE,
+                    commonFlags | NativeMethods.MOUSEEVENTF_LEFTDOWN,
+                    commonFlags | NativeMethods.MOUSEEVENTF_LEFTUP
+                },
+                new[] { 0, 1, 2, 4, 5, 6 }.Select(index => capturedInputs[index].mi.dwFlags));
+
+            Assert.Equal(NativeMethods.INPUT_KEYBOARD, capturedInputs[3].type);
+            Assert.Equal(NativeMethods.VK_SHIFT, capturedInputs[3].ki.wVk);
+            Assert.Equal(0u, capturedInputs[3].ki.dwFlags);
+            Assert.Equal(NativeMethods.INPUT_KEYBOARD, capturedInputs[7].type);
+            Assert.Equal(NativeMethods.VK_SHIFT, capturedInputs[7].ki.wVk);
+            Assert.Equal(NativeMethods.KEYEVENTF_KEYUP, capturedInputs[7].ki.dwFlags);
+
+            Assert.All(new[] { 0, 1, 2 }, index =>
+            {
+                Assert.Equal(startX, capturedInputs[index].mi.dx);
+                Assert.Equal(startY, capturedInputs[index].mi.dy);
+            });
+            Assert.All(new[] { 4, 5, 6 }, index =>
+            {
+                Assert.Equal(endX, capturedInputs[index].mi.dx);
+                Assert.Equal(endY, capturedInputs[index].mi.dy);
+            });
+        });
+    }
+
+    [Fact]
+    public void SendRangeClick_WhenSendIsPartial_ReleasesLeftButtonAndShift()
+    {
+        UiTestThread.Run(() =>
+        {
+            uint firstCount = 0;
+            uint cleanupCount = 0;
+            NativeMethods.INPUT[]? cleanupInputs = null;
+            int callCount = 0;
+            var sender = new Win32ClickSender((count, inputs, _) =>
+            {
+                callCount++;
+                if (callCount == 1)
+                {
+                    firstCount = count;
+                    return count - 1;
+                }
+
+                cleanupCount = count;
+                cleanupInputs = inputs.ToArray();
+                return count;
+            });
+
+            bool succeeded = sender.SendRangeClick(
+                new PixelPoint(10, 10),
+                new PixelPoint(20, 20),
+                new PixelRect(0, 0, 1920, 1080));
+
+            Assert.False(succeeded);
+            Assert.Equal(8u, firstCount);
+            Assert.Equal(2u, cleanupCount);
+            Assert.NotNull(cleanupInputs);
+            Assert.Equal(NativeMethods.INPUT_MOUSE, cleanupInputs[0].type);
+            Assert.Equal(
+                NativeMethods.MOUSEEVENTF_ABSOLUTE
+                | NativeMethods.MOUSEEVENTF_VIRTUALDESK
+                | NativeMethods.MOUSEEVENTF_LEFTUP,
+                cleanupInputs[0].mi.dwFlags);
+            Assert.Equal(NativeMethods.INPUT_KEYBOARD, cleanupInputs[1].type);
+            Assert.Equal(NativeMethods.VK_SHIFT, cleanupInputs[1].ki.wVk);
+            Assert.Equal(NativeMethods.KEYEVENTF_KEYUP, cleanupInputs[1].ki.dwFlags);
+        });
+    }
+
+    [Fact]
     public void SendClick_EmptyVirtualScreenDoesNotCallNativeSender()
     {
         UiTestThread.Run(() =>
