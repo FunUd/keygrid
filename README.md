@@ -111,7 +111,7 @@ The blocks assume the physical rows of a QWERTY or JIS keyboard. On layouts such
 - **Confirm Without Moving**: Use `Enter`, `Shift+Enter`, or `Ctrl+Enter` as soon as Stage 2 appears to click its initially highlighted, center-most valid cell.
 - The same confirmation keys work immediately after the two Stage 1 keys. Other modifier combinations with `Enter` are ignored.
 - The click kind is captured when `Enter` is pressed. If the target should not see the modifier held during the click (for example `Ctrl`+middle-click), release the modifier before releasing `Enter`; the selected click kind does not change.
-- **Continuous Mode**: Press `Tab` while the grid is visible. After each click, the grid returns to Stage 1 for the next selection. A `連続モード` badge appears on the primary monitor while the mode is on. Press `Tab` again for normal mode, or `Esc` to exit.
+- **Continuous Mode**: Press `Tab` while the grid is visible. After each click, the grid returns to Stage 1 for the next selection. A `Continuous Mode` badge appears on the primary monitor while the mode is on. Press `Tab` again for normal mode, or `Esc` to exit.
 
 ### 4. Correcting and Cancelling
 

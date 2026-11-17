@@ -94,9 +94,9 @@ public class OverlayRenderElementTests
                 .Select(glyph => glyph.Character)
                 .ToArray());
 
-        Assert.Contains("連続モード", primaryText);
-        Assert.DoesNotContain("連続モード", secondaryText);
-        Assert.DoesNotContain("連続モード", normalText);
+        Assert.Contains("Continuous Mode", primaryText);
+        Assert.DoesNotContain("Continuous Mode", secondaryText);
+        Assert.DoesNotContain("Continuous Mode", normalText);
     }
 
     private static SelectionManager CreateSelection()

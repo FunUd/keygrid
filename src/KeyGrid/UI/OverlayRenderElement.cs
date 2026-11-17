@@ -48,7 +48,6 @@ public class OverlayRenderElement : FrameworkElement
     private readonly Pen _statusBorderPen = new(new SolidColorBrush(Color.FromRgb(0, 229, 255)), 1.0);
 
     private readonly Typeface _labelTypeface = new(new FontFamily("Segoe UI"), FontStyles.Normal, FontWeights.Bold, FontStretches.Normal);
-    private readonly Typeface _statusTypeface = new(new FontFamily("Yu Gothic UI"), FontStyles.Normal, FontWeights.Bold, FontStretches.Normal);
 
     // Reuse glyph layouts across labels and renders. The key includes DPI because
     // FormattedText stores a pixelsPerDip value that changes with per-monitor DPI.
@@ -229,10 +228,10 @@ public class OverlayRenderElement : FrameworkElement
         const double fontSize = 14.0;
 
         var text = new FormattedText(
-            "連続モード",
+            "Continuous Mode",
             CultureInfo.InvariantCulture,
             FlowDirection.LeftToRight,
-            _statusTypeface,
+            _labelTypeface,
             fontSize,
             _statusTextBrush,
             _pixelsPerDip);
