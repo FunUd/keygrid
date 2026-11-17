@@ -20,6 +20,7 @@ public class OverlayRenderElement : FrameworkElement
     private bool _isPrimary;
     private bool _isContinuousMode;
     private PixelPoint? _rangeStartPoint;
+    private bool _isScrollMode;
 
     private readonly Brush _dimBrush = new SolidColorBrush(Color.FromArgb(145, 10, 15, 25));
     private readonly Brush _columnHighlightBrush = new SolidColorBrush(Color.FromArgb(55, 0, 229, 255));
@@ -89,7 +90,8 @@ public class OverlayRenderElement : FrameworkElement
         SelectionManager selectionManager,
         bool isPrimary = false,
         bool isContinuousMode = false,
-        PixelPoint? rangeStartPoint = null)
+        PixelPoint? rangeStartPoint = null,
+        bool isScrollMode = false)
     {
         _monitorRect = monitorRect;
         _monitorRects = monitorRects;
@@ -97,6 +99,7 @@ public class OverlayRenderElement : FrameworkElement
         _isPrimary = isPrimary;
         _isContinuousMode = isContinuousMode;
         _rangeStartPoint = rangeStartPoint;
+        _isScrollMode = isScrollMode;
         InvalidateVisual();
     }
 
@@ -243,6 +246,11 @@ public class OverlayRenderElement : FrameworkElement
         if (_rangeStartPoint.HasValue)
         {
             top = DrawStatusBadge(dc, "Range: Enter to select", top) + 4.0;
+        }
+
+        if (_isScrollMode)
+        {
+            top = DrawStatusBadge(dc, "Scroll Mode", top) + 4.0;
         }
 
         if (_isContinuousMode)

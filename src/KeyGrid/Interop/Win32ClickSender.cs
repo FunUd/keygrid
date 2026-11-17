@@ -153,7 +153,55 @@ public class Win32ClickSender : IClickSender
         return false;
     }
 
-    private static NativeMethods.INPUT CreateMouseInput(int normalizedX, int normalizedY, uint flags)
+    public bool SendScroll(PixelPoint target, PixelRect virtualScreen, int notches, bool horizontal)
+    {
+        if (notches == 0)
+        {
+            return true;
+        }
+
+        var (normalizedX, normalizedY) = CoordinateConverter.ToNormalizedVirtualDesktop(
+            target,
+            virtualScreen);
+        uint moveFlags = NativeMethods.MOUSEEVENTF_MOVE
+            | NativeMethods.MOUSEEVENTF_ABSOLUTE
+            | NativeMethods.MOUSEEVENTF_VIRTUALDESK;
+        uint wheelFlag = horizontal
+            ? NativeMethods.MOUSEEVENTF_HWHEEL
+            : NativeMethods.MOUSEEVENTF_WHEEL;
+        uint wheelData = unchecked((uint)(notches * NativeMethods.WHEEL_DELTA));
+
+        // Move first so wheel routing uses the selected target even if activation
+        // left the pointer somewhere else. The wheel event itself does not need
+        // absolute coordinates; it is delivered at the current cursor position.
+        var inputs = new[]
+        {
+            CreateMouseInput(normalizedX, normalizedY, moveFlags),
+            CreateMouseInput(0, 0, wheelFlag, wheelData)
+        };
+
+        FileLogger.LogInfo(
+            $"SendInput scroll starting (target=({target.X}, {target.Y}), " +
+            $"notches={notches}, horizontal={horizontal}).");
+        uint sent = _sendInput((uint)inputs.Length, inputs, Marshal.SizeOf<NativeMethods.INPUT>());
+        bool succeeded = sent == inputs.Length;
+        if (succeeded)
+        {
+            FileLogger.LogInfo($"SendInput scroll succeeded (requested={inputs.Length}, sent={sent}).");
+            return true;
+        }
+
+        FileLogger.LogWarning(
+            $"SendInput scroll incomplete (requested={inputs.Length}, sent={sent}, " +
+            $"lastError={Marshal.GetLastWin32Error()}).");
+        return false;
+    }
+
+    private static NativeMethods.INPUT CreateMouseInput(
+        int normalizedX,
+        int normalizedY,
+        uint flags,
+        uint mouseData = 0)
     {
         return new NativeMethods.INPUT
         {
@@ -162,6 +210,7 @@ public class Win32ClickSender : IClickSender
             {
                 dx = normalizedX,
                 dy = normalizedY,
+                mouseData = mouseData,
                 dwFlags = flags
             }
         };

@@ -17,6 +17,9 @@ public class ServicesTests
 
         public PixelPoint? LastRangeStart { get; private set; }
         public PixelPoint? LastRangeEnd { get; private set; }
+        public PixelPoint? LastScrollTarget { get; private set; }
+        public int LastScrollNotches { get; private set; }
+        public bool LastScrollHorizontal { get; private set; }
 
         public bool SendClick(PixelPoint target, PixelRect virtualScreen, ClickKind clickKind)
         {
@@ -33,6 +36,16 @@ public class ServicesTests
             LastRangeStart = start;
             LastRangeEnd = end;
             LastVirtualScreen = virtualScreen;
+            return ReturnResult;
+        }
+
+        public bool SendScroll(PixelPoint target, PixelRect virtualScreen, int notches, bool horizontal)
+        {
+            Calls.Add("send-scroll");
+            LastScrollTarget = target;
+            LastVirtualScreen = virtualScreen;
+            LastScrollNotches = notches;
+            LastScrollHorizontal = horizontal;
             return ReturnResult;
         }
     }
@@ -144,6 +157,52 @@ public class ServicesTests
 
         Assert.False(result);
         Assert.DoesNotContain("send-range", fakeSender.Calls);
+    }
+
+    [Fact]
+    public void ClickExecutor_ScrollHidesWaitsThenSendsWheelInput()
+    {
+        var fakeSender = new FakeClickSender();
+        var executor = new ClickExecutor(fakeSender);
+        var target = new PixelPoint(500, 400);
+        var screen = new PixelRect(0, 0, 1920, 1080);
+
+        bool result = executor.ExecuteScroll(
+            target,
+            screen,
+            notches: -5,
+            horizontal: false,
+            hideOverlaysAction: () => fakeSender.Calls.Add("hide"),
+            prepareClickAction: () =>
+            {
+                fakeSender.Calls.Add("wait");
+                return true;
+            });
+
+        Assert.True(result);
+        Assert.Equal(new[] { "hide", "wait", "send-scroll" }, fakeSender.Calls);
+        Assert.Equal(target, fakeSender.LastScrollTarget);
+        Assert.Equal(screen, fakeSender.LastVirtualScreen);
+        Assert.Equal(-5, fakeSender.LastScrollNotches);
+        Assert.False(fakeSender.LastScrollHorizontal);
+    }
+
+    [Fact]
+    public void ClickExecutor_ScrollWhenPreparationFails_DoesNotSendWheelInput()
+    {
+        var fakeSender = new FakeClickSender();
+        var executor = new ClickExecutor(fakeSender);
+
+        bool result = executor.ExecuteScroll(
+            new PixelPoint(500, 400),
+            new PixelRect(0, 0, 1920, 1080),
+            notches: 1,
+            horizontal: true,
+            hideOverlaysAction: () => fakeSender.Calls.Add("hide"),
+            prepareClickAction: () => false);
+
+        Assert.False(result);
+        Assert.DoesNotContain("send-scroll", fakeSender.Calls);
     }
 
     [Fact]

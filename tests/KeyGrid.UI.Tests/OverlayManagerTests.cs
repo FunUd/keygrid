@@ -946,6 +946,237 @@ public class OverlayManagerTests
         });
     }
 
+    [Fact]
+    public void PageDown_EntersScrollModeAndScrollsTheCurrentTarget()
+    {
+        UiTestThread.Run(() =>
+        {
+            var factory = new FakeOverlayFactory();
+            var focus = new FakeWindowFocusService { ForegroundWindow = new nint(71) };
+            var clickSender = new FakeClickSender();
+            var manager = CreateManager(SingleMonitorProvider(), factory, focus, clickSender);
+            manager.ShowOverlays();
+            UiTestThread.DrainDispatcher();
+            var primary = Assert.Single(factory.Windows);
+            clickSender.AreAllOverlaysHidden = () => primary.HideForInputCount > 0;
+
+            primary.RaiseKey(manager.SelectionManager.ColumnKeys[0]);
+            primary.RaiseKey(manager.SelectionManager.RowKeys[0]);
+            Assert.True(manager.SelectionManager.TryGetStage2Target(out var target));
+
+            primary.RaisePageScroll(1);
+
+            Assert.True(manager.IsScrollMode);
+            Assert.True(manager.IsActive);
+            Assert.Equal(SelectionState.Selecting, manager.SelectionManager.State);
+            Assert.Equal(2, manager.SelectionManager.CurrentStage);
+            Assert.Equal(1, clickSender.ScrollCallCount);
+            Assert.Equal(target, clickSender.LastScrollTarget);
+            Assert.Equal(-5, clickSender.LastScrollNotches);
+            Assert.False(clickSender.LastScrollHorizontal);
+            Assert.True(clickSender.ScrollOverlaysWereHidden);
+            Assert.Equal(0, clickSender.CallCount);
+            Assert.Equal(0, clickSender.RangeCallCount);
+            Assert.Equal(1, primary.HideForInputCount);
+            Assert.Equal(1, primary.ShowForInputCount);
+            Assert.True(primary.LastScrollMode);
+            Assert.Equal(primary.Handle, focus.ForegroundWindow);
+
+            manager.CloseOverlays();
+        });
+    }
+
+    [Fact]
+    public void ScrollMode_ArrowKeysScrollWithoutMovingTheStage2Cursor()
+    {
+        UiTestThread.Run(() =>
+        {
+            var factory = new FakeOverlayFactory();
+            var focus = new FakeWindowFocusService();
+            var clickSender = new FakeClickSender();
+            var manager = CreateManager(SingleMonitorProvider(), factory, focus, clickSender);
+            manager.ShowOverlays();
+            UiTestThread.DrainDispatcher();
+            var primary = Assert.Single(factory.Windows);
+
+            primary.RaiseKey(manager.SelectionManager.ColumnKeys[0]);
+            primary.RaiseKey(manager.SelectionManager.RowKeys[0]);
+            int selectedColumn = manager.SelectionManager.SelectedColumnIndex;
+            int selectedRow = manager.SelectionManager.SelectedRowIndex;
+            primary.RaisePageScroll(1);
+            Assert.Equal(1, clickSender.ScrollCallCount);
+
+            primary.RaiseMove(0, 1);
+
+            Assert.Equal(2, clickSender.ScrollCallCount);
+            Assert.Equal(-1, clickSender.LastScrollNotches);
+            Assert.False(clickSender.LastScrollHorizontal);
+            Assert.Equal(selectedColumn, manager.SelectionManager.SelectedColumnIndex);
+            Assert.Equal(selectedRow, manager.SelectionManager.SelectedRowIndex);
+
+            primary.RaiseMove(1, 0);
+
+            Assert.Equal(3, clickSender.ScrollCallCount);
+            Assert.Equal(1, clickSender.LastScrollNotches);
+            Assert.True(clickSender.LastScrollHorizontal);
+            Assert.Equal(selectedColumn, manager.SelectionManager.SelectedColumnIndex);
+            Assert.Equal(selectedRow, manager.SelectionManager.SelectedRowIndex);
+
+            primary.RaiseCancel();
+
+            Assert.False(manager.IsScrollMode);
+            Assert.True(manager.IsActive);
+            Assert.Equal(SelectionState.Selecting, manager.SelectionManager.State);
+            Assert.Equal(2, manager.SelectionManager.CurrentStage);
+            Assert.False(primary.LastScrollMode);
+            Assert.Equal(0, primary.CloseCount);
+
+            primary.RaiseCancel();
+
+            Assert.False(manager.IsActive);
+            Assert.Equal(1, primary.CloseCount);
+        });
+    }
+
+    [Fact]
+    public void ScrollMode_IgnoresRangeStartContinuousToggleAndBackspace()
+    {
+        UiTestThread.Run(() =>
+        {
+            var factory = new FakeOverlayFactory();
+            var clickSender = new FakeClickSender();
+            var manager = CreateManager(
+                SingleMonitorProvider(),
+                factory,
+                new FakeWindowFocusService(),
+                clickSender);
+            manager.ShowOverlays();
+            UiTestThread.DrainDispatcher();
+            var primary = Assert.Single(factory.Windows);
+
+            primary.RaiseKey(manager.SelectionManager.ColumnKeys[0]);
+            primary.RaiseKey(manager.SelectionManager.RowKeys[0]);
+            primary.RaisePageScroll(1);
+            Assert.True(manager.IsScrollMode);
+
+            primary.RaiseRangeStart();
+            primary.RaiseContinuousModeToggle();
+            primary.RaiseBackspace();
+            primary.RaiseConfirm(ClickKind.Left);
+
+            Assert.True(manager.IsScrollMode);
+            Assert.False(manager.HasRangeSelection);
+            Assert.False(manager.IsContinuousMode);
+            Assert.Equal(2, manager.SelectionManager.CurrentStage);
+            Assert.Equal(1, clickSender.ScrollCallCount);
+            Assert.Equal(0, clickSender.RangeCallCount);
+            Assert.Equal(0, clickSender.CallCount);
+
+            manager.CloseOverlays();
+        });
+    }
+
+    [Fact]
+    public void PageScroll_IsIgnoredWhileARangeAnchorIsActive()
+    {
+        UiTestThread.Run(() =>
+        {
+            var factory = new FakeOverlayFactory();
+            var clickSender = new FakeClickSender();
+            var manager = CreateManager(
+                SingleMonitorProvider(),
+                factory,
+                new FakeWindowFocusService(),
+                clickSender);
+            manager.ShowOverlays();
+            UiTestThread.DrainDispatcher();
+            var primary = Assert.Single(factory.Windows);
+
+            primary.RaiseKey(manager.SelectionManager.ColumnKeys[0]);
+            primary.RaiseKey(manager.SelectionManager.RowKeys[0]);
+            primary.RaiseRangeStart();
+
+            primary.RaisePageScroll(1);
+
+            Assert.False(manager.IsScrollMode);
+            Assert.True(manager.HasRangeSelection);
+            Assert.Equal(0, clickSender.ScrollCallCount);
+            Assert.True(manager.IsActive);
+            Assert.False(primary.LastScrollMode);
+
+            manager.CloseOverlays();
+        });
+    }
+
+    [Fact]
+    public void ScrollFailure_ExitsScrollModeAndRestoresStage2()
+    {
+        UiTestThread.Run(() =>
+        {
+            var factory = new FakeOverlayFactory();
+            var clickSender = new FakeClickSender { ReturnResult = false };
+            var manager = CreateManager(
+                SingleMonitorProvider(),
+                factory,
+                new FakeWindowFocusService(),
+                clickSender);
+            manager.ShowOverlays();
+            UiTestThread.DrainDispatcher();
+            var primary = Assert.Single(factory.Windows);
+            string? error = null;
+            manager.ErrorOccurred += message => error = message;
+
+            primary.RaiseKey(manager.SelectionManager.ColumnKeys[0]);
+            primary.RaiseKey(manager.SelectionManager.RowKeys[0]);
+            primary.RaisePageScroll(1);
+
+            Assert.Equal(1, clickSender.ScrollCallCount);
+            Assert.False(manager.IsScrollMode);
+            Assert.True(manager.IsActive);
+            Assert.Equal(SelectionState.Selecting, manager.SelectionManager.State);
+            Assert.Equal(2, manager.SelectionManager.CurrentStage);
+            Assert.Equal(1, primary.HideForInputCount);
+            Assert.Equal(1, primary.ShowForInputCount);
+            Assert.False(primary.LastScrollMode);
+            Assert.Contains("Failed to dispatch scroll input", error);
+
+            manager.CloseOverlays();
+        });
+    }
+
+    [Fact]
+    public void ScrollPreparationFailure_DoesNotSendWheelAndRestoresStage2()
+    {
+        UiTestThread.Run(() =>
+        {
+            var factory = new FakeOverlayFactory();
+            var focus = new FakeWindowFocusService();
+            var clickSender = new FakeClickSender();
+            var manager = CreateManager(SingleMonitorProvider(), factory, focus, clickSender);
+            manager.ShowOverlays();
+            UiTestThread.DrainDispatcher();
+            var primary = Assert.Single(factory.Windows);
+            focus.WindowAtPointResults.Enqueue(nint.Zero);
+            string? error = null;
+            manager.ErrorOccurred += message => error = message;
+
+            primary.RaiseKey(manager.SelectionManager.ColumnKeys[0]);
+            primary.RaiseKey(manager.SelectionManager.RowKeys[0]);
+            primary.RaisePageScroll(1);
+
+            Assert.Equal(0, clickSender.ScrollCallCount);
+            Assert.False(manager.IsScrollMode);
+            Assert.True(manager.IsActive);
+            Assert.Equal(SelectionState.Selecting, manager.SelectionManager.State);
+            Assert.Equal(2, manager.SelectionManager.CurrentStage);
+            Assert.Equal(1, primary.HideForInputCount);
+            Assert.Equal(1, primary.ShowForInputCount);
+            Assert.Contains("Could not find a window under the scroll target", error);
+
+            manager.CloseOverlays();
+        });
+    }
+
     private static FakeMonitorProvider SingleMonitorProvider()
     {
         return new FakeMonitorProvider(
@@ -976,6 +1207,7 @@ public class OverlayManagerTests
         public bool IsActive => Manager.IsActive;
         public bool IsContinuousMode => Manager.IsContinuousMode;
         public bool HasRangeSelection => Manager.HasRangeSelection;
+        public bool IsScrollMode => Manager.IsScrollMode;
 
         public event Action<string>? ErrorOccurred
         {
@@ -1040,6 +1272,7 @@ public class OverlayManagerTests
         public event Action? CancelRequested;
         public event Action? ContinuousModeToggleRequested;
         public event Action? RangeStartRequested;
+        public event Action<int>? PageScrollRequested;
         public event Action? FocusLost;
         public event Action? DisplayConfigurationChanged;
 
@@ -1048,6 +1281,7 @@ public class OverlayManagerTests
         public nint Handle { get; } = handle;
         public bool LastContinuousMode { get; private set; }
         public PixelPoint? LastRangeStartPoint { get; private set; }
+        public bool LastScrollMode { get; private set; }
         public int ShowCount { get; private set; }
         public int CloseCount { get; private set; }
         public int RenderUpdateCount { get; private set; }
@@ -1078,12 +1312,14 @@ public class OverlayManagerTests
             SelectionManager selectionManager,
             IReadOnlyList<PixelRect> monitorRects,
             bool isContinuousMode,
-            PixelPoint? rangeStartPoint = null)
+            PixelPoint? rangeStartPoint = null,
+            bool isScrollMode = false)
         {
             Assert.NotEqual(SelectionState.Standby, selectionManager.State);
             Assert.Contains(monitorRect, monitorRects);
             LastContinuousMode = isContinuousMode;
             LastRangeStartPoint = rangeStartPoint;
+            LastScrollMode = isScrollMode;
             RenderUpdateCount++;
         }
 
@@ -1112,6 +1348,8 @@ public class OverlayManagerTests
         public void RaiseContinuousModeToggle() => ContinuousModeToggleRequested?.Invoke();
 
         public void RaiseRangeStart() => RangeStartRequested?.Invoke();
+
+        public void RaisePageScroll(int direction) => PageScrollRequested?.Invoke(direction);
 
         public void RaiseFocusLost() => FocusLost?.Invoke();
 
@@ -1199,6 +1437,11 @@ public class OverlayManagerTests
         public PixelPoint? LastRangeEnd { get; private set; }
         public bool RangeOverlaysWereHidden { get; private set; }
         public Func<bool>? AreAllOverlaysHidden { get; set; }
+        public int ScrollCallCount { get; private set; }
+        public PixelPoint? LastScrollTarget { get; private set; }
+        public int LastScrollNotches { get; private set; }
+        public bool LastScrollHorizontal { get; private set; }
+        public bool ScrollOverlaysWereHidden { get; private set; }
 
         public bool SendClick(PixelPoint target, PixelRect virtualScreen, ClickKind clickKind)
         {
@@ -1218,6 +1461,21 @@ public class OverlayManagerTests
             LastRangeEnd = end;
             LastVirtualScreen = virtualScreen;
             RangeOverlaysWereHidden = AreAllOverlaysHidden?.Invoke() ?? false;
+            return ReturnResult;
+        }
+
+        public bool SendScroll(
+            PixelPoint target,
+            PixelRect virtualScreen,
+            int notches,
+            bool horizontal)
+        {
+            ScrollCallCount++;
+            LastScrollTarget = target;
+            LastVirtualScreen = virtualScreen;
+            LastScrollNotches = notches;
+            LastScrollHorizontal = horizontal;
+            ScrollOverlaysWereHidden = AreAllOverlaysHidden?.Invoke() ?? false;
             return ReturnResult;
         }
     }

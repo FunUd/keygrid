@@ -187,6 +187,96 @@ public class Win32ClickSenderTests
         });
     }
 
+    [Theory]
+    [InlineData(false, -5, NativeMethods.MOUSEEVENTF_WHEEL)]
+    [InlineData(true, 2, NativeMethods.MOUSEEVENTF_HWHEEL)]
+    public void SendScroll_MovesPointerThenSendsWheelNotches(
+        bool horizontal,
+        int notches,
+        uint expectedWheelFlag)
+    {
+        UiTestThread.Run(() =>
+        {
+            NativeMethods.INPUT[]? capturedInputs = null;
+            uint capturedCount = 0;
+            var sender = new Win32ClickSender((count, inputs, _) =>
+            {
+                capturedCount = count;
+                capturedInputs = inputs.ToArray();
+                return count;
+            });
+            var virtualScreen = new PixelRect(-1920, -200, 3840, 2160);
+            var target = new PixelPoint(300, 400);
+            var (normalizedX, normalizedY) = CoordinateConverter.ToNormalizedVirtualDesktop(
+                target,
+                virtualScreen);
+
+            bool succeeded = sender.SendScroll(target, virtualScreen, notches, horizontal);
+
+            Assert.True(succeeded);
+            Assert.Equal(2u, capturedCount);
+            Assert.NotNull(capturedInputs);
+            Assert.Equal(NativeMethods.INPUT_MOUSE, capturedInputs[0].type);
+            Assert.Equal(
+                NativeMethods.MOUSEEVENTF_MOVE
+                | NativeMethods.MOUSEEVENTF_ABSOLUTE
+                | NativeMethods.MOUSEEVENTF_VIRTUALDESK,
+                capturedInputs[0].mi.dwFlags);
+            Assert.Equal(normalizedX, capturedInputs[0].mi.dx);
+            Assert.Equal(normalizedY, capturedInputs[0].mi.dy);
+
+            Assert.Equal(NativeMethods.INPUT_MOUSE, capturedInputs[1].type);
+            Assert.Equal(expectedWheelFlag, capturedInputs[1].mi.dwFlags);
+            Assert.Equal(unchecked((uint)(notches * NativeMethods.WHEEL_DELTA)), capturedInputs[1].mi.mouseData);
+        });
+    }
+
+    [Fact]
+    public void SendScroll_WhenNotchesAreZero_DoesNotCallNativeSender()
+    {
+        UiTestThread.Run(() =>
+        {
+            int callCount = 0;
+            var sender = new Win32ClickSender((_, _, _) =>
+            {
+                callCount++;
+                return 0;
+            });
+
+            bool succeeded = sender.SendScroll(
+                new PixelPoint(100, 100),
+                new PixelRect(0, 0, 1920, 1080),
+                notches: 0,
+                horizontal: false);
+
+            Assert.True(succeeded);
+            Assert.Equal(0, callCount);
+        });
+    }
+
+    [Fact]
+    public void SendScroll_WhenSendIsPartial_ReturnsFalse()
+    {
+        UiTestThread.Run(() =>
+        {
+            uint requested = 0;
+            var sender = new Win32ClickSender((count, _, _) =>
+            {
+                requested = count;
+                return count - 1;
+            });
+
+            bool succeeded = sender.SendScroll(
+                new PixelPoint(100, 100),
+                new PixelRect(0, 0, 1920, 1080),
+                notches: 1,
+                horizontal: false);
+
+            Assert.False(succeeded);
+            Assert.Equal(2u, requested);
+        });
+    }
+
     [Fact]
     public void SendClick_EmptyVirtualScreenDoesNotCallNativeSender()
     {

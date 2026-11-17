@@ -70,6 +70,25 @@ public class OverlayKeyHandlerTests
     }
 
     [Fact]
+    public void PrimaryOverlay_PlainPageKeysRequestPageScroll()
+    {
+        UiTestThread.Run(() =>
+        {
+            var handler = new OverlayKeyHandler(isPrimary: true);
+            var directions = new List<int>();
+            handler.PageScrollRequested += direction => directions.Add(direction);
+
+            Assert.True(handler.HandleKeyDown(Key.PageUp, ModifierKeys.None, isRepeat: false));
+            Assert.True(handler.HandleKeyDown(Key.PageDown, ModifierKeys.None, isRepeat: false));
+            Assert.True(handler.HandleKeyDown(Key.PageDown, ModifierKeys.None, isRepeat: true));
+            Assert.True(handler.HandleKeyDown(Key.PageUp, ModifierKeys.Shift, isRepeat: false));
+            Assert.True(handler.HandleKeyDown(Key.PageDown, ModifierKeys.Control, isRepeat: false));
+
+            Assert.Equal(new[] { -1, 1 }, directions);
+        });
+    }
+
+    [Fact]
     public void PrimaryOverlay_TabTogglesContinuousModeAndIgnoresModifiedOrRepeatedTabs()
     {
         UiTestThread.Run(() =>
@@ -125,6 +144,26 @@ public class OverlayKeyHandlerTests
             Assert.True(handler.HandleKeyUp(Key.Enter, ModifierKeys.None));
 
             Assert.Equal(expected, confirmed);
+        });
+    }
+
+    [Theory]
+    [InlineData(Key.Escape)]
+    [InlineData(Key.PageUp)]
+    [InlineData(Key.PageDown)]
+    public void PendingConfirmation_IsClearedByCancelOrPageKeys(Key interveningKey)
+    {
+        UiTestThread.Run(() =>
+        {
+            var handler = new OverlayKeyHandler(isPrimary: true);
+            ClickKind? confirmed = null;
+            handler.ConfirmRequested += clickKind => confirmed = clickKind;
+
+            Assert.True(handler.HandleKeyDown(Key.Enter, ModifierKeys.None, isRepeat: false));
+            Assert.True(handler.HandleKeyDown(interveningKey, ModifierKeys.None, isRepeat: false));
+            Assert.True(handler.HandleKeyUp(Key.Enter, ModifierKeys.None));
+
+            Assert.Null(confirmed);
         });
     }
 

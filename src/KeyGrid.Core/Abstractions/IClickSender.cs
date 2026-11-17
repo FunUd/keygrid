@@ -24,4 +24,10 @@ public interface IClickSender
     /// the complete SendInput sequence was accepted.
     /// </summary>
     bool SendRangeClick(PixelPoint start, PixelPoint end, PixelRect virtualScreen);
+
+    /// <summary>
+    /// Sends mouse wheel input at the specified physical pixel target. Positive
+    /// notches scroll up or right; negative notches scroll down or left.
+    /// </summary>
+    bool SendScroll(PixelPoint target, PixelRect virtualScreen, int notches, bool horizontal);
 }

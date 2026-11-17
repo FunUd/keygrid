@@ -15,6 +15,11 @@ internal sealed class OverlayKeyHandler
     public event Action? CancelRequested;
     public event Action? ContinuousModeToggleRequested;
     public event Action? RangeStartRequested;
+    /// <summary>
+    /// Raised for plain PageUp (-1) or PageDown (+1). The manager decides whether
+    /// the key enters Scroll Mode or scrolls an already active session.
+    /// </summary>
+    public event Action<int>? PageScrollRequested;
 
     public OverlayKeyHandler(bool isPrimary)
     {
@@ -45,10 +50,23 @@ internal sealed class OverlayKeyHandler
 
                 return true;
             case Key.Escape:
+                // A pending Enter must not fire after the selection was cancelled
+                // or a sub-mode was exited.
+                _pendingClickKind = null;
                 CancelRequested?.Invoke();
                 return true;
             case Key.Back:
                 BackspacePressed?.Invoke();
+                return true;
+            case Key.PageUp when modifiers == ModifierKeys.None:
+                // Page keys can enter Scroll Mode, where Enter is ignored. Drop a
+                // pending confirmation so releasing a held Enter cannot click later.
+                _pendingClickKind = null;
+                PageScrollRequested?.Invoke(-1);
+                return true;
+            case Key.PageDown when modifiers == ModifierKeys.None:
+                _pendingClickKind = null;
+                PageScrollRequested?.Invoke(1);
                 return true;
             case Key.Enter:
                 // Consume the key down so Windows does not deliver it to another window

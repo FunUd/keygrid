@@ -68,4 +68,26 @@ public class ClickExecutor
 
         return _clickSender.SendRangeClick(start, end, virtualScreen);
     }
+
+    /// <summary>
+    /// Executes wheel input at a target with the same hide/render synchronization
+    /// used for clicks. Scroll mode uses this so the overlay cannot absorb the wheel event.
+    /// </summary>
+    public bool ExecuteScroll(
+        PixelPoint target,
+        PixelRect virtualScreen,
+        int notches,
+        bool horizontal,
+        Action hideOverlaysAction,
+        Func<bool>? prepareClickAction = null)
+    {
+        hideOverlaysAction();
+
+        if (prepareClickAction != null && !prepareClickAction())
+        {
+            return false;
+        }
+
+        return _clickSender.SendScroll(target, virtualScreen, notches, horizontal);
+    }
 }

@@ -22,6 +22,7 @@ public partial class OverlayWindow : Window, IOverlayWindowSurface
     public event Action? CancelRequested;
     public event Action? ContinuousModeToggleRequested;
     public event Action? RangeStartRequested;
+    public event Action<int>? PageScrollRequested;
     public event Action? FocusLost;
     public event Action? DisplayConfigurationChanged;
 
@@ -46,6 +47,7 @@ public partial class OverlayWindow : Window, IOverlayWindowSurface
         _keyHandler.CancelRequested += () => CancelRequested?.Invoke();
         _keyHandler.ContinuousModeToggleRequested += () => ContinuousModeToggleRequested?.Invoke();
         _keyHandler.RangeStartRequested += () => RangeStartRequested?.Invoke();
+        _keyHandler.PageScrollRequested += direction => PageScrollRequested?.Invoke(direction);
 
         Focusable = isPrimary;
         ShowActivated = isPrimary;
@@ -87,7 +89,8 @@ public partial class OverlayWindow : Window, IOverlayWindowSurface
         SelectionManager selectionManager,
         IReadOnlyList<PixelRect> monitorRects,
         bool isContinuousMode,
-        PixelPoint? rangeStartPoint = null)
+        PixelPoint? rangeStartPoint = null,
+        bool isScrollMode = false)
     {
         RenderElement.UpdateState(
             MonitorRect,
@@ -95,7 +98,8 @@ public partial class OverlayWindow : Window, IOverlayWindowSurface
             selectionManager,
             IsPrimary,
             isContinuousMode,
-            rangeStartPoint);
+            rangeStartPoint,
+            isScrollMode);
     }
 
     /// <summary>

@@ -13,6 +13,7 @@ public interface IOverlayWindowSurface
     event Action? CancelRequested;
     event Action? ContinuousModeToggleRequested;
     event Action? RangeStartRequested;
+    event Action<int>? PageScrollRequested;
     event Action? FocusLost;
     event Action? DisplayConfigurationChanged;
 
@@ -22,7 +23,8 @@ public interface IOverlayWindowSurface
         SelectionManager selectionManager,
         IReadOnlyList<PixelRect> monitorRects,
         bool isContinuousMode,
-        PixelPoint? rangeStartPoint = null);
+        PixelPoint? rangeStartPoint = null,
+        bool isScrollMode = false);
     void RefreshExpectedDpi();
     void EnableDpiChangeNotifications();
     void Show();

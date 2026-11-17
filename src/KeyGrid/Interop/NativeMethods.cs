@@ -148,8 +148,11 @@ internal static class NativeMethods
     public const uint MOUSEEVENTF_RIGHTUP = 0x0010;
     public const uint MOUSEEVENTF_MIDDLEDOWN = 0x0020;
     public const uint MOUSEEVENTF_MIDDLEUP = 0x0040;
+    public const uint MOUSEEVENTF_WHEEL = 0x0800;
+    public const uint MOUSEEVENTF_HWHEEL = 0x1000;
     public const uint MOUSEEVENTF_ABSOLUTE = 0x8000;
     public const uint MOUSEEVENTF_VIRTUALDESK = 0x4000;
+    public const int WHEEL_DELTA = 120;
     public const uint KEYEVENTF_KEYUP = 0x0002;
     public const ushort VK_SHIFT = 0x10;
 

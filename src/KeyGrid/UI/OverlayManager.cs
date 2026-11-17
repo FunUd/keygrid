@@ -18,6 +18,9 @@ public class OverlayManager
     // so a re-shown topmost overlay cannot receive the button-up event.
     private const int ContinuousModeClickSettleMilliseconds = 50;
 
+    // PageUp/PageDown scroll by five wheel notches; arrow keys scroll by one.
+    private const int ScrollNotchesPerPage = 5;
+
     private readonly IMonitorProvider _monitorProvider;
     private readonly SelectionManager _selectionManager;
     private readonly ClickExecutor _clickExecutor;
@@ -33,6 +36,7 @@ public class OverlayManager
     private bool _isDisplayChangePending = false;
     private bool _continuousMode;
     private PixelPoint? _rangeStartPoint;
+    private bool _scrollMode;
     private bool _isInputInProgress;
     private int _selectionGeneration;
     private int _confirmationAttempt;
@@ -51,6 +55,11 @@ public class OverlayManager
     /// Whether a two-point range anchor has been set for the current session.
     /// </summary>
     internal bool HasRangeSelection => _rangeStartPoint.HasValue;
+
+    /// <summary>
+    /// Whether Scroll Mode is active for the current Stage 2 selection.
+    /// </summary>
+    internal bool IsScrollMode => _scrollMode;
 
     private bool IsClosing => Volatile.Read(ref _isClosing) != 0;
 
@@ -95,6 +104,7 @@ public class OverlayManager
         // Every new Stage 1 session starts without sub-mode state. Continuous mode
         // itself is preserved by the caller when the session is intentionally kept open.
         _rangeStartPoint = null;
+        _scrollMode = false;
         _isInputInProgress = false;
 
         if (!IsActive)
@@ -164,6 +174,7 @@ public class OverlayManager
                 overlay.CancelRequested += OnCancelRequested;
                 overlay.ContinuousModeToggleRequested += OnContinuousModeToggleRequested;
                 overlay.RangeStartRequested += OnRangeStartRequested;
+                overlay.PageScrollRequested += OnPageScrollRequested;
                 overlay.FocusLost += () => OnFocusLost(generation);
             }
 
@@ -173,7 +184,8 @@ public class OverlayManager
                 _selectionManager,
                 _activeMonitorRects,
                 _continuousMode,
-                _rangeStartPoint);
+                _rangeStartPoint,
+                _scrollMode);
         }
 
         if (_primaryOverlay == null || !_primaryOverlay.TryReactivate())
@@ -224,6 +236,12 @@ public class OverlayManager
 
     private void OnKeyPressed(char key)
     {
+        if (_scrollMode)
+        {
+            FileLogger.LogInfo($"Key '{key}' ignored while Scroll Mode is active.");
+            return;
+        }
+
         if (!_selectionManager.ProcessKey(key))
         {
             return;
@@ -237,6 +255,7 @@ public class OverlayManager
         if (IsClosing
             || !IsActive
             || _isInputInProgress
+            || _scrollMode
             || _selectionManager.State != SelectionState.Selecting)
         {
             return;
@@ -268,16 +287,73 @@ public class OverlayManager
 
     private void OnMoveRequested(int columnDelta, int rowDelta)
     {
+        if (_scrollMode)
+        {
+            if (columnDelta != 0)
+            {
+                ScrollCurrentTarget(columnDelta, horizontal: true);
+            }
+            else if (rowDelta != 0)
+            {
+                // Windows wheel input is positive upward; arrow row deltas are positive downward.
+                ScrollCurrentTarget(-rowDelta, horizontal: false);
+            }
+
+            return;
+        }
+
         if (_selectionManager.MoveStage2Cursor(columnDelta, rowDelta))
         {
             UpdateAllOverlays();
         }
     }
 
+    private void OnPageScrollRequested(int direction)
+    {
+        if (!CanScrollCurrentTarget())
+        {
+            return;
+        }
+
+        if (!_scrollMode)
+        {
+            _scrollMode = true;
+            FileLogger.LogInfo("Scroll Mode entered from Page key.");
+            UpdateAllOverlays();
+        }
+
+        // PageDown (+1) scrolls down, PageUp (-1) scrolls up.
+        ScrollCurrentTarget(
+            direction > 0 ? -ScrollNotchesPerPage : ScrollNotchesPerPage,
+            horizontal: false);
+    }
+
+    private bool CanScrollCurrentTarget()
+    {
+        return !IsClosing
+            && IsActive
+            && !_isInputInProgress
+            && _selectionManager.State == SelectionState.Selecting
+            && _selectionManager.CurrentStage == 2
+            && !_rangeStartPoint.HasValue
+            && _selectionManager.TryGetStage2Target(out _);
+    }
+
+    private void ScrollCurrentTarget(int notches, bool horizontal)
+    {
+        if (!_selectionManager.TryGetStage2Target(out var target))
+        {
+            return;
+        }
+
+        ExecuteScrollOperation(target, notches, horizontal);
+    }
+
     private void OnContinuousModeToggleRequested()
     {
         if (IsClosing
             || !IsActive
+            || _scrollMode
             || _selectionManager.State != SelectionState.Selecting)
         {
             return;
@@ -296,6 +372,13 @@ public class OverlayManager
         FileLogger.LogInfo(
             $"Confirmation #{attempt} received (kind={clickKind}, state={_selectionManager.State}, " +
             $"historyLength={_selectionManager.History.Count}).");
+
+        if (_scrollMode)
+        {
+            FileLogger.LogInfo(
+                $"Confirmation #{attempt} ignored while Scroll Mode is active; press Esc to return to Stage 2.");
+            return;
+        }
 
         if (_rangeStartPoint.HasValue)
         {
@@ -323,6 +406,11 @@ public class OverlayManager
 
     private void OnBackspacePressed()
     {
+        if (_scrollMode)
+        {
+            return;
+        }
+
         if (_selectionManager.ProcessBackspace())
         {
             UpdateAllOverlays();
@@ -334,6 +422,14 @@ public class OverlayManager
         if (IsClosing || _isInputInProgress) return;
 
         // Esc cancels an active sub-mode before it exits the selection session.
+        if (_scrollMode)
+        {
+            _scrollMode = false;
+            FileLogger.LogInfo("Scroll Mode exited by Esc; Stage 2 selection remains active.");
+            UpdateAllOverlays();
+            return;
+        }
+
         if (_rangeStartPoint.HasValue)
         {
             _rangeStartPoint = null;
@@ -439,6 +535,7 @@ public class OverlayManager
                 $"Focus loss cancelled selection (foreground PID {foregroundPid}, visible={foregroundIsVisible}).");
             _continuousMode = false;
             _rangeStartPoint = null;
+            _scrollMode = false;
             _isInputInProgress = false;
             _selectionManager.Cancel();
             if (action == FocusLossAction.CancelSelection)
@@ -543,6 +640,7 @@ public class OverlayManager
         {
             // spec 5.3: Discard selection on monitor / DPI change
             _rangeStartPoint = null;
+            _scrollMode = false;
             _isInputInProgress = false;
             _selectionManager.Cancel();
             CloseOverlays();
@@ -557,7 +655,8 @@ public class OverlayManager
                 _selectionManager,
                 _activeMonitorRects,
                 _continuousMode,
-                _rangeStartPoint);
+                _rangeStartPoint,
+                _scrollMode);
         }
     }
 
@@ -838,6 +937,109 @@ public class OverlayManager
         }
     }
 
+    private void ExecuteScrollOperation(PixelPoint target, int notches, bool horizontal)
+    {
+        if (notches == 0)
+        {
+            return;
+        }
+
+        var virtualScreen = _selectionManager.VirtualScreenBoundingBox;
+        string? preparationFailure = null;
+        bool success;
+
+        FileLogger.LogInfo(
+            $"Scroll starting (target=({target.X}, {target.Y}), notches={notches}, " +
+            $"horizontal={horizontal}).");
+
+        try
+        {
+            success = _clickExecutor.ExecuteScroll(
+                target,
+                virtualScreen,
+                notches,
+                horizontal,
+                hideOverlaysAction: HideOverlaysForInput,
+                prepareClickAction: () =>
+                {
+                    FileLogger.LogInfo("Scroll: waiting for overlay render.");
+                    Dispatcher.CurrentDispatcher.Invoke(() => { }, DispatcherPriority.Render);
+
+                    nint window = _windowFocusService.GetWindowFromPoint(target);
+                    nint root = _windowFocusService.GetRootWindow(window);
+                    FileLogger.LogInfo(
+                        $"Scroll: window={FormatWindowHandle(window)}, " +
+                        $"root={FormatWindowHandle(root)}.");
+
+                    if (root == nint.Zero)
+                    {
+                        preparationFailure =
+                            "Could not find a window under the scroll target. Scroll Mode was cancelled.";
+                        return false;
+                    }
+
+                    bool activated = RestoreForegroundWindow(root, "Scroll target");
+                    nint windowAfterActivation = _windowFocusService.GetWindowFromPoint(target);
+                    bool stillHit = _windowFocusService.IsWindowOwnedBy(
+                        windowAfterActivation,
+                        root);
+                    FileLogger.LogInfo(
+                        $"Scroll: target activation result={activated}, " +
+                        $"window after activation={FormatWindowHandle(windowAfterActivation)}, " +
+                        $"matchesTarget={stillHit}.");
+
+                    if (!stillHit)
+                    {
+                        preparationFailure =
+                            "The window under the scroll target changed. Scroll Mode was cancelled.";
+                        return false;
+                    }
+
+                    return true;
+                });
+        }
+        catch
+        {
+            _scrollMode = false;
+            ShowOverlaysAfterInput();
+            throw;
+        }
+
+        if (preparationFailure != null)
+        {
+            _scrollMode = false;
+            FileLogger.LogWarning($"Scroll aborted: {preparationFailure}");
+            if (!ShowOverlaysAfterInput())
+            {
+                return;
+            }
+
+            UpdateAllOverlays();
+            ErrorOccurred?.Invoke(preparationFailure);
+            return;
+        }
+
+        if (!success)
+        {
+            _scrollMode = false;
+            FileLogger.LogWarning("Scroll input was not dispatched; leaving Scroll Mode.");
+        }
+
+        if (!ShowOverlaysAfterInput())
+        {
+            _scrollMode = false;
+            return;
+        }
+
+        UpdateAllOverlays();
+        if (!success)
+        {
+            ErrorOccurred?.Invoke(
+                $"Failed to dispatch scroll input at ({target.X}, {target.Y}). " +
+                "The target window may require a higher integrity level (UIPI).");
+        }
+    }
+
     /// <summary>
     /// Temporarily hides every overlay without tearing down the selection. The
     /// surfaces are kept alive so range validation failures and scroll operations
@@ -876,6 +1078,7 @@ public class OverlayManager
             _isInputInProgress = false;
             _continuousMode = false;
             _rangeStartPoint = null;
+            _scrollMode = false;
             _selectionManager.Cancel();
             CloseOverlaysWithoutRestore();
             RestoreOriginatingForegroundWindow();
@@ -893,6 +1096,7 @@ public class OverlayManager
     {
         _continuousMode = false;
         _rangeStartPoint = null;
+        _scrollMode = false;
         _isInputInProgress = false;
         CloseOverlaysWithoutRestore();
         RestoreOriginatingForegroundWindow();
