@@ -11,6 +11,7 @@ public class Win32ClickSenderTests
     [Theory]
     [InlineData(ClickKind.Left, NativeMethods.MOUSEEVENTF_LEFTDOWN, NativeMethods.MOUSEEVENTF_LEFTUP)]
     [InlineData(ClickKind.Right, NativeMethods.MOUSEEVENTF_RIGHTDOWN, NativeMethods.MOUSEEVENTF_RIGHTUP)]
+    [InlineData(ClickKind.Middle, NativeMethods.MOUSEEVENTF_MIDDLEDOWN, NativeMethods.MOUSEEVENTF_MIDDLEUP)]
     public void SendClick_EmitsVirtualDesktopMoveDownAndUpAtNormalizedPoint(
         ClickKind clickKind,
         uint buttonDownFlag,

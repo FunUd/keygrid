@@ -8,7 +8,8 @@ using KeyGrid.Services;
 namespace KeyGrid.Interop;
 
 /// <summary>
-/// Dispatches left or right click events using Win32 SendInput with MOUSEEVENTF_VIRTUALDESK.
+/// Dispatches left, right, or middle click events using Win32 SendInput
+/// with MOUSEEVENTF_VIRTUALDESK.
 /// </summary>
 public class Win32ClickSender : IClickSender
 {
@@ -31,6 +32,7 @@ public class Win32ClickSender : IClickSender
         {
             ClickKind.Left => (NativeMethods.MOUSEEVENTF_LEFTDOWN, NativeMethods.MOUSEEVENTF_LEFTUP),
             ClickKind.Right => (NativeMethods.MOUSEEVENTF_RIGHTDOWN, NativeMethods.MOUSEEVENTF_RIGHTUP),
+            ClickKind.Middle => (NativeMethods.MOUSEEVENTF_MIDDLEDOWN, NativeMethods.MOUSEEVENTF_MIDDLEUP),
             _ => throw new ArgumentOutOfRangeException(nameof(clickKind), clickKind, "Unsupported click kind.")
         };
         var (normX, normY) = CoordinateConverter.ToNormalizedVirtualDesktop(target, virtualScreen);
@@ -46,7 +48,7 @@ public class Win32ClickSender : IClickSender
                                NativeMethods.MOUSEEVENTF_MOVE |
                                NativeMethods.MOUSEEVENTF_VIRTUALDESK;
 
-        // 2. Left button down
+        // 2. Button down
         inputs[1].type = NativeMethods.INPUT_MOUSE;
         inputs[1].mi.dx = normX;
         inputs[1].mi.dy = normY;

@@ -5,6 +5,7 @@
 ### Added
 
 - Add keyboard-triggered right-click support with `Shift+Enter`.
+- Add keyboard-triggered middle (wheel) click support with `Ctrl+Enter`.
 
 ### Fixed
 

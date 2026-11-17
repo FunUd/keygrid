@@ -42,11 +42,12 @@ internal sealed class OverlayKeyHandler
             case Key.Enter:
                 // Consume the key down so Windows does not deliver it to another window
                 // when the overlay closes. Confirmation runs on key up. Capture the
-                // modifiers now because the user may release Shift before Enter.
+                // modifiers now because the user may release a modifier before Enter.
                 _pendingClickKind = modifiers switch
                 {
                     ModifierKeys.None => ClickKind.Left,
                     ModifierKeys.Shift => ClickKind.Right,
+                    ModifierKeys.Control => ClickKind.Middle,
                     _ => null
                 };
                 return true;

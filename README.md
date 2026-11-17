@@ -1,12 +1,12 @@
 # KeyGrid
 
-KeyGrid is a lightweight, resident Windows 11 utility that enables mouse-free left and right clicking using keyboard navigation. It overlays an adaptive two-stage grid across all active displays. Choose a coarse cell with two letter keys, then position a 5×5 cursor with the arrow keys and use Enter to click.
+KeyGrid is a lightweight, resident Windows 11 utility that enables mouse-free left, right, and middle clicking using keyboard navigation. It overlays an adaptive two-stage grid across all active displays. Choose a coarse cell with two letter keys, then position a 5×5 cursor with the arrow keys and use `Enter`, `Shift+Enter`, or `Ctrl+Enter` to click.
 
 ---
 
 ## Features
 
-- **Keyboard-Driven Precision**: Select a coarse region with two disjoint column/row letter keys, navigate a 5×5 sub-grid with arrow keys, and use `Enter` or `Shift+Enter` to left- or right-click.
+- **Keyboard-Driven Precision**: Select a coarse region with two disjoint column/row letter keys, navigate a 5×5 sub-grid with arrow keys, and use `Enter`, `Shift+Enter`, or `Ctrl+Enter` to left-, right-, or middle-click.
 - **Multi-Monitor Support**: Automatically maps across all active displays, handles non-standard topologies (L-shaped, vertical offsets, gaps), and operates with Per-Monitor DPI Awareness V2.
 - **Background Resident Utility**: Runs silently in the system tray with near-zero CPU and memory overhead while idle.
 - **IME & Repeat Protection**: Automatically suppresses IME during grid selection and ignores accidental key repeats.
@@ -100,14 +100,16 @@ The blocks assume the physical rows of a QWERTY or JIS keyboard. On layouts such
 1. Press the column letter shown in the target Stage 1 cell. The column highlights.
 2. Press the row letter shown in that cell. The grid zooms into the selected region.
 3. Use the arrow keys to move the red cursor through valid sub-cells. Cells outside monitor areas are skipped.
-4. Press **`Enter`** to left-click or **`Shift+Enter`** to right-click the highlighted cell.
+4. Press **`Enter`** to left-click, **`Shift+Enter`** to right-click, or **`Ctrl+Enter`** to middle-click the highlighted cell.
 
 ### 3. Automatic Clicking
 
 - Press **`Enter`** in Stage 2 to resolve the highlighted cell, hide the overlay, and dispatch a left click.
 - Press **`Shift+Enter`** in Stage 2 to dispatch a right click at the highlighted cell.
-- **Confirm Without Moving**: Use `Enter` or `Shift+Enter` as soon as Stage 2 appears to click its initially highlighted, center-most valid cell.
+- Press **`Ctrl+Enter`** in Stage 2 to dispatch a middle (wheel) click at the highlighted cell.
+- **Confirm Without Moving**: Use `Enter`, `Shift+Enter`, or `Ctrl+Enter` as soon as Stage 2 appears to click its initially highlighted, center-most valid cell.
 - The same confirmation keys work immediately after the two Stage 1 keys. Other modifier combinations with `Enter` are ignored.
+- The click kind is captured when `Enter` is pressed. If the target should not see the modifier held during the click (for example `Ctrl`+middle-click), release the modifier before releasing `Enter`; the selected click kind does not change.
 
 ### 4. Correcting and Cancelling
 

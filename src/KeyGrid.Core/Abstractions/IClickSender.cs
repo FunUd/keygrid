@@ -5,7 +5,8 @@ namespace KeyGrid.Core.Abstractions;
 public enum ClickKind
 {
     Left,
-    Right
+    Right,
+    Middle
 }
 
 public interface IClickSender

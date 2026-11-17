@@ -229,8 +229,11 @@ public class OverlayManagerTests
         });
     }
 
-    [Fact]
-    public void PrimarySurfaceConfirmWithShiftEnterDispatchesRightClick()
+    [Theory]
+    [InlineData(ClickKind.Right)]
+    [InlineData(ClickKind.Middle)]
+    public void PrimarySurfaceConfirmWithModifiedEnterDispatchesRequestedClickKind(
+        ClickKind clickKind)
     {
         UiTestThread.Run(() =>
         {
@@ -247,12 +250,12 @@ public class OverlayManagerTests
 
             primary.RaiseKey(manager.SelectionManager.ColumnKeys[0]);
             primary.RaiseKey(manager.SelectionManager.RowKeys[0]);
-            primary.RaiseConfirm(ClickKind.Right);
+            primary.RaiseConfirm(clickKind);
 
             Assert.False(manager.IsActive);
             Assert.Equal(SelectionState.Standby, manager.SelectionManager.State);
             Assert.True(clickSender.Called);
-            Assert.Equal(ClickKind.Right, clickSender.LastClickKind);
+            Assert.Equal(clickKind, clickSender.LastClickKind);
             Assert.True(clickSender.OverlaysWereClosedBeforeSend);
             Assert.NotNull(clickSender.LastTarget);
         });

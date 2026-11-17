@@ -25,8 +25,11 @@ public class ServicesTests
         }
     }
 
-    [Fact]
-    public void ClickExecutor_HidesOverlaysBeforeSendingClick()
+    [Theory]
+    [InlineData(ClickKind.Left)]
+    [InlineData(ClickKind.Right)]
+    [InlineData(ClickKind.Middle)]
+    public void ClickExecutor_HidesOverlaysBeforeSendingClick(ClickKind clickKind)
     {
         var fakeSender = new FakeClickSender();
         var executor = new ClickExecutor(fakeSender);
@@ -38,7 +41,7 @@ public class ServicesTests
         bool result = executor.ExecuteClick(
             target,
             screen,
-            ClickKind.Right,
+            clickKind,
             hideOverlaysAction: () => overlayHidden = true,
             prepareClickAction: null);
 
@@ -46,7 +49,7 @@ public class ServicesTests
         Assert.True(overlayHidden);
         Assert.Equal(target, fakeSender.LastTarget);
         Assert.Equal(screen, fakeSender.LastVirtualScreen);
-        Assert.Equal(ClickKind.Right, fakeSender.LastClickKind);
+        Assert.Equal(clickKind, fakeSender.LastClickKind);
     }
 
     [Fact]

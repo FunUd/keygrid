@@ -28,9 +28,10 @@ public class OverlayKeyHandlerTests
             Assert.True(handler.HandleKeyUp(Key.Enter, ModifierKeys.None));
             Assert.True(handler.HandleKeyDown(Key.Enter, ModifierKeys.Shift, isRepeat: false));
             Assert.True(handler.HandleKeyUp(Key.Enter, ModifierKeys.Shift));
+            Assert.True(handler.HandleKeyDown(Key.Enter, ModifierKeys.Control, isRepeat: false));
+            Assert.True(handler.HandleKeyUp(Key.Enter, ModifierKeys.Control));
             foreach (var modifiers in new[]
             {
-                ModifierKeys.Control,
                 ModifierKeys.Alt,
                 ModifierKeys.Windows,
                 ModifierKeys.Shift | ModifierKeys.Control
@@ -43,7 +44,7 @@ public class OverlayKeyHandlerTests
             Assert.True(handler.HandleKeyDown(Key.Escape, ModifierKeys.None, isRepeat: false));
 
             Assert.Equal(
-                new[] { "key:Q", "move:1,0", "move:-1,0", "move:0,1", "move:0,-1", "confirm:Left", "confirm:Right", "backspace", "cancel" },
+                new[] { "key:Q", "move:1,0", "move:-1,0", "move:0,1", "move:0,-1", "confirm:Left", "confirm:Right", "confirm:Middle", "backspace", "cancel" },
                 events);
         });
     }
@@ -67,8 +68,12 @@ public class OverlayKeyHandlerTests
         });
     }
 
-    [Fact]
-    public void PrimaryOverlay_UsesModifiersCapturedOnEnterKeyDown()
+    [Theory]
+    [InlineData(ModifierKeys.Shift, ClickKind.Right)]
+    [InlineData(ModifierKeys.Control, ClickKind.Middle)]
+    public void PrimaryOverlay_UsesModifiersCapturedOnEnterKeyDown(
+        ModifierKeys modifiers,
+        ClickKind expected)
     {
         UiTestThread.Run(() =>
         {
@@ -76,11 +81,11 @@ public class OverlayKeyHandlerTests
             ClickKind? confirmed = null;
             handler.ConfirmRequested += clickKind => confirmed = clickKind;
 
-            Assert.True(handler.HandleKeyDown(Key.Enter, ModifierKeys.Shift, isRepeat: false));
-            // The user may release Shift before releasing Enter.
+            Assert.True(handler.HandleKeyDown(Key.Enter, modifiers, isRepeat: false));
+            // The user may release the modifier before releasing Enter.
             Assert.True(handler.HandleKeyUp(Key.Enter, ModifierKeys.None));
 
-            Assert.Equal(ClickKind.Right, confirmed);
+            Assert.Equal(expected, confirmed);
         });
     }
 

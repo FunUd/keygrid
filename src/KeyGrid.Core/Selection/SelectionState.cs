@@ -16,7 +16,7 @@ public enum SelectionState
     Selecting,
 
     /// <summary>
-    /// Target resolved immediately by the 4th keystroke or by Enter after stage 1.
+    /// Target resolved by a confirmation key after stage 1 or in stage 2.
     /// Overlay is hidden and the click is being dispatched via SendInput.
     /// </summary>
     ExecutingClick
