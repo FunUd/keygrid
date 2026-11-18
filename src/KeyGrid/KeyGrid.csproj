@@ -4,6 +4,14 @@
     <ProjectReference Include="..\KeyGrid.Core\KeyGrid.Core.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- Keep the MIT notice in both local publish output and release archives. -->
+    <None Include="..\..\LICENSE"
+          Link="LICENSE"
+          CopyToOutputDirectory="PreserveNewest"
+          CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <TargetFramework>net10.0-windows</TargetFramework>

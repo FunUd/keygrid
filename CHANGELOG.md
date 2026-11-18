@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-11-18
+
 ### Added
 
 - Add a two-point range selection: press `R` in Stage 2 to set an anchor, move to the endpoint, and press `Enter` to left-click the anchor and Shift+left-click the endpoint. The action is intended for browser text selection and works with continuous mode.
@@ -9,6 +11,25 @@
 - Add continuous mode: press `Tab` while the grid is visible to return to Stage 1 after each click; press `Tab` again for normal mode. `Esc` still exits.
 - Add keyboard-triggered right-click support with `Shift+Enter`.
 - Add keyboard-triggered middle (wheel) click support with `Ctrl+Enter`.
+- Add `SECURITY.md` with vulnerability reporting, release verification, signing, deployment, and repository-hardening guidance.
+- Add Dependabot updates for NuGet packages and GitHub Actions.
+
+### Changed
+
+- Include `LICENSE` in publish output and exclude PDB files from release archives.
+- Show the assembly version in the tray menu instead of a hardcoded version.
+- Grant foreground permission only to the KeyGrid process instead of every process.
+- Reduce default diagnostic metadata in logs and error notifications, add the `KEYGRID_LOG_LEVEL` environment variable, and cap each daily log file at 5 MB.
+- Harden the release workflow with pinned actions, least-privilege jobs, a checksum asset, and optional Authenticode signing.
+
+### Security
+
+- Add SHA-256 checksums to releases and document signature verification.
+- Pin GitHub Actions to commit SHAs and restrict the release token to the release job.
+- Restrict NuGet package sources to nuget.org and enable NuGet auditing.
+- Mark unsigned release builds explicitly in the release notes while keeping signing optional for development builds.
+- Validate the final release archive for `LICENSE` and absent PDB files regardless of signing.
+- Make release publication retry-safe by replacing assets and notes when the release already exists.
 
 ### Fixed
 

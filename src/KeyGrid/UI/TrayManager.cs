@@ -111,7 +111,7 @@ public class TrayManager : IDisposable
                     menu,
                     NativeMethods.MF_STRING | NativeMethods.MF_GRAYED,
                     nint.Zero,
-                    "KeyGrid v1.2") &&
+                    $"KeyGrid v{GetDisplayVersion()}") &&
                 NativeMethods.AppendMenu(
                     menu,
                     NativeMethods.MF_STRING | NativeMethods.MF_GRAYED,
@@ -196,6 +196,12 @@ public class TrayManager : IDisposable
                 FileLogger.LogWarning("Failed to destroy the tray context menu.");
             }
         }
+    }
+
+    private static string GetDisplayVersion()
+    {
+        Version? version = typeof(TrayManager).Assembly.GetName().Version;
+        return version?.ToString(3) ?? "unknown";
     }
 
     public void Dispose()

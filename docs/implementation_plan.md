@@ -201,7 +201,7 @@ KeyGrid is designed around strict separation of concerns to maximize testability
   - [ ] Idle CPU usage $< 0.1\%$, memory working set $< 100$ MB.
 - [x] Full Checklist Verification against `spec.md` Section 16 (Completion Criteria).
 - [x] Release Publishing:
-  - [x] Configure and verify release build (`dotnet publish -c Release -o .dist`).
+  - [x] Configure and verify framework-dependent release publishing (`dotnet publish src/KeyGrid/KeyGrid.csproj -c Release -r win-x64 --self-contained false -o .dist`).
 
 ### Phase 6: Continuous Mode
 - [x] Keep the selection session alive after a click and restart from Stage 1.

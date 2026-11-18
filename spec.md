@@ -1,6 +1,6 @@
-# KeyGrid Specification v1.12
+# KeyGrid Specification v1.13
 
-**Version:** 1.12
+**Version:** 1.13
 **対象OS:** Windows 11（x64）
 **アプリケーション名:** KeyGrid
 **実装言語:** C#
@@ -503,6 +503,10 @@ For Scroll Mode input, steps 2-4 of the normal click flow are applied to the scr
 - 通常ユーザー権限で動作する。管理者権限は要求しない。
 - Windowsのセキュリティ制約を回避する実装は行わない。
 - 管理者権限で動作するウィンドウには、UIPIにより入力が届かない。その場合は6.3の手順でトレイ通知する。
+- リリース成果物にはLICENSEを同梱し、PDBを含めない。SHA-256チェックサムを公開し、Authenticode署名を付与できるリリースフローを維持する。
+- 配布物は管理者が書き込み権限を持つディレクトリに配置し、標準ユーザーには読み取り・実行のみを許可することを推奨する。
+- ログの既定レベルはINFOとし、`KEYGRID_LOG_LEVEL`でDEBUG / INFO / WARN / ERROR / NONEを指定できる。DEBUGはウィンドウクラス名、プロセスID、ウィンドウハンドル、クリック座標、フォーカス遷移を含むため、トラブルシューティング時のみ使用する。
+- ログには入力文字、ウィンドウタイトル、クリップボード、画面内容を含めない。1日ごとのログファイルは5MBを上限とし、上限到達後はその日の追加出力を停止する。ログは7日保持する。
 
 ---
 
@@ -521,8 +525,8 @@ For Scroll Mode input, steps 2-4 of the normal click flow are applied to the scr
 | ホットキー | RegisterHotKey |
 | IME | ImmAssociateContext |
 | ビルド | dotnet CLI（build / publish） |
-| 配布 | dotnet publish -r win-x64 --self-contained（単一実行ファイル） |
-| ログ | %LOCALAPPDATA%\KeyGrid\logs に出力し、直近7日分を保持 |
+| 配布 | dotnet publish -r win-x64 --self-contained false（.NET 10 Desktop Runtimeが必要） |
+| ログ | %LOCALAPPDATA%\KeyGrid\logs に出力し、直近7日分を保持。既定はINFO、1ファイル5MB上限 |
 | テスト | xUnit |
 | バージョン管理 | Git |
 

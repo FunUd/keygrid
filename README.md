@@ -8,7 +8,7 @@ KeyGrid is a lightweight, resident Windows 11 utility that enables mouse-free le
 
 - **Keyboard-Driven Precision**: Select a coarse region with two disjoint column/row letter keys, navigate a 5×5 sub-grid with arrow keys, and use `Enter`, `Shift+Enter`, or `Ctrl+Enter` to left-, right-, or middle-click.
 - **Multi-Monitor Support**: Automatically maps across all active displays, handles non-standard topologies (L-shaped, vertical offsets, gaps), and operates with Per-Monitor DPI Awareness V2.
-- **Background Resident Utility**: Runs silently in the system tray with near-zero CPU and memory overhead while idle.
+- **Background Resident Utility**: Runs silently in the system tray with low idle CPU usage and an idle working-set target below 100 MB.
 - **IME & Repeat Protection**: Automatically suppresses IME during grid selection and ignores accidental key repeats.
 - **Safe Fallback**: Excludes gaps between disjoint monitors, snapping center reference points to the closest valid display pixel.
 - **Continuous Mode**: Press `Tab` while the grid is visible to keep it open after each click and return to Stage 1 for the next selection. Press `Tab` again for normal mode, or `Esc` to exit.
@@ -24,6 +24,7 @@ KeyGrid is a lightweight, resident Windows 11 utility that enables mouse-free le
 - **Build**: [.NET 10 SDK](https://dotnet.microsoft.com/download)
 - **Running a release**: .NET 10 Desktop Runtime
 - **Privileges**: Standard user permissions (Administrator privileges not required)
+- **Deployment**: For shared or managed use, install under a path writable only by administrators (for example `%ProgramFiles%\KeyGrid`). Standard users only need read and execute access.
 
 ---
 
@@ -39,19 +40,29 @@ dotnet build
 dotnet test
 ```
 
+Dependency versions are restored from NuGet.org, which is the only configured package source.
+
 ### Publishing a Release Binary
 
 To publish and package the application for Windows x64:
 
 ```powershell
-dotnet publish src/KeyGrid/KeyGrid.csproj -c Release -r win-x64 --self-contained false -o .dist\publish
-$version = ([xml](Get-Content Directory.Build.props -Raw)).Project.PropertyGroup.Version
-Compress-Archive -Path .dist\publish\* -DestinationPath ".dist\KeyGrid-$version-win-x64.zip"
+Remove-Item .dist\publish -Recurse -Force -ErrorAction SilentlyContinue
+Remove-Item .dist\KeyGrid-*-win-x64.zip -Force -ErrorAction SilentlyContinue
+dotnet publish src/KeyGrid/KeyGrid.csproj -c Release -r win-x64 --self-contained false -p:DebugType=None -p:DebugSymbols=false -o .dist\publish
+if ($LASTEXITCODE -ne 0) { throw "dotnet publish failed with exit code $LASTEXITCODE." }
+$props = [xml](Get-Content Directory.Build.props -Raw)
+$versionNode = $props.SelectSingleNode('/Project/PropertyGroup/Version')
+if ($null -eq $versionNode) { throw "Directory.Build.props has no Version property." }
+$version = $versionNode.InnerText.Trim()
+if (-not (Test-Path .dist\publish\LICENSE)) { throw "The publish output does not contain LICENSE." }
+if (Get-ChildItem .dist\publish -Filter *.pdb -Recurse -Force) { throw "The publish output contains PDB files." }
+Compress-Archive -Path .dist\publish\* -DestinationPath ".dist\KeyGrid-${version}-win-x64.zip"
 ```
 
-The resulting archive contains the complete publish output, including `KeyGrid.exe`. It requires the .NET 10 Desktop Runtime on the target machine.
+The publish output includes `LICENSE` and excludes PDB files. It requires the .NET 10 Desktop Runtime on the target machine. The release workflow also publishes `SHA256SUMS.txt` and supports optional Authenticode signing when the `release` environment signing secrets are configured.
 
-The application version is defined in `Directory.Build.props`, and release notes are maintained in `CHANGELOG.md`. Pushing a tag in the `vMAJOR.MINOR.PATCH` format runs the Windows test and publish workflow and creates a GitHub Release with the packaged application. The tag must match the project version and have a corresponding changelog section.
+The application version is defined in `Directory.Build.props`, and release notes are maintained in `CHANGELOG.md`. Pushing a tag in the `vMAJOR.MINOR.PATCH` format runs the Windows test and publish workflow and creates a GitHub Release with the packaged application and checksum. The tag must match the project version and have a corresponding changelog section. The release job uses the `release` environment; configure required reviewers and tag protection in the repository settings.
 
 ---
 
@@ -71,7 +82,25 @@ Extract the release archive, then double-click `KeyGrid.exe` or execute it from 
 .\KeyGrid.exe
 ```
 
-The extracted publish folder is portable; no installer is required. Keep it in a permanent location and create a shortcut if desired.
+The extracted publish folder can be moved to a permanent location; no installer is required. It requires the .NET 10 Desktop Runtime. Create a shortcut if desired.
+
+### Verifying a Release
+
+Release archives are accompanied by `SHA256SUMS.txt`. Verify the archive before deployment:
+
+```powershell
+$archive = Get-ChildItem .\KeyGrid-*-win-x64.zip | Select-Object -First 1
+Get-FileHash $archive.FullName -Algorithm SHA256
+Get-Content .\SHA256SUMS.txt
+Expand-Archive $archive.FullName -DestinationPath .\KeyGrid -Force
+Get-AuthenticodeSignature .\KeyGrid\KeyGrid.exe
+```
+
+The hash must match the value in `SHA256SUMS.txt`. A managed deployment must use a binary with a valid Authenticode signature; unsigned archives are development builds. See [SECURITY.md](SECURITY.md) for details.
+
+### Deployment
+
+For shared or managed use, extract KeyGrid to an administrator-protected directory such as `%ProgramFiles%\KeyGrid`. Grant standard users read and execute permission only; do not install it in a directory those users can modify. KeyGrid must run as a standard user and does not require elevation.
 
 KeyGrid runs as a background process and displays an icon in the Windows system notification tray. If KeyGrid is already running, starting a second instance will display a notification and exit immediately.
 
@@ -150,12 +179,13 @@ keygrid/
 │   │   ├── Services/          # ClickExecutor dispatch synchronization
 │   │   └── Abstractions/      # Hardware abstraction interfaces (IMonitorProvider, IClickSender)
 │   └── KeyGrid/               # Desktop application (.NET 10 WPF / Windows 11)
-│       ├── Interop/           # Win32 P/Invoke (EnumDisplayMonitors, GetDpiForMonitor, SendInput)
-│       ├── UI/                # OverlayWindow, OverlayRenderElement (hardware-accelerated DrawingContext)
+│       ├── Interop/           # Win32 P/Invoke for monitors, focus, hotkeys, and click injection
+│       ├── UI/                # Overlay windows, overlay orchestration, and tray integration
 │       ├── Services/          # HotkeyManager, FileLogger
 │       └── app.manifest       # Per-Monitor DPI Awareness V2 declaration
 └── tests/
-    └── KeyGrid.Tests/         # xUnit unit & integration test suite
+    ├── KeyGrid.Tests/         # xUnit domain, calculation, and selection tests
+    └── KeyGrid.UI.Tests/      # WPF overlay, interop, and Win32 behavior tests
 ```
 
 ---
@@ -168,7 +198,9 @@ KeyGrid maintains operational logs for troubleshooting at:
 %LOCALAPPDATA%\KeyGrid\logs\keygrid_YYYYMMDD.log
 ```
 
-Logs are retained for 7 days and automatically cleaned up on application startup.
+Logs are retained for 7 days and each daily file is capped at 5 MB. The default log level is `INFO`. Set the `KEYGRID_LOG_LEVEL` environment variable to `DEBUG`, `INFO`, `WARN`, `ERROR`, or `NONE` before starting KeyGrid to change it. Logs older than 7 days are cleaned up at startup and when the daily log file rolls over. Once a daily cap is reached, further entries are dropped for the rest of that day, including errors.
+
+`DEBUG` includes diagnostic metadata such as window class names, process IDs, window handles, click coordinates, and focus-transition details. It is intended for temporary troubleshooting and may contain information about the applications you interact with. Logs do not contain typed text, window titles, clipboard contents, or screen captures. Review logs before sharing them.
 
 ---
 
@@ -189,6 +221,12 @@ Logs are retained for 7 days and automatically cleaned up on application startup
 
 ---
 
+## Security
+
+See [SECURITY.md](SECURITY.md) for vulnerability reporting, release verification, signing, deployment guidance, and repository settings.
+
+---
+
 ## License
 
-This project is licensed under the terms specified in the [LICENSE](LICENSE) file.
+KeyGrid is licensed under the MIT License. See [LICENSE](LICENSE) for the full text.
