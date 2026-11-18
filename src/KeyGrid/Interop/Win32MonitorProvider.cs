@@ -72,8 +72,9 @@ public class Win32MonitorProvider : IMonitorProvider
             return dpiX / 96.0;
         }
 
-        FileLogger.LogWarning(
-            $"GetDpiForMonitor failed for monitor at ({left}, {top}) with HRESULT 0x{hResult:X8}; using 96 DPI.");
+        FileLogger.LogWarning("GetDpiForMonitor failed for a monitor; using 96 DPI.");
+        FileLogger.LogDebug(
+            $"GetDpiForMonitor failed for monitor at ({left}, {top}) with HRESULT 0x{hResult:X8}.");
         return DefaultDpiScale;
     }
 

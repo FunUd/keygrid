@@ -64,29 +64,32 @@ public class Win32ClickSender : IClickSender
                                buttonUpFlag |
                                NativeMethods.MOUSEEVENTF_VIRTUALDESK;
 
-        nint foreground = NativeMethods.GetForegroundWindow();
-        NativeMethods.GetWindowThreadProcessId(foreground, out uint foregroundProcessId);
-        nint windowAtTarget = NativeMethods.WindowFromPoint(
-            new NativeMethods.POINT { X = target.X, Y = target.Y });
-        NativeMethods.GetWindowThreadProcessId(windowAtTarget, out uint targetProcessId);
-        FileLogger.LogInfo(
-            $"SendInput starting (kind={clickKind}, target=({target.X}, {target.Y}), " +
-            $"foreground={DescribeWindow(foreground)}, foregroundPid={foregroundProcessId}, " +
-            $"windowAtTarget={DescribeWindow(windowAtTarget)}, targetPid={targetProcessId}).");
+        if (FileLogger.IsDebugEnabled)
+        {
+            nint foreground = NativeMethods.GetForegroundWindow();
+            NativeMethods.GetWindowThreadProcessId(foreground, out uint foregroundProcessId);
+            nint windowAtTarget = NativeMethods.WindowFromPoint(
+                new NativeMethods.POINT { X = target.X, Y = target.Y });
+            NativeMethods.GetWindowThreadProcessId(windowAtTarget, out uint targetProcessId);
+            FileLogger.LogDebug(
+                $"SendInput starting (kind={clickKind}, target=({target.X}, {target.Y}), " +
+                $"foreground={DescribeWindow(foreground)}, foregroundPid={foregroundProcessId}, " +
+                $"windowAtTarget={DescribeWindow(windowAtTarget)}, targetPid={targetProcessId}).");
+        }
 
         uint sent = _sendInput((uint)inputs.Length, inputs, Marshal.SizeOf<NativeMethods.INPUT>());
-        FileLogger.LogInfo($"SendInput returned (requested={inputs.Length}, sent={sent}).");
+        FileLogger.LogDebug($"SendInput returned (requested={inputs.Length}, sent={sent}).");
         bool succeeded = sent == inputs.Length;
         if (succeeded)
         {
             FileLogger.LogInfo(
-                $"SendInput click sequence succeeded (kind={clickKind}, target=({target.X}, {target.Y}), " +
+                $"SendInput click sequence succeeded (kind={clickKind}, " +
                 $"requested={inputs.Length}, sent={sent}).");
         }
         else
         {
             FileLogger.LogWarning(
-                $"SendInput click sequence incomplete (kind={clickKind}, target=({target.X}, {target.Y}), " +
+                $"SendInput click sequence incomplete (kind={clickKind}, " +
                 $"requested={inputs.Length}, sent={sent}, lastError={Marshal.GetLastWin32Error()}).");
         }
 
@@ -116,7 +119,7 @@ public class Win32ClickSender : IClickSender
         inputs[6] = CreateMouseInput(endX, endY, buttonFlags | NativeMethods.MOUSEEVENTF_LEFTUP);
         inputs[7] = CreateKeyInput(NativeMethods.VK_SHIFT, NativeMethods.KEYEVENTF_KEYUP);
 
-        FileLogger.LogInfo(
+        FileLogger.LogDebug(
             $"SendInput range starting (start=({start.X}, {start.Y}), end=({end.X}, {end.Y})).");
         uint sent = _sendInput((uint)inputs.Length, inputs, Marshal.SizeOf<NativeMethods.INPUT>());
         bool succeeded = sent == inputs.Length;
@@ -180,7 +183,7 @@ public class Win32ClickSender : IClickSender
             CreateMouseInput(0, 0, wheelFlag, wheelData)
         };
 
-        FileLogger.LogInfo(
+        FileLogger.LogDebug(
             $"SendInput scroll starting (target=({target.X}, {target.Y}), " +
             $"notches={notches}, horizontal={horizontal}).");
         uint sent = _sendInput((uint)inputs.Length, inputs, Marshal.SizeOf<NativeMethods.INPUT>());

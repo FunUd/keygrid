@@ -45,6 +45,7 @@ public partial class App : Application
             return;
         }
 
+        FileLogger.Initialize();
         FileLogger.LogInfo("KeyGrid application starting.");
 
         // 2. Create message-only HwndSource for receiving WM_HOTKEY and WM_TRAYICON
@@ -115,12 +116,10 @@ public partial class App : Application
         switch (msg)
         {
             case NativeMethods.WM_HOTKEY:
-                // Grant foreground permission to the UI thread before the overlay window
-                // is created. SetForegroundWindow only works from a process that the system
-                // has designated as the foreground-capable process, and that designation is
-                // conveyed through AllowSetForegroundWindow here, at the moment we receive
-                // the hotkey.
-                NativeMethods.AllowSetForegroundWindow(NativeMethods.ASFW_ANY);
+                // Grant foreground permission only to this process before the overlay
+                // window is created. ASFW_ANY would also grant it to unrelated processes,
+                // widening the foreground takeover surface without a functional need.
+                NativeMethods.AllowSetForegroundWindow((uint)Environment.ProcessId);
                 _hotkeyManager?.HandleHotkeyMessage((int)wParam);
                 handled = true;
                 break;

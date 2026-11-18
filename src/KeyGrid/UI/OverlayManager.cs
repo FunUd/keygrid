@@ -110,7 +110,7 @@ public class OverlayManager
         if (!IsActive)
         {
             _originatingForegroundWindow = _windowFocusService.GetForegroundWindow();
-            FileLogger.LogInfo(
+            FileLogger.LogDebug(
                 $"Selection opening: originating foreground HWND={FormatWindowHandle(_originatingForegroundWindow)}.");
         }
 
@@ -238,7 +238,7 @@ public class OverlayManager
     {
         if (_scrollMode)
         {
-            FileLogger.LogInfo($"Key '{key}' ignored while Scroll Mode is active.");
+            FileLogger.LogDebug("Key input ignored while Scroll Mode is active.");
             return;
         }
 
@@ -272,7 +272,7 @@ public class OverlayManager
             }
 
             _rangeStartPoint = startPoint;
-            FileLogger.LogInfo($"Range start set at ({startPoint.X}, {startPoint.Y}).");
+            FileLogger.LogDebug($"Range start set at ({startPoint.X}, {startPoint.Y}).");
             UpdateAllOverlays();
             return;
         }
@@ -375,7 +375,7 @@ public class OverlayManager
 
         if (_scrollMode)
         {
-            FileLogger.LogInfo(
+            FileLogger.LogDebug(
                 $"Confirmation #{attempt} ignored while Scroll Mode is active; press Esc to return to Stage 2.");
             return;
         }
@@ -384,7 +384,7 @@ public class OverlayManager
         {
             if (clickKind != ClickKind.Left)
             {
-                FileLogger.LogInfo(
+                FileLogger.LogDebug(
                     $"Confirmation #{attempt} ignored because range selection uses unmodified Enter.");
                 return;
             }
@@ -395,11 +395,11 @@ public class OverlayManager
 
         if (!_selectionManager.ProcessEnter())
         {
-            FileLogger.LogInfo($"Confirmation #{attempt} ignored because the selection is not confirmable.");
+            FileLogger.LogDebug($"Confirmation #{attempt} ignored because the selection is not confirmable.");
             return;
         }
 
-        FileLogger.LogInfo(
+        FileLogger.LogDebug(
             $"Confirmation #{attempt} accepted (target={_selectionManager.TargetCoordinate}).");
         ExecuteConfirmedClick(clickKind, attempt);
     }
@@ -516,7 +516,7 @@ public class OverlayManager
                 (uint)Environment.ProcessId,
                 foregroundIsVisible);
 
-            FileLogger.LogInfo(
+            FileLogger.LogDebug(
                 $"Focus loss evaluated (foreground={FormatWindowHandle(foreground)}, " +
                 $"focused={FormatWindowHandle(focused)}, pid={foregroundPid}, " +
                 $"visible={foregroundIsVisible}, action={action}).");
@@ -526,13 +526,17 @@ public class OverlayManager
                 && primaryOverlay.TryReactivate())
             {
                 LockPrimaryForeground();
-                FileLogger.LogInfo(
-                    $"Focus loss recovered (foreground PID {foregroundPid}, visible={foregroundIsVisible}).");
+                FileLogger.LogInfo("Focus loss recovered by reactivating the primary overlay.");
+                FileLogger.LogDebug(
+                    $"Focus loss recovery details (foreground PID {foregroundPid}, " +
+                    $"visible={foregroundIsVisible}).");
                 return;
             }
 
-            FileLogger.LogInfo(
-                $"Focus loss cancelled selection (foreground PID {foregroundPid}, visible={foregroundIsVisible}).");
+            FileLogger.LogInfo("Focus loss cancelled selection.");
+            FileLogger.LogDebug(
+                $"Focus loss cancellation details (foreground PID {foregroundPid}, " +
+                $"visible={foregroundIsVisible}).");
             _continuousMode = false;
             _rangeStartPoint = null;
             _scrollMode = false;
@@ -677,8 +681,9 @@ public class OverlayManager
 
         bool success;
         bool clickTargetReady = false;
-        FileLogger.LogInfo(
-            $"Click attempt #{attempt} started (kind={clickKind}, target=({target.X}, {target.Y}), " +
+        FileLogger.LogInfo($"Click attempt #{attempt} started (kind={clickKind}).");
+        FileLogger.LogDebug(
+            $"Click attempt #{attempt} target details (target=({target.X}, {target.Y}), " +
             $"virtualScreen={virtualScreen}).");
         try
         {
@@ -688,21 +693,21 @@ public class OverlayManager
                 clickKind,
                 hideOverlaysAction: () =>
                 {
-                    FileLogger.LogInfo($"Click attempt #{attempt}: closing overlays.");
+                    FileLogger.LogDebug($"Click attempt #{attempt}: closing overlays.");
                     CloseOverlaysWithoutRestore();
                 },
                 prepareClickAction: () =>
                 {
-                    FileLogger.LogInfo($"Click attempt #{attempt}: waiting for overlay render.");
+                    FileLogger.LogDebug($"Click attempt #{attempt}: waiting for overlay render.");
                     Dispatcher.CurrentDispatcher.Invoke(() => { }, DispatcherPriority.Render);
-                    FileLogger.LogInfo($"Click attempt #{attempt}: overlay render wait completed.");
+                    FileLogger.LogDebug($"Click attempt #{attempt}: overlay render wait completed.");
 
                     // Resolve the click target after the overlays are hidden. Hiding
                     // does not activate another window, so WindowFromPoint now
                     // reports the same window a physical click would hit.
                     nint windowAtTarget = _windowFocusService.GetWindowFromPoint(target);
                     nint clickTargetWindow = _windowFocusService.GetRootWindow(windowAtTarget);
-                    FileLogger.LogInfo(
+                    FileLogger.LogDebug(
                         $"Click attempt #{attempt}: window under target is " +
                         $"{FormatWindowHandle(windowAtTarget)} " +
                         $"(root={FormatWindowHandle(clickTargetWindow)}).");
@@ -720,7 +725,7 @@ public class OverlayManager
                     nint windowAfterRestore = _windowFocusService.GetWindowFromPoint(target);
                     bool stillHitTarget = _windowFocusService.IsWindowOwnedBy(windowAfterRestore, clickTargetWindow);
                     clickTargetReady = stillHitTarget;
-                    FileLogger.LogInfo(
+                    FileLogger.LogDebug(
                         $"Click attempt #{attempt}: target activation result={activated}, " +
                         $"window at target after activation is {FormatWindowHandle(windowAfterRestore)} " +
                         $"(matchesClickTarget={stillHitTarget}).");
@@ -744,7 +749,7 @@ public class OverlayManager
         {
             _originatingForegroundWindow = nint.Zero;
             nint foreground = _windowFocusService.GetForegroundWindow();
-            FileLogger.LogInfo(
+            FileLogger.LogDebug(
                 $"Click attempt #{attempt}: keeping post-click foreground window " +
                 $"{FormatWindowHandle(foreground)}.");
         }
@@ -782,7 +787,8 @@ public class OverlayManager
         }
         else if (!success)
         {
-            ErrorOccurred?.Invoke($"Failed to dispatch click to ({target.X}, {target.Y}). The target window may require higher integrity level (UIPI).");
+            ErrorOccurred?.Invoke(
+                "Failed to dispatch click. The target window may require a higher integrity level (UIPI).");
         }
     }
 
@@ -790,7 +796,7 @@ public class OverlayManager
     {
         if (!_selectionManager.TryGetStage2Target(out var end))
         {
-            FileLogger.LogInfo($"Range #{attempt} ignored because the Stage 2 target is not confirmable.");
+            FileLogger.LogDebug($"Range #{attempt} ignored because the Stage 2 target is not confirmable.");
             return;
         }
 
@@ -800,8 +806,9 @@ public class OverlayManager
         string? preparationFailure = null;
         bool success;
 
-        FileLogger.LogInfo(
-            $"Range #{attempt} started (start=({start.X}, {start.Y}), " +
+        FileLogger.LogInfo($"Range #{attempt} started.");
+        FileLogger.LogDebug(
+            $"Range #{attempt} target details (start=({start.X}, {start.Y}), " +
             $"end=({end.X}, {end.Y}), virtualScreen={virtualScreen}).");
 
         try
@@ -813,7 +820,7 @@ public class OverlayManager
                 hideOverlaysAction: HideOverlaysForInput,
                 prepareClickAction: () =>
                 {
-                    FileLogger.LogInfo($"Range #{attempt}: waiting for overlay render.");
+                    FileLogger.LogDebug($"Range #{attempt}: waiting for overlay render.");
                     Dispatcher.CurrentDispatcher.Invoke(() => { }, DispatcherPriority.Render);
 
                     // Hiding the overlays makes WindowFromPoint report what a physical
@@ -824,7 +831,7 @@ public class OverlayManager
                     nint startRoot = _windowFocusService.GetRootWindow(startWindow);
                     nint endRoot = _windowFocusService.GetRootWindow(endWindow);
 
-                    FileLogger.LogInfo(
+                    FileLogger.LogDebug(
                         $"Range #{attempt}: start window={FormatWindowHandle(startWindow)} " +
                         $"(root={FormatWindowHandle(startRoot)}), " +
                         $"end window={FormatWindowHandle(endWindow)} " +
@@ -854,7 +861,7 @@ public class OverlayManager
                         endAfterActivation,
                         endRoot);
 
-                    FileLogger.LogInfo(
+                    FileLogger.LogDebug(
                         $"Range #{attempt}: target activation result={activated}, " +
                         $"start matches={startStillHit}, end matches={endStillHit}.");
 
@@ -932,8 +939,7 @@ public class OverlayManager
         if (!success)
         {
             ErrorOccurred?.Invoke(
-                $"Failed to dispatch range clicks from ({start.X}, {start.Y}) to ({end.X}, {end.Y}). " +
-                "The target window may require a higher integrity level (UIPI).");
+                "Failed to dispatch range clicks. The target window may require a higher integrity level (UIPI).");
         }
     }
 
@@ -948,9 +954,8 @@ public class OverlayManager
         string? preparationFailure = null;
         bool success;
 
-        FileLogger.LogInfo(
-            $"Scroll starting (target=({target.X}, {target.Y}), notches={notches}, " +
-            $"horizontal={horizontal}).");
+        FileLogger.LogInfo($"Scroll starting (notches={notches}, horizontal={horizontal}).");
+        FileLogger.LogDebug($"Scroll target details (target=({target.X}, {target.Y})).");
 
         try
         {
@@ -962,12 +967,12 @@ public class OverlayManager
                 hideOverlaysAction: HideOverlaysForInput,
                 prepareClickAction: () =>
                 {
-                    FileLogger.LogInfo("Scroll: waiting for overlay render.");
+                    FileLogger.LogDebug("Scroll: waiting for overlay render.");
                     Dispatcher.CurrentDispatcher.Invoke(() => { }, DispatcherPriority.Render);
 
                     nint window = _windowFocusService.GetWindowFromPoint(target);
                     nint root = _windowFocusService.GetRootWindow(window);
-                    FileLogger.LogInfo(
+                    FileLogger.LogDebug(
                         $"Scroll: window={FormatWindowHandle(window)}, " +
                         $"root={FormatWindowHandle(root)}.");
 
@@ -983,7 +988,7 @@ public class OverlayManager
                     bool stillHit = _windowFocusService.IsWindowOwnedBy(
                         windowAfterActivation,
                         root);
-                    FileLogger.LogInfo(
+                    FileLogger.LogDebug(
                         $"Scroll: target activation result={activated}, " +
                         $"window after activation={FormatWindowHandle(windowAfterActivation)}, " +
                         $"matchesTarget={stillHit}.");
@@ -1035,8 +1040,7 @@ public class OverlayManager
         if (!success)
         {
             ErrorOccurred?.Invoke(
-                $"Failed to dispatch scroll input at ({target.X}, {target.Y}). " +
-                "The target window may require a higher integrity level (UIPI).");
+                "Failed to dispatch scroll input. The target window may require a higher integrity level (UIPI).");
         }
     }
 
@@ -1120,11 +1124,11 @@ public class OverlayManager
             foreach (var overlay in _overlays)
             {
                 bool isPrimary = ReferenceEquals(overlay, _primaryOverlay);
-                FileLogger.LogInfo($"Closing {(isPrimary ? "primary" : "secondary")} overlay.");
+                FileLogger.LogDebug($"Closing {(isPrimary ? "primary" : "secondary")} overlay.");
                 try
                 {
                     overlay.Close();
-                    FileLogger.LogInfo(
+                    FileLogger.LogDebug(
                         $"Close returned for {(isPrimary ? "primary" : "secondary")} overlay.");
                 }
                 catch (InvalidOperationException ex)
@@ -1179,7 +1183,7 @@ public class OverlayManager
             || _windowFocusService.TryRestoreForegroundWindow(target);
         nint foregroundAfterRestore = _windowFocusService.GetForegroundWindow();
         bool succeeded = restored && foregroundAfterRestore == target;
-        FileLogger.LogInfo(
+        FileLogger.LogDebug(
             $"{description} foreground restore result={succeeded} " +
             $"(target={FormatWindowHandle(target)}, " +
             $"before={FormatWindowHandle(foregroundBeforeRestore)}, " +

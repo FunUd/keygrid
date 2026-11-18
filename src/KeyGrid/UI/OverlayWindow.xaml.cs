@@ -67,7 +67,12 @@ public partial class OverlayWindow : Window, IOverlayWindowSurface
         }
 
         var hwnd = new WindowInteropHelper(this).Handle;
-        nint foregroundBefore = NativeMethods.GetForegroundWindow();
+        nint foregroundBefore = nint.Zero;
+        if (FileLogger.IsDebugEnabled)
+        {
+            foregroundBefore = NativeMethods.GetForegroundWindow();
+        }
+
         bool focused = NativeMethods.EnsureForegroundAndFocus(hwnd);
         bool wpfFocused = false;
         if (focused)
@@ -75,12 +80,15 @@ public partial class OverlayWindow : Window, IOverlayWindowSurface
             wpfFocused = Focus();
         }
 
-        nint foregroundAfter = NativeMethods.GetForegroundWindow();
-        nint focusedWindow = NativeMethods.GetFocus();
-        FileLogger.LogInfo(
-            $"Primary overlay focus request (hwnd=0x{hwnd.ToInt64():X}, visible={IsVisible}, active={IsActive}, " +
-            $"foregroundBefore=0x{foregroundBefore.ToInt64():X}, foregroundAfter=0x{foregroundAfter.ToInt64():X}, " +
-            $"focusedWindow=0x{focusedWindow.ToInt64():X}, nativeSuccess={focused}, wpfSuccess={wpfFocused}).");
+        if (FileLogger.IsDebugEnabled)
+        {
+            nint foregroundAfter = NativeMethods.GetForegroundWindow();
+            nint focusedWindow = NativeMethods.GetFocus();
+            FileLogger.LogDebug(
+                $"Primary overlay focus request (hwnd=0x{hwnd.ToInt64():X}, visible={IsVisible}, active={IsActive}, " +
+                $"foregroundBefore=0x{foregroundBefore.ToInt64():X}, foregroundAfter=0x{foregroundAfter.ToInt64():X}, " +
+                $"focusedWindow=0x{focusedWindow.ToInt64():X}, nativeSuccess={focused}, wpfSuccess={wpfFocused}).");
+        }
 
         return focused;
     }
@@ -216,7 +224,7 @@ public partial class OverlayWindow : Window, IOverlayWindowSurface
         if (IsPrimary)
         {
             Key key = e.Key == Key.System ? e.SystemKey : e.Key;
-            FileLogger.LogInfo(
+            FileLogger.LogDebug(
                 $"Primary overlay WPF keydown (category={GetKeyCategory(key)}, modifiers={modifiers}, " +
                 $"repeat={e.IsRepeat}, handled={handled}).");
         }
@@ -232,7 +240,7 @@ public partial class OverlayWindow : Window, IOverlayWindowSurface
 
         if (IsPrimary && handled)
         {
-            FileLogger.LogInfo(
+            FileLogger.LogDebug(
                 $"Primary overlay WPF keyup (category={GetKeyCategory(key)}, modifiers={modifiers}, handled={handled}).");
         }
     }
@@ -335,32 +343,32 @@ public partial class OverlayWindow : Window, IOverlayWindowSurface
             if (msg == WM_KEYDOWN || msg == WM_SYSKEYDOWN)
             {
                 uint virtualKey = unchecked((uint)wParam.ToInt64());
-                FileLogger.LogInfo(
+                FileLogger.LogDebug(
                     $"Primary overlay native keydown (category={GetVirtualKeyCategory(virtualKey)}).");
             }
             else if (msg == WM_SETFOCUS)
             {
-                FileLogger.LogInfo(
+                FileLogger.LogDebug(
                     $"Primary overlay received WM_SETFOCUS (previousFocus=0x{wParam.ToInt64():X}).");
             }
             else if (msg == WM_KILLFOCUS)
             {
                 // Focus loss may be transient (for example an IME/TSF helper window).
                 // OverlayManager decides whether to reclaim focus or cancel.
-                FileLogger.LogInfo(
+                FileLogger.LogDebug(
                     $"Primary overlay received WM_KILLFOCUS (newFocus=0x{wParam.ToInt64():X}).");
                 FocusLost?.Invoke();
             }
             else if (msg == WM_ACTIVATEAPP && wParam == nint.Zero)
             {
-                FileLogger.LogInfo(
+                FileLogger.LogDebug(
                     $"Primary overlay received WM_ACTIVATEAPP (active=False, threadId={lParam}).");
                 FocusLost?.Invoke();
             }
             else if (msg == WM_ACTIVATE)
             {
                 int activation = (int)(wParam.ToInt64() & 0xFFFF);
-                FileLogger.LogInfo(
+                FileLogger.LogDebug(
                     $"Primary overlay received WM_ACTIVATE (state={activation}, otherWindow=0x{lParam.ToInt64():X}).");
                 if (activation == WA_INACTIVE)
                 {
@@ -371,7 +379,7 @@ public partial class OverlayWindow : Window, IOverlayWindowSurface
             }
             else if (msg == WM_ACTIVATEAPP)
             {
-                FileLogger.LogInfo(
+                FileLogger.LogDebug(
                     $"Primary overlay received WM_ACTIVATEAPP (active={wParam != nint.Zero}, threadId={lParam}).");
             }
         }
