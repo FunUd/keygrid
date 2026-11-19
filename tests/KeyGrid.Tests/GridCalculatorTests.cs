@@ -136,6 +136,63 @@ public class GridCalculatorTests
             () => GridCalculator.CalculateBoundaries(0, 100, count));
     }
 
+    [Fact]
+    public void CalculateCenteredContextWindow_ExpandsFocusByTenCellsOnEachSide()
+    {
+        var focusBox = new PixelRect(0, 0, 120, 108);
+
+        var window = GridCalculator.CalculateCenteredContextWindow(
+            focusBox,
+            contextColumns: 25,
+            contextRows: 25,
+            focusColumns: 5,
+            focusRows: 5);
+
+        Assert.Equal(new PixelRect(-240, -216, 600, 540), window);
+    }
+
+    [Theory]
+    [InlineData(0, 0, 120, 108)]
+    [InlineData(-337, 205, 121, 107)]
+    [InlineData(1920, 1080, 33, 25)]
+    public void CalculateCenteredContextWindow_CentralCellsMatchFocusGrid(
+        int left,
+        int top,
+        int width,
+        int height)
+    {
+        var focusBox = new PixelRect(left, top, width, height);
+        var window = GridCalculator.CalculateCenteredContextWindow(
+            focusBox,
+            contextColumns: 25,
+            contextRows: 25,
+            focusColumns: 5,
+            focusRows: 5);
+
+        var contextX = GridCalculator.CalculateBoundaries(window.Left, window.Width, 25);
+        var contextY = GridCalculator.CalculateBoundaries(window.Top, window.Height, 25);
+        var focusX = GridCalculator.CalculateBoundaries(focusBox.Left, focusBox.Width, 5);
+        var focusY = GridCalculator.CalculateBoundaries(focusBox.Top, focusBox.Height, 5);
+
+        Assert.Equal(focusX, contextX.Skip(10).Take(6).ToArray());
+        Assert.Equal(focusY, contextY.Skip(10).Take(6).ToArray());
+    }
+
+    [Fact]
+    public void CalculateCenteredContextWindow_InvalidConfiguration_Throws()
+    {
+        var focusBox = new PixelRect(0, 0, 10, 10);
+
+        Assert.Throws<ArgumentException>(
+            () => GridCalculator.CalculateCenteredContextWindow(PixelRect.Empty, 25, 25, 5, 5));
+        Assert.Throws<ArgumentOutOfRangeException>(
+            () => GridCalculator.CalculateCenteredContextWindow(focusBox, 0, 25, 5, 5));
+        Assert.Throws<ArgumentException>(
+            () => GridCalculator.CalculateCenteredContextWindow(focusBox, 20, 25, 5, 5));
+        Assert.Throws<ArgumentException>(
+            () => GridCalculator.CalculateCenteredContextWindow(focusBox, 25, 25, 3, 5));
+    }
+
     [Theory]
     [InlineData(-1, 0)]
     [InlineData(2, 0)]

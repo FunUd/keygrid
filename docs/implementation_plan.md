@@ -18,7 +18,7 @@ KeyGrid is designed around strict separation of concerns to maximize testability
      - Disjoint column/row key allocation from physical keyboard blocks (max 26 keys).
      - Keystroke history, undo/recalculation, and state transitions.
      - Focus-loss recovery policy for hidden IME/TSF helper windows.
-     - Stage-2 key-ruler placement with screen-edge flipping.
+     - Stage-2 focus-plus-context window calculation with centered expansion.
      - Absolute virtual desktop coordinate normalization ($0 \dots 65535$).
    - Can be unit-tested completely in headless environments without UI threads.
 
@@ -53,7 +53,7 @@ KeyGrid is designed around strict separation of concerns to maximize testability
 1. **`GridCalculatorTests`**:
    - **Division formula**: Verify the 20 DIP target converted by the primary monitor DPI ($T \times C^2 \ge W$, $T \times R^2 \ge H$) with $C + R \le 26$; check 1920x1080 (10, 8), 2560x1440 (12, 9), 3840x2160 (14, 11), and the relaxed 7680x2160 (17, 9) and 7680x4320 (15, 11) cases.
    - **Boundary partitioning theorem**: For all $L \in [1, 10000]$ and $N \in [1, 26]$, verify cell widths are strictly $\lfloor L/N \rfloor$ or $\lceil L/N \rceil$, sum of widths equals $L$, no overlapping or gaps.
-   - **Two-stage convergence**: Verify Stage 2 reuses the Stage 1 counts, the normal case meets the 20 DIP target, and the key-budget relaxation chooses the minimax pair on ultra-wide displays (for example 17x9 for 7680x2160).
+   - **Two-stage convergence**: Verify the Stage 1 optimizer uses the central 5x5 focus size so the Stage 2 cell pixel size stays unchanged, while Stage 2 draws a centered 25x25 context window that spans five Stage 1 cells. The key-budget relaxation still chooses the minimax pair on ultra-wide displays (for example 20x6 for 7680x2160).
    - **Center point & Euclidean distance**:
      - Bounding box center: `left + (W - 1) / 2` (integer division).
      - When center falls in monitor gap: nearest coordinate in valid monitor rects; tie-breaker test (smaller Y first, then smaller X).
@@ -71,12 +71,12 @@ KeyGrid is designed around strict separation of concerns to maximize testability
    - Cancel via Esc, focus loss to a visible foreign window, or monitor change resets to Standby.
    - Hidden/own-process focus loss reactivates the overlay; repeated recovery failures cancel.
    - `FocusLossPolicyTests`: transient recovery, visible foreign cancellation, recovery limit, reset.
-4. **`Stage2LabelLayoutTests`**:
-   - Rulers stay outside the selected cell when the preferred side has room.
-   - Top edge flips the horizontal ruler below; left edge flips the vertical ruler right.
-   - Top-left and bottom-right corners flip both rulers without covering the cell.
-   - Inside-edge fallback is used only when no outside side fits.
-   - Label centers follow the calculated cell boundaries.
+4. **`Stage2ContextGridTests`**:
+   - The 25x25 window centers the Stage 1 cell with ten cells of context on each side.
+   - The central 5x5 boundaries and cell size match the previous fixed Stage 2 grid exactly.
+   - Context cells on any monitor remain selectable, while cells outside monitor areas are skipped.
+   - Holding an arrow key repeats cursor movement; repeats stay ignored in Stage 1 and Scroll Mode.
+   - The central 5x5 focus is highlighted while the outer context window uses a lighter border and dimmed mask.
 5. **`CoordinateConverterTests`**:
    - Normalization formula $X = (x - x_{min}) \times 65535 / (W - 1)$.
    - Negative origin configurations (secondary monitor placed left or top of primary).
@@ -139,14 +139,15 @@ KeyGrid is designed around strict separation of concerns to maximize testability
   - [x] Unit tests for `CoordinateConverter`.
 - [x] Implement Single-Monitor Overlay UI:
   - [x] Custom rendering for grid lines and bounding rectangle.
-  - [x] Stage 1 in-cell 2-letter labels and Stage 2 local key rulers outside the selected cell.
-  - [x] Column highlight (after 1st stroke of a stage) and cell highlight (after 2nd stroke).
+  - [x] Stage 1 in-cell 2-letter labels and the Stage 2 focus-plus-context grid.
+  - [x] Column highlight after the first Stage 1 stroke and cursor-cell highlight in Stage 2.
   - [x] Immediate click dispatch when stage 2 completes (no confirmation screen).
   - [x] Keyboard input binding for the allocated column/row sets (Backspace, Enter, Esc).
-- [x] Implement `Stage2LabelLayout`:
-  - [x] Place horizontal and vertical rulers outside the selected cell.
-  - [x] Flip at monitor edges and fall back to the inside edge only when necessary.
-  - [x] Unit tests for placement, edge flipping, fallback, and label centers.
+- [x] Implement Stage 2 context rendering:
+  - [x] Center the 25x25 window on the selected Stage 1 cell while preserving cell size.
+  - [x] Keep the central 5x5 bright and emphasize its border; dim the outer margin.
+  - [x] Clip context cells and grid lines at monitor edges and skip invalid cells.
+  - [x] Allow held-arrow repeat only while the Stage 2 cursor is active.
 - [x] Implement `ClickExecutor`:
   - [x] Dispatcher flush before `SendInput`.
   - [x] Left-click dispatch via `SendInput`.
@@ -166,7 +167,7 @@ KeyGrid is designed around strict separation of concerns to maximize testability
 - [x] Multi-Monitor Overlay Architecture:
   - [x] Primary overlay window on primary display (handles keyboard focus & input).
   - [x] Display-only secondary overlay windows on remaining displays.
-  - [x] Label dispatching: draw labels/rulers only on the overlay containing the selected cell.
+  - [x] Label dispatching: draw Stage 1 labels only on the overlay containing the selected cell.
   - [x] Window positioning via Win32 `SetWindowPos` in physical pixels.
 
 ### Phase 4: System Tray, Lifecycle, and Resilience

@@ -11,8 +11,10 @@ public static class GridCalculator
     public const int MaxDivisions = 26;
 
     /// <summary>
-    /// Chooses the Stage 1 divisions that minimize the final cell size after a fixed
-    /// Stage 2 grid, while keeping the Stage 1 key allocation within its 26-key budget.
+    /// Chooses the Stage 1 divisions that minimize the final cell size after dividing
+    /// each cell by the Stage 2 focus grid, while keeping the Stage 1 key allocation
+    /// within its 26-key budget. The focus dimensions, not the full context window,
+    /// determine the Stage 2 cell size.
     /// </summary>
     public static (int Columns, int Rows) CalculateFirstStageDivisions(
         int width,
@@ -104,6 +106,83 @@ public static class GridCalculator
         }
 
         return boundaries;
+    }
+
+    /// <summary>
+    /// Calculates the Stage 2 context window centered on the Stage 1 focus box.
+    /// The window contains <paramref name="contextColumns"/> x <paramref name="contextRows"/>
+    /// cells, and its central <paramref name="focusColumns"/> x <paramref name="focusRows"/>
+    /// cells exactly match the focus box. The context scale must be an odd multiple of
+    /// the focus count so both sides receive the same number of context cells.
+    /// </summary>
+    public static PixelRect CalculateCenteredContextWindow(
+        PixelRect focusBox,
+        int contextColumns,
+        int contextRows,
+        int focusColumns,
+        int focusRows)
+    {
+        if (focusBox.IsEmpty)
+        {
+            throw new ArgumentException("Focus box must not be empty.", nameof(focusBox));
+        }
+
+        if (contextColumns <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(contextColumns));
+        }
+
+        if (contextRows <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(contextRows));
+        }
+
+        if (focusColumns <= 0 || focusColumns > contextColumns)
+        {
+            throw new ArgumentOutOfRangeException(nameof(focusColumns));
+        }
+
+        if (focusRows <= 0 || focusRows > contextRows)
+        {
+            throw new ArgumentOutOfRangeException(nameof(focusRows));
+        }
+
+        if (contextColumns % focusColumns != 0)
+        {
+            throw new ArgumentException(
+                "Context column count must be an integer multiple of the focus column count.",
+                nameof(contextColumns));
+        }
+
+        if (contextRows % focusRows != 0)
+        {
+            throw new ArgumentException(
+                "Context row count must be an integer multiple of the focus row count.",
+                nameof(contextRows));
+        }
+
+        int scaleColumns = contextColumns / focusColumns;
+        int scaleRows = contextRows / focusRows;
+        if (scaleColumns % 2 == 0 || scaleRows % 2 == 0)
+        {
+            throw new ArgumentException(
+                "Context scale must be odd so the focus cells remain exactly centered.",
+                nameof(contextColumns));
+        }
+
+        int marginColumns = (contextColumns - focusColumns) / 2;
+        int marginRows = (contextRows - focusRows) / 2;
+
+        long left = (long)focusBox.Left - ((long)marginColumns * focusBox.Width / focusColumns);
+        long top = (long)focusBox.Top - ((long)marginRows * focusBox.Height / focusRows);
+        long width = (long)scaleColumns * focusBox.Width;
+        long height = (long)scaleRows * focusBox.Height;
+
+        return PixelRect.FromEdges(
+            checked((int)left),
+            checked((int)top),
+            checked((int)(left + width)),
+            checked((int)(top + height)));
     }
 
     /// <summary>

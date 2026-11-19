@@ -100,6 +100,10 @@ public partial class OverlayWindow : Window, IOverlayWindowSurface
         PixelPoint? rangeStartPoint = null,
         bool isScrollMode = false)
     {
+        // Holding an arrow key repeats cursor movement only during Stage 2 cursor
+        // navigation. Repeats stay ignored in Stage 1 and Scroll Mode.
+        _keyHandler.AllowArrowKeyRepeat = selectionManager.CurrentStage == 2 && !isScrollMode;
+
         RenderElement.UpdateState(
             MonitorRect,
             monitorRects,

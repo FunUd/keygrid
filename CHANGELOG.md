@@ -1,6 +1,10 @@
 # Changelog
 
-## [Unreleased]
+## [0.2.0] - 2026-11-20
+
+### Changed
+
+- Expand the Stage 2 grid to a 25×25 focus-plus-context window. The central 5×5 matches the selected Stage 1 cell, the outer margin stays at the same cell size for nearby correction, and holding an arrow key now moves the Stage 2 cursor continuously.
 
 ## [0.1.0] - 2026-11-18
 

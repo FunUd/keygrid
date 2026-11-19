@@ -1,6 +1,6 @@
-# KeyGrid Specification v1.13
+# KeyGrid Specification v1.14
 
-**Version:** 1.13
+**Version:** 1.14
 **対象OS:** Windows 11（x64）
 **アプリケーション名:** KeyGrid
 **実装言語:** C#
@@ -19,7 +19,7 @@
 | 選択領域 | 現在の選択範囲。モニター表示領域との交差部分の集合で、非矩形になりうる |
 | 外接矩形 | 選択領域を包含する最小の矩形。分割・基準点の算出に用いる |
 | 段階 | 1回の絞り込み。第1段階は列キーと行キーでセルを選び、第2段階は矢印キーでカーソルを移動する |
-| 列数・行数 | 第1段階では4.1で算出し、第2段階では固定の5×5を使う |
+| 列数・行数 | 第1段階では4.1で算出し、第2段階では固定の25×25を使う。中央の5×5が第1段階の選択セルに対応する |
 | セル | 外接矩形を列数×行数に分割した1つの矩形 |
 | 有効セル | セルと選択領域の交差が存在するセル |
 | 打鍵履歴 | 第1段階で押したキーの列。Backspaceで末尾から1つずつ取り消す。選択領域は履歴から再計算する |
@@ -45,7 +45,7 @@
 
 KeyGrid is a resident utility for left-, right-, and middle-clicking accessible screen locations using only the keyboard.
 
-It displays column and row labels across the virtual screen. The user narrows the target area with one column key and one row key, then moves a cursor through a 5×5 grid with the arrow keys. `Enter` performs a left click; `Shift+Enter` performs a right click; `Ctrl+Enter` performs a middle (wheel) click. In Stage 2, `R` starts a two-point range selection so the user can extend a browser text selection from an anchor to a second point.
+It displays column and row labels across the virtual screen. The user narrows the target area with one column key and one row key, then moves a cursor through a 25×25 focus-plus-context grid with the arrow keys. The central 5×5 cells match the selected Stage 1 cell, and the surrounding margin provides nearby context for correction. `Enter` performs a left click; `Shift+Enter` performs a right click; `Ctrl+Enter` performs a middle (wheel) click. In Stage 2, `R` starts a two-point range selection so the user can extend a browser text selection from an anchor to a second point.
 
 ### 基本方針
 
@@ -93,8 +93,8 @@ It displays column and row labels across the virtual screen. The user narrows th
 1. ホットキーで全モニターにオーバーレイを表示する。
 2. 第1段階の有効セルに列キー＋行キーの2文字ラベルを表示する。
 3. 列キー、行キーの順で入力し、第1段階の領域を選択する。
-4. 第2段階では選択領域を5×5に分割し、有効セルのうち中央に最も近いセルを初期カーソル位置として赤く表示する。
-5. Move the cursor with the arrow keys. Use `Enter` to left-click, `Shift+Enter` to right-click, or `Ctrl+Enter` to middle-click the resolved coordinate. Invalid cells, including gaps between monitors, are skipped.
+4. 第2段階では、第1段階で選んだセルを中心とする25×25のコンテキストグリッドを表示する。中央の5×5は第1段階のセルと一致し、外周の10セルずつは周辺確認と補正に使う。中央の5×5の有効セルのうち中央に最も近いセルを初期カーソル位置として赤く表示する。
+5. Move the cursor with the arrow keys. Holding an arrow key repeats cursor movement at the OS key-repeat rate. Use `Enter` to left-click, `Shift+Enter` to right-click, or `Ctrl+Enter` to middle-click the resolved coordinate. Invalid cells, including gaps between monitors, are skipped. The Stage 2 cursor may move into the context margin on any monitor, so a nearby target outside the Stage 1 cell can still be corrected.
 6. In Stage 2, press `R` without modifiers to set the range anchor at the current target. Move the cursor to the endpoint and press `Enter` to perform a normal left click at the anchor followed by a Shift+left click at the endpoint. `Shift+Enter` and `Ctrl+Enter` are ignored while a range anchor is active.
 7. In Stage 2, press `PageUp` or `PageDown` without modifiers to enter Scroll Mode. `Up`/`Down` scroll vertically by one wheel notch, `Left`/`Right` scroll horizontally, and `PageUp`/`PageDown` scroll vertically by five notches. The Stage 2 cursor does not move. `Esc` exits Scroll Mode and returns to Stage 2.
 8. 通常モードではオーバーレイを終了し、通常状態に戻る。連続モードではクリック送信後にオーバーレイを再表示し、第1段階（打鍵履歴0個）から選択をやり直す。
@@ -119,7 +119,7 @@ Scroll Mode uses the same current Stage 2 target that a click would use. Range s
 - 列が右ブロックを借用していない場合、行数Rが11以下なら行には右ブロックの先頭R個を使う。Rが11を超える場合は右ブロックの11個すべてと、列が使っていない左ブロックのキーを左ブロック順に使う。
 - 列が右ブロックを借用している場合、行には右ブロックの残りを元の順で使う。
 - C + R ≤ 26を満たすため、必要なキーは必ず確保できる。列と行のキー集合は重複しない。
-- Key allocation is used only in Stage 1. Stage 2 uses arrow keys, `Enter`, `Shift+Enter`, and `Ctrl+Enter`.
+- Key allocation is used only in Stage 1. Stage 2 uses arrow keys, `Enter`, `Shift+Enter`, and `Ctrl+Enter`. Repeating an arrow key in Stage 2 continues cursor movement; repeats of other keys are ignored.
 - 例：1920×1080では第1段階は16×10。列・行キーは上記のブロックから重複なく割り当てる。
 - キーの並びは画面上の位置と対応しない。その代わり、列ラベルと行ラベルを画面に表示して、押すキーを示す。
 - ブロックはQWERTY/JIS配列の物理的な段を前提とする。AZERTYなど文字配置が異なる配列では、ラベルの文字と物理キー位置が一致しない場合がある。
@@ -127,7 +127,7 @@ Scroll Mode uses the same current Stage 2 target that a click would use. Range s
 
 ### 3.4 確定と終了条件
 
-- In Stage 2, arrow keys move the cursor. `Enter` confirms the cell with a left click; `Shift+Enter` confirms it with a right click; `Ctrl+Enter` confirms it with a middle (wheel) click.
+- In Stage 2, arrow keys move the cursor through the 25×25 context grid, and holding an arrow key moves it continuously. `Enter` confirms the cell with a left click; `Shift+Enter` confirms it with a right click; `Ctrl+Enter` confirms it with a middle (wheel) click.
 - After Stage 1 is complete, any confirmation key can click the selection region's reference point.
 - Before Stage 1 is complete (keystroke history length 0 or 1), all confirmation keys are ignored.
 - `Enter` is accepted only with no modifiers. `Shift+Enter` is accepted with Shift alone; `Ctrl+Enter` is accepted with Ctrl alone. Combinations with other modifiers, including Ctrl+Shift, Alt, or the Windows key, are ignored.
@@ -153,7 +153,7 @@ Scroll Mode uses the same current Stage 2 target that a click would use. Range s
 | Key | Action |
 |---|---|
 | Column / row keys | Select a Stage 1 column and row in order |
-| Arrow keys | Move the Stage 2 cursor between valid cells; in Scroll Mode, scroll the target vertically or horizontally by one wheel notch |
+| Arrow keys | Move the Stage 2 cursor between valid cells in the 25×25 context grid; holding a key repeats the movement. In Scroll Mode, scroll the target vertically or horizontally by one wheel notch |
 | `Enter` | Confirm with a left click; accepted without modifiers |
 | `Shift+Enter` | Confirm with a right click; accepted with Shift alone |
 | `Ctrl+Enter` | Confirm with a middle (wheel) click; accepted with Ctrl alone |
@@ -161,7 +161,7 @@ Scroll Mode uses the same current Stage 2 target that a click would use. Range s
 | `Tab` | Toggle continuous mode while the grid is visible. Only an unmodified Tab press is accepted; ignored in Scroll Mode |
 | `R` (Stage 2) | Set the range anchor at the current target. Only an unmodified press is accepted; ignored while an anchor is already active or Scroll Mode is active |
 | `Enter` while a range anchor is active | Execute the range: left click at the anchor, then Shift+left click at the current target |
-| `PageUp` / `PageDown` (Stage 2) | Enter Scroll Mode and scroll vertically by five wheel notches. In Scroll Mode, repeat the page scroll |
+| `PageUp` / `PageDown` (Stage 2) | Enter Scroll Mode and scroll vertically by five wheel notches. In Scroll Mode, scroll vertically by five wheel notches; key repeats are ignored |
 | `Esc` | Exit Scroll Mode first; then clear an active range anchor; when neither sub-mode is active, discard the selection and exit, including continuous mode |
 
 Backspace undoes one Stage 1 keystroke. In Stage 2 it removes the Stage 1 row key and returns to Stage 1. Arrow movement is not recorded in the history. Range anchors are independent of the history and remain at their captured screen coordinate. Scroll Mode never moves the Stage 2 cursor.
@@ -172,37 +172,41 @@ Backspace undoes one Stage 1 keystroke. In Stage 2 it removes the Stage 1 row ke
 
 ### 4.1 分割数の算出
 
-第2段階のグリッドは5×5に固定する。仮想画面の幅W・高さH（物理ピクセル）について、第1段階の列数C・行数Rは、C + R ≤ 26の範囲で第2段階後の最大セル寸法を最小化する組とする。
+第2段階は、第1段階で選んだセルを中心とする固定25×25のコンテキストグリッドとする。中央の5×5は第1段階のセルに対応し、外周の10セルずつは周辺確認と補正に使う。セルの物理ピクセル寸法は、第1段階のセルを5×5に分割した従来の寸法から変えない。仮想画面の幅W・高さH（物理ピクセル）について、第1段階の列数C・行数Rは、C + R ≤ 26の範囲でこのセル寸法を最小化する組とする。
 
 ```text
 最終幅 = ceil(ceil(W / C) / 5)
 最終高さ = ceil(ceil(H / R) / 5)
 最小化する値 = max(最終幅, 最終高さ)
+第2段階ウィンドウ幅 = 5 × 第1段階セル幅
+第2段階ウィンドウ高さ = 5 × 第1段階セル高さ
 ```
 
 同じ最大寸法になる場合は、C × Rが大きい組、C + Rが小さい組、Cが小さい組の順に選ぶ。DPIは分割数の計算に使わない。幅や高さが非常に大きくても、合計キー数の上限を超えない。
 
 代表例（サイズは物理ピクセル）：
 
-| 仮想画面 | 第1段階列×行 | ラベル数 | 第2段階後の最大セル寸法 |
-|---|---:|---:|---:|
-| 1920×1080 | 16×10 | 160 | 24×22 |
-| 3840×2160 | 16×10 | 160 | 48×44 |
-| 7680×2160 | 20×6 | 120 | 77×72 |
-| 7680×4320 | 16×10 | 160 | 96×87 |
+| 仮想画面 | 第1段階列×行 | ラベル数 | 第2段階セル寸法 | 第2段階ウィンドウ |
+|---|---:|---:|---:|---:|
+| 1920×1080 | 16×10 | 160 | 24×22 | 600×540 |
+| 3840×2160 | 16×10 | 160 | 48×44 | 1200×1080 |
+| 7680×2160 | 20×6 | 120 | 77×72 | 1920×1800 |
+| 7680×4320 | 16×10 | 160 | 96×87 | 2400×2160 |
 
 ### 4.2 分割規則
 
 - 第1段階の分割対象は仮想画面とする。
-- 第2段階の分割対象は、第1段階で選択したセルと選択領域との交差の外接矩形とし、固定の5列×5行に分割する。
-- 第1段階は4.1で算出した列数・行数で分割し、第2段階は固定の5×5で分割する。
-- 整数の境界は、外接矩形の左端（上端）を原点とし、長さLを分割数Nで分けて求める（整数除算）。
+- 第2段階の分割対象は、第1段階で選択したセルと選択領域との交差の外接矩形を中心とする固定25列×25行のウィンドウとする。中央の5列×5行の境界はその外接矩形の境界と一致し、残りは上下左右に10セルずつ拡張する。
+- ウィンドウの幅（高さ）は第1段階セルの幅（高さ）の5倍とし、中央の5×5のセル寸法が従来の第2段階と同じになるよう整数境界を求める。
+- 第1段階は4.1で算出した列数・行数で分割し、第2段階は固定の25×25で分割する。
+- 整数の境界は、分割対象の左端（上端）を原点とし、長さLを分割数Nで分けて求める（整数除算）。
   - 境界(k) = 原点 + (k × L + N − 1) ÷ N（k = 1, …, N−1）
   - 境界(0) = 原点、境界(N) = 原点 + L
 - 各セルの幅（高さ）は⌊L ÷ N⌋または⌈L ÷ N⌉のいずれかになる。隙間と重なりは生じない。
 - 幅または高さが0のセルは無効セルとする。
+- 第2段階の有効セルは、25×25ウィンドウとモニター表示領域との交差で判定する。中央の5×5に限らず、モニター上にある外周セルも選択できる。
 - 新しい選択領域は、各セルと直前の選択領域との交差とする。交差が空のセルは無効セルとする。
-- 第2段階後の幅は⌈⌈W ÷ C⌉ ÷ 5⌉、高さは⌈⌈H ÷ R⌉ ÷ 5⌉以下になる。
+- 第2段階のセル幅は⌈⌈W ÷ C⌉ ÷ 5⌉、高さは⌈⌈H ÷ R⌉ ÷ 5⌉以下になる。
 - 例：幅1000px・分割数7の場合、境界は原点＋143、＋286、＋429、＋572、＋715、＋858となり、143pxが6セル、142pxが1セルに分かれる。
 
 ### 4.3 多重モニター
@@ -211,6 +215,7 @@ Backspace undoes one Stage 1 keystroke. In Stage 2 it removes the Stage 1 row ke
 - 第1段階の対象となる選択領域（段階0）は、全モニター表示領域の集合とする。
 - 以降の分割は4.2の規則で行う。
 - 選択領域は、モニター表示領域との交差部分の集合として管理する。モニター間の空白領域は選択領域に含めない。
+- 第2段階の25×25ウィンドウも同じ規則でモニター表示領域との交差を求め、空白領域のセルは無効とする。外周セルが別モニター上にある場合は、そのモニターの領域を選択できる。
 - これにより、モニターが不規則に配置されていても、実際に表示されている領域だけを選択できる。
 
 ### 4.4 クリック座標の決定
@@ -248,10 +253,10 @@ Backspace undoes one Stage 1 keystroke. In Stage 2 it removes the Stage 1 row ke
 ### 5.2 表示デザイン
 
 - 第1段階のセルラベル：各有効セルの中央に、列キーと行キーを組み合わせた2文字ラベル（例：QY, WU）を直接表示する。これにより画面端への視線移動を行わずに、クリック目標位置の直上で必要な打鍵キーを即座に確認できる。
-- 第2段階では文字ラベルを表示せず、有効セルのうち中央に最も近いセルを初期選択する。選択セルは半透明の赤でハイライトし、矢印キーで移動する。
+- 第2段階では文字ラベルを表示せず、第1段階のセルを中心とする25×25のコンテキストグリッドを表示する。中央の5×5を第1段階の選択セルとして明るく残し、外周のコンテキスト領域は暗く表示する。中央の5×5の有効セルのうち中央に最も近いセルを初期選択する。選択セルは半透明の赤でハイライトし、矢印キーで移動する。矢印キーを押し続けるとキーリピート間隔で連続移動する。
 - セルが複数モニターにまたがる場合、ラベルは所有するモニターのオーバーレイだけに描画する。
 - 選択領域のないセルのラベルは表示しない。そのキーは無視する。
-- 選択領域の外側は暗くし、選択領域を明るく表示する。外接矩形の枠線も表示する。
+- 選択領域の外側は暗くし、選択領域を明るく表示する。外接矩形の枠線も表示する。第2段階では中央の5×5の枠線を強調し、25×25ウィンドウの外周枠は控えめに表示する。
 - グリッド線は細く、視認性を損なわない色にする。
 - 第2段階で確定キーを押すと、選択カーソルのセルを確定し、`Enter`は左、`Shift+Enter`は右、`Ctrl+Enter`は中（ホイール）クリックする。
 - 連続モードがONの間は、プライマリモニターのオーバーレイに「Continuous Mode」と表示する。表示は簡易的なテキストバッジとし、選択操作を妨げない。
@@ -337,7 +342,7 @@ For Scroll Mode input, steps 2-4 of the normal click flow are applied to the scr
 - 通常の選択操作のためにグローバルキーボードフックは使用しない。
 - 表示中は主オーバーレイのIMEを無効化し（ImmAssociateContext(hwnd, IntPtr.Zero)）、表示終了時に元の状態に戻す。
 - キーの判定は文字ではなくキーコードで行う。第1段階の列・行キーは3.3の対応表で番号に変換し、第2段階は矢印キーと確定キーで操作する。IMEが処理したキーは元のキーコードで判定する。
-- キーリピート（IsRepeat）による入力は無視する。
+- キーリピート（IsRepeat）は原則無視する。ただし第2段階のカーソル移動中に限り、矢印キーのリピートを連続移動として受け付ける。第1段階、Scroll Mode、Pageキー、その他のキーのリピートは無視する。
 - Tabは修飾キーなしの場合のみ連続モードの切り替えに使う。キーリピートは無視する。修飾キー付きのTabは連続モードを切り替えない。
 - `R` activates range selection only in Stage 2 with no modifiers. Unmodified `R` in Stage 1 remains an ordinary selection key, and modified `R` is treated as an ordinary letter key.
 - Plain `PageUp` and `PageDown` enter Scroll Mode in Stage 2 and scroll by five notches. Modified Page keys are consumed without entering or scrolling. In Scroll Mode, unmodified arrow keys are interpreted as scroll commands instead of cursor movement.
@@ -373,10 +378,11 @@ For Scroll Mode input, steps 2-4 of the normal click flow are applied to the scr
 | 待機 | ホットキー | 選択中（履歴0個） | 列数・行数を算出し、オーバーレイを表示 |
 | 待機 | その他すべて | 待機 | 無視 |
 | 選択中（履歴0個） | 有効な列キー | 選択中（履歴1個） | 列を履歴に追加し、列をハイライト |
-| 選択中（履歴1個） | 有効な行キー | 選択中（履歴2個） | 行を履歴に追加し、選択領域を第2段階の5×5グリッドへ進める |
+| 選択中（履歴1個） | 有効な行キー | 選択中（履歴2個） | 行を履歴に追加し、選択領域を第2段階の25×25コンテキストグリッドへ進める |
 | 選択中 | 無効な列・行キー | 変化なし | 無視 |
 | 選択中 | Tab（修飾なし） | 選択中 | 連続モードを切り替える。履歴と選択カーソルは維持 |
-| 選択中（履歴2個） | 有効セルへの矢印移動 | 選択中 | 次の有効セルへ選択カーソルを移動。空白領域のセルは飛び越す |
+| 選択中（履歴2個） | 有効セルへの矢印移動 | 選択中 | 25×25コンテキストグリッド内の次の有効セルへ選択カーソルを移動。空白領域のセルは飛び越す |
+| 選択中（履歴2個） | 矢印キーのリピート | 選択中 | キーリピート間隔でカーソルを連続移動 |
 | 選択中（履歴2個） | 境界・無効セル方向への矢印移動 | 変化なし | 無視 |
 | Selecting (history length 2) | `Enter` | Executing click | Confirm the cursor cell with a left click |
 | Selecting (history length 2) | `Shift+Enter` | Executing click | Confirm the cursor cell with a right click |
@@ -449,7 +455,7 @@ For Scroll Mode input, steps 2-4 of the normal click flow are applied to the scr
 |---|---|
 | 起動ホットキー | Ctrl + Shift + Space |
 | 段階数 | 2（固定） |
-| 列数・行数 | 第1段階は画面寸法から自動算出、第2段階は固定5×5（4.1） |
+| 列数・行数 | 第1段階は画面寸法から自動算出、第2段階は固定25×25（中央5×5が第1段階セル、4.1） |
 | 選択キー | 3.3の割り当て規則に従い、列キーと行キーを重複なく割り当てる（最大26キー） |
 | Confirmation keys | `Enter` for left click; `Shift+Enter` for right click; `Ctrl+Enter` for middle (wheel) click |
 | カーソル移動 | 第2段階で矢印キー。有効セルを順に移動 |
@@ -573,7 +579,7 @@ Visual Studio Codeをメインのエディタとして使用する。使用す�
 
 - SelectionManagerは打鍵履歴を保持し、GridCalculatorを使って選択領域を計算する。Backspaceでは履歴を1つ減らし、領域を再計算する。
 - SelectionManagerは、開始時にKeyLayout.Allocateで列キー・行キーを決定し、セッション中は同じ割り当てを使う。列キーは行キーとして受け付けず、その逆も同様とする。
-- SelectionManagerは、第1段階の選択領域を第2段階の5×5グリッドへ進め、矢印移動では有効セルをスキップする。
+- SelectionManagerは、第1段階の選択領域を第2段階の25×25コンテキストグリッドへ進める。中央5×5は第1段階セルを維持し、外周セルはモニター領域との交差で有効判定する。矢印移動では無効セルをスキップする。
 - GridCalculatorは、幅・高さと固定の第2段階分割数を使って第1段階の最適分割数を計算し、Win32には依存しない。
 - OverlayManager displays SelectionManager state (the selected region and history) and asks ClickExecutor to send the selected click kind on confirmation.
 - OverlayManagerは連続モードをセッション単位で保持する。連続モードの確定後はSelectionManagerをリセットし、オーバーレイを再表示して第1段階から再開する。
@@ -603,10 +609,11 @@ Visual Studio Codeをメインのエディタとして使用する。使用す�
 
 Win32に依存しない部分を対象とする。
 
-- 固定5×5の第2段階を考慮した第1段階分割数の算出（例：1920×1080→16×10、3840×2160→16×10）
+- 第2段階の中央5×5セル寸法を考慮した第1段階分割数の算出（例：1920×1080→16×10、3840×2160→16×10）
 - すべての第1段階列数・行数の組で C + R ≤ 26 を満たすこと
 - 第2段階後の最悪セル寸法を最小化すること、および同値時のタイブレークの決定性
-- 第2段階が常に5×5であること
+- 第2段階が常に25×25で、中央5×5の境界とセル寸法が従来の5×5分割と一致すること
+- 25×25ウィンドウが第1段階セルを中心に上下左右10セルずつ拡張されること
 - 境界式の性質テスト：Lと分割数N（1〜26）の任意の組み合わせで、各セルの幅が⌊L÷N⌋または⌈L÷N⌉に収まる
 - 左・右ブロックの内容と、C > 15・R > 11の借用を含む列キー・行キーの割り当て
 - 列キーと行キーが重複せず、C + R ≤ 26のすべての組で必要数を確保できること
@@ -615,7 +622,10 @@ Win32に依存しない部分を対象とする。
 - 打鍵履歴：列→行の順で段階が進むこと、Backspaceで1つ戻ること、履歴からの再計算（同じキー割り当ての再現を含む）
 - 無効セル・無効な列・行のキーが無視されること
 - 第1段階の前の確定キーが無効、第1段階の後の確定キーで途中確定できること
-- 第2段階で矢印キーを押すと、有効セル間でカーソルが移動し、無効セルは飛び越すこと
+- 第2段階で矢印キーを押すと、25×25コンテキストグリッドの有効セル間でカーソルが移動し、無効セルは飛び越すこと
+- 第1段階のセル外でも、モニター上のコンテキストセルを選択・確定できること
+- 第2段階で矢印キーを押し続けると、キーリピートでカーソルが連続移動すること
+- 第1段階、Scroll Mode、Pageキー、その他のキーのリピートが無視されること
 - 第2段階の `Enter` / `Shift+Enter` / `Ctrl+Enter` でカーソル位置が確定され、それぞれ左・右・中クリックのクリック実行状態へ移ること
 - Tabで連続モードが切り替わり、修飾キー付き・リピートのTabが無視されること
 - 連続モードの確定後にクリックが送信され、第1段階へ戻ること
@@ -647,7 +657,7 @@ Win32に依存しない部分を対象とする。
 - 単一モニター（1920×1080、2560×1440、3840×2160）
 - 複数モニター、解像度の異なるモニター
 - 拡大率100・125・150・175・200%、およびDPIが異なるモニターでの4.1表との一致
-- 異なるDPI構成での物理ピクセル分割と、5×5カーソルの操作性
+- 異なるDPI構成での物理ピクセル分割と、25×25カーソル（中央5×5と外周コンテキスト）の操作性
 - 4K 100%（第1段階160セル）の視認性と描画時間
 - モニターの上下左右がずれた配置、モニター間に空白がある配置
 - 仮想画面の原点が負になる配置（左・上に配置したモニター）
@@ -676,7 +686,7 @@ Win32に依存しない部分を対象とする。
 - Visualization of the range anchor across monitors and with continuous mode enabled
 - Browser and document scrolling with Scroll Mode, including vertical pages, horizontal arrows, and repeated scrolling without losing Stage 2
 - Scroll Mode target-window changes, UIPI failures, and recovery to Stage 2
-- 分割数と第2段階後のセル寸法の実測（4.1の表と比較）
+- 分割数と第2段階後のセル寸法・25×25ウィンドウ寸法の実測（4.1の表と比較）
 - クリック精度：クリック座標を記録する検証用ウィンドウを使い、確定座標と実際のクリック位置を自動比較する
 
 ---
@@ -719,7 +729,7 @@ Win32に依存しない部分を対象とする。
 - 不規則配置への対応
 - DPI・解像度差への対応（物理ピクセル座標を維持する）
 - キー数上限（C + R ≤ 26）と第1段階分割最適化の確認
-- 分割数と第2段階後のセル寸法の実測（4.1の表と比較）
+- 分割数と第2段階後のセル寸法・25×25ウィンドウ寸法の実測（4.1の表と比較）
 
 ### Phase 4：常駐アプリ化
 
@@ -739,7 +749,7 @@ Win32に依存しない部分を対象とする。
 - ホットキーで選択モードを開始できる。
 - 全モニターに列・行ラベルを表示できる。
 - 第1段階を列・行の2打鍵で選び、第2段階を矢印キーと確定キーで確定できる。
-- 列数と行数の合計が26以下で、第2段階が5×5である。
+- 列数と行数の合計が26以下で、第2段階が25×25（中央5×5が第1段階セル）である。
 - 第2段階の選択セルを確定キーで正しくクリックできる（左・右・中）。
 - 第1段階の後であれば、確定キーで選択領域を確定してクリックできる（左・右・中）。
 - Backspaceで第1段階の打鍵履歴を1つずつ取り消せる。

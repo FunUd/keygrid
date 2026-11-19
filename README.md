@@ -1,15 +1,15 @@
 # KeyGrid
 
-KeyGrid is a lightweight, resident Windows 11 utility that enables mouse-free left, right, and middle clicking using keyboard navigation. It overlays an adaptive two-stage grid across all active displays. Choose a coarse cell with two letter keys, then position a 5×5 cursor with the arrow keys and use `Enter`, `Shift+Enter`, or `Ctrl+Enter` to click. A two-point range action extends browser text selections without touching the mouse, and Scroll Mode delivers wheel input while the grid remains available.
+KeyGrid is a lightweight, resident Windows 11 utility that enables mouse-free left, right, and middle clicking using keyboard navigation. It overlays an adaptive two-stage grid across all active displays. Choose a coarse cell with two letter keys, then position a cursor through a 25×25 focus-plus-context grid and use `Enter`, `Shift+Enter`, or `Ctrl+Enter` to click. The central 5×5 matches the selected Stage 1 cell, and the surrounding margin provides nearby context for correction. A two-point range action extends browser text selections without touching the mouse, and Scroll Mode delivers wheel input while the grid remains available.
 
 ---
 
 ## Features
 
-- **Keyboard-Driven Precision**: Select a coarse region with two disjoint column/row letter keys, navigate a 5×5 sub-grid with arrow keys, and use `Enter`, `Shift+Enter`, or `Ctrl+Enter` to left-, right-, or middle-click.
+- **Keyboard-Driven Precision**: Select a coarse region with two disjoint column/row letter keys, navigate a 25×25 focus-plus-context grid with the arrow keys, and use `Enter`, `Shift+Enter`, or `Ctrl+Enter` to left-, right-, or middle-click. The central 5×5 matches the selected Stage 1 cell, and holding an arrow key moves the cursor continuously.
 - **Multi-Monitor Support**: Automatically maps across all active displays, handles non-standard topologies (L-shaped, vertical offsets, gaps), and operates with Per-Monitor DPI Awareness V2.
 - **Background Resident Utility**: Runs silently in the system tray with low idle CPU usage and an idle working-set target below 100 MB.
-- **IME & Repeat Protection**: Automatically suppresses IME during grid selection and ignores accidental key repeats.
+- **IME & Repeat Protection**: Automatically suppresses IME during grid selection. Key repeats are ignored except while holding an arrow key to move the Stage 2 cursor continuously.
 - **Safe Fallback**: Excludes gaps between disjoint monitors, snapping center reference points to the closest valid display pixel.
 - **Continuous Mode**: Press `Tab` while the grid is visible to keep it open after each click and return to Stage 1 for the next selection. Press `Tab` again for normal mode, or `Esc` to exit.
 - **Two-Point Range Selection**: In Stage 2, press `R` to set an anchor, move to the endpoint, and press `Enter`. KeyGrid left-clicks the anchor and Shift+left-clicks the endpoint, which extends a browser text selection without using the mouse.
@@ -114,7 +114,7 @@ Press the global hotkey:
 
 $$\text{Ctrl} + \text{Shift} + \text{Space}$$
 
-Full-screen overlays will appear across all connected monitors. Stage 1 displays a two-letter label (column key + row key) in each valid cell. After choosing a region, Stage 2 shows a 5×5 sub-grid with its center-most valid cell highlighted in red.
+Full-screen overlays will appear across all connected monitors. Stage 1 displays a two-letter label (column key + row key) in each valid cell. After choosing a region, Stage 2 shows a 25×25 focus-plus-context grid centered on that region. The central 5×5 matches the selected Stage 1 cell, the outer margin is dimmed for context, and the center-most valid cell is highlighted in red.
 
 ### 2. Selecting Coordinates (2 Stages)
 
@@ -131,7 +131,7 @@ The blocks assume the physical rows of a QWERTY or JIS keyboard. On layouts such
 
 1. Press the column letter shown in the target Stage 1 cell. The column highlights.
 2. Press the row letter shown in that cell. The grid zooms into the selected region.
-3. Use the arrow keys to move the red cursor through valid sub-cells. Cells outside monitor areas are skipped.
+3. Use the arrow keys to move the red cursor through the 25×25 context grid. The central 5×5 is the selected Stage 1 cell; the outer margin lets you correct to a nearby target on any monitor. Holding an arrow key moves continuously. Cells outside monitor areas are skipped.
 4. Press **`Enter`** to left-click, **`Shift+Enter`** to right-click, or **`Ctrl+Enter`** to middle-click the highlighted cell.
 5. To extend a browser text selection, press **`R`** in Stage 2 to set the range start, move the cursor to the end point, and press **`Enter`**. The anchor stays marked in green while the end point moves.
 6. To scroll the target window without clicking, press **`PageUp`** or **`PageDown`** in Stage 2. While Scroll Mode is active, arrow keys scroll by one notch, Page keys scroll by five, and **`Esc`** returns to Stage 2.

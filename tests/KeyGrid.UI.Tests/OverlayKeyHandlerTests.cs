@@ -50,6 +50,28 @@ public class OverlayKeyHandlerTests
     }
 
     [Fact]
+    public void PrimaryOverlay_RepeatedArrowsDispatchOnlyWhenRepeatIsEnabled()
+    {
+        UiTestThread.Run(() =>
+        {
+            var handler = new OverlayKeyHandler(isPrimary: true);
+            var moves = new List<string>();
+            handler.MoveRequested += (column, row) => moves.Add($"{column},{row}");
+
+            Assert.True(handler.HandleKeyDown(Key.Right, ModifierKeys.None, isRepeat: true));
+            Assert.Empty(moves);
+
+            handler.AllowArrowKeyRepeat = true;
+            Assert.True(handler.HandleKeyDown(Key.Right, ModifierKeys.None, isRepeat: true));
+            Assert.True(handler.HandleKeyDown(Key.Up, ModifierKeys.None, isRepeat: true));
+            Assert.True(handler.HandleKeyDown(Key.Q, ModifierKeys.None, isRepeat: true));
+            Assert.True(handler.HandleKeyDown(Key.PageDown, ModifierKeys.None, isRepeat: true));
+
+            Assert.Equal(new[] { "1,0", "0,-1" }, moves);
+        });
+    }
+
+    [Fact]
     public void PrimaryOverlay_UnmodifiedRRequestsRangeStart()
     {
         UiTestThread.Run(() =>

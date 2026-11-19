@@ -77,6 +77,24 @@ public class OverlayRenderElementTests
     }
 
     [Fact]
+    public void Stage2Context_DrawsOuterWindowAndCentralFocusBorders()
+    {
+        var selection = CreateSelection();
+        SelectFirstStageCell(selection);
+
+        var drawings = GetGeometryDrawings(RenderDrawings(LeftMonitor, selection)).ToList();
+
+        Assert.Contains(
+            drawings,
+            drawing => drawing.Pen?.Brush is SolidColorBrush brush
+                && brush.Color == Color.FromArgb(120, 0, 200, 255));
+        Assert.Contains(
+            drawings,
+            drawing => drawing.Pen?.Brush is SolidColorBrush brush
+                && brush.Color == Color.FromArgb(200, 0, 200, 255));
+    }
+
+    [Fact]
     public void RangeStartMarker_IsDrawnOnlyOnTheMonitorContainingTheAnchor()
     {
         var selection = CreateSelection();
