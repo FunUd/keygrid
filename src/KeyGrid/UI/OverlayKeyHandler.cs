@@ -8,6 +8,13 @@ internal sealed class OverlayKeyHandler
     private readonly bool _isPrimary;
     private ClickKind? _pendingClickKind;
 
+    /// <summary>
+    /// Whether repeated arrow keys should dispatch movement. Enabled only while
+    /// the Stage 2 cursor is active, so holding an arrow key moves continuously
+    /// without changing the repeat policy in Stage 1 or Scroll Mode.
+    /// </summary>
+    public bool AllowArrowKeyRepeat { get; set; }
+
     public event Action<char>? KeyPressed;
     public event Action<int, int>? MoveRequested;
     public event Action<ClickKind>? ConfirmRequested;
@@ -33,7 +40,7 @@ internal sealed class OverlayKeyHandler
             return false;
         }
 
-        if (isRepeat)
+        if (isRepeat && !(AllowArrowKeyRepeat && IsArrowKey(key)))
         {
             return true;
         }
@@ -105,6 +112,11 @@ internal sealed class OverlayKeyHandler
 
                 return true;
         }
+    }
+
+    private static bool IsArrowKey(Key key)
+    {
+        return key is Key.Left or Key.Right or Key.Up or Key.Down;
     }
 
     public bool HandleKeyUp(Key key, ModifierKeys modifiers)

@@ -154,7 +154,8 @@ public class OverlayManager
         FileLogger.LogInfo(
             $"Selection started on {monitors.Count} monitor(s) with " +
             $"Stage 1 grid {_selectionManager.ColumnCount}x{_selectionManager.RowCount}, " +
-            $"Stage 2 grid {SelectionManager.Stage2ColumnCount}x{SelectionManager.Stage2RowCount}, " +
+            $"Stage 2 grid {SelectionManager.Stage2ColumnCount}x{SelectionManager.Stage2RowCount} " +
+            $"(focus {SelectionManager.Stage2FocusColumnCount}x{SelectionManager.Stage2FocusRowCount}), " +
             $"continuousMode={_continuousMode}.");
 
         for (int i = 0; i < monitors.Count; i++)

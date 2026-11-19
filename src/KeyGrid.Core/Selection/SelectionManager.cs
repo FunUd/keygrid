@@ -9,8 +9,15 @@ namespace KeyGrid.Core.Selection;
 /// </summary>
 public class SelectionManager
 {
-    public const int Stage2ColumnCount = 5;
-    public const int Stage2RowCount = 5;
+    // Stage 2 keeps the Stage 1 cell divided into a central 5x5 focus area and
+    // surrounds it with ten context cells on each side. The context cells reuse
+    // the same pixel size, so the window spans five Stage 1 cells.
+    public const int Stage2FocusColumnCount = 5;
+    public const int Stage2FocusRowCount = 5;
+    public const int Stage2ColumnCount = 25;
+    public const int Stage2RowCount = 25;
+    public const int Stage2MarginColumns = (Stage2ColumnCount - Stage2FocusColumnCount) / 2;
+    public const int Stage2MarginRows = (Stage2RowCount - Stage2FocusRowCount) / 2;
 
     private readonly List<PixelRect> _initialMonitors = new();
     private readonly List<char> _history = new();
@@ -23,6 +30,24 @@ public class SelectionManager
     public IReadOnlyList<PixelRect> CurrentSelection { get; private set; } = Array.Empty<PixelRect>();
 
     public PixelRect CurrentBoundingBox { get; private set; } = PixelRect.Empty;
+
+    /// <summary>
+    /// The Stage 1 selection kept as the visual focus during Stage 2.
+    /// Empty outside Stage 2.
+    /// </summary>
+    public IReadOnlyList<PixelRect> FocusSelection { get; private set; } = Array.Empty<PixelRect>();
+
+    /// <summary>
+    /// The centered 25x25 Stage 2 context window in physical pixels.
+    /// Empty outside Stage 2.
+    /// </summary>
+    public PixelRect Stage2Window { get; private set; } = PixelRect.Empty;
+
+    /// <summary>
+    /// Bounding box of the grid currently drawn: the Stage 1 grid or the
+    /// Stage 2 context window.
+    /// </summary>
+    public PixelRect GridBoundingBox => CurrentStage >= 2 ? Stage2Window : CurrentBoundingBox;
 
     public PixelRect VirtualScreenBoundingBox { get; private set; } = PixelRect.Empty;
 
@@ -86,26 +111,48 @@ public class SelectionManager
 
     private void SetupStage1Divisions()
     {
+        // The Stage 1 optimizer must use the central focus size, not the full
+        // context window, so the Stage 2 cell pixel size stays unchanged.
         var (cols, rows) = GridCalculator.CalculateFirstStageDivisions(
             CurrentBoundingBox.Width,
             CurrentBoundingBox.Height,
-            Stage2ColumnCount,
-            Stage2RowCount);
+            Stage2FocusColumnCount,
+            Stage2FocusRowCount);
 
         ColumnCount = cols;
         RowCount = rows;
         _keyAllocation = KeyLayout.Allocate(ColumnCount, RowCount);
-        CalculateBoundaries();
+        FocusSelection = Array.Empty<PixelRect>();
+        Stage2Window = PixelRect.Empty;
+        CalculateBoundaries(CurrentBoundingBox);
     }
 
     /// <summary>
-    /// Stage 2 uses a fixed 5x5 grid and starts on the valid cell nearest its center.
+    /// Stage 2 centers a fixed 25x25 context window on the Stage 1 selection.
+    /// The central 5x5 cells exactly match the Stage 1 cell, and the cursor
+    /// starts on the valid cell nearest the center.
     /// </summary>
     private void SetupStage2Divisions()
     {
+        var focusSelection = CurrentSelection;
+        var focusBox = CurrentBoundingBox;
+
+        FocusSelection = focusSelection;
+        Stage2Window = GridCalculator.CalculateCenteredContextWindow(
+            focusBox,
+            Stage2ColumnCount,
+            Stage2RowCount,
+            Stage2FocusColumnCount,
+            Stage2FocusRowCount);
+
         ColumnCount = Stage2ColumnCount;
         RowCount = Stage2RowCount;
-        CalculateBoundaries();
+
+        // Validity uses the whole window against the monitor areas, not just the
+        // Stage 1 cell, so the context margin can be used for correction.
+        CurrentSelection = GridCalculator.IntersectCellWithSelection(Stage2Window, _initialMonitors);
+        CurrentBoundingBox = PixelRect.BoundingBox(CurrentSelection);
+        CalculateBoundaries(Stage2Window);
         SelectNearestValidStage2Cell();
     }
 
@@ -113,13 +160,20 @@ public class SelectionManager
     {
         int centerColumn = ColumnCount / 2;
         int centerRow = RowCount / 2;
+        int focusLeft = Stage2MarginColumns;
+        int focusTop = Stage2MarginRows;
+        int focusRight = focusLeft + Stage2FocusColumnCount;
+        int focusBottom = focusTop + Stage2FocusRowCount;
         int bestDistance = int.MaxValue;
         int bestColumn = -1;
         int bestRow = -1;
 
-        for (int row = 0; row < RowCount; row++)
+        // Keep the initial cursor inside the central focus so an immediate Enter
+        // still clicks the Stage 1 selection. The context margin is for movement
+        // and correction after Stage 2 appears.
+        for (int row = focusTop; row < focusBottom; row++)
         {
-            for (int column = 0; column < ColumnCount; column++)
+            for (int column = focusLeft; column < focusRight; column++)
             {
                 if (!GridCalculator.IsCellValid(column, row, XBoundaries, YBoundaries, CurrentSelection))
                 {
@@ -138,17 +192,17 @@ public class SelectionManager
 
         if (bestColumn < 0 || bestRow < 0)
         {
-            throw new InvalidOperationException("Stage 2 grid has no valid cell.");
+            throw new InvalidOperationException("Stage 2 focus grid has no valid cell.");
         }
 
         SelectedColumnIndex = bestColumn;
         SelectedRowIndex = bestRow;
     }
 
-    private void CalculateBoundaries()
+    private void CalculateBoundaries(PixelRect area)
     {
-        XBoundaries = GridCalculator.CalculateBoundaries(CurrentBoundingBox.Left, CurrentBoundingBox.Width, ColumnCount);
-        YBoundaries = GridCalculator.CalculateBoundaries(CurrentBoundingBox.Top, CurrentBoundingBox.Height, RowCount);
+        XBoundaries = GridCalculator.CalculateBoundaries(area.Left, area.Width, ColumnCount);
+        YBoundaries = GridCalculator.CalculateBoundaries(area.Top, area.Height, RowCount);
     }
 
     /// <summary>
@@ -348,6 +402,8 @@ public class SelectionManager
         _initialMonitors.Clear();
         CurrentSelection = Array.Empty<PixelRect>();
         CurrentBoundingBox = PixelRect.Empty;
+        FocusSelection = Array.Empty<PixelRect>();
+        Stage2Window = PixelRect.Empty;
         VirtualScreenBoundingBox = PixelRect.Empty;
         ColumnCount = 1;
         RowCount = 1;

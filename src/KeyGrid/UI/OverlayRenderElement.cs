@@ -9,7 +9,7 @@ namespace KeyGrid.UI;
 
 /// <summary>
 /// Handles high-performance hardware-accelerated drawing of grid lines,
-/// selection masks, stage-1 in-cell labels, and the stage-2 cursor.
+/// selection masks, stage-1 in-cell labels, and the stage-2 focus-plus-context grid.
 /// </summary>
 public class OverlayRenderElement : FrameworkElement
 {
@@ -33,6 +33,8 @@ public class OverlayRenderElement : FrameworkElement
     private readonly Brush _gridDarkBrush = new SolidColorBrush(Color.FromArgb(100, 0, 0, 0));
     private readonly Brush _gridLightBrush = new SolidColorBrush(Color.FromArgb(100, 255, 255, 255));
     private readonly Pen _bboxPen = new(new SolidColorBrush(Color.FromArgb(200, 0, 200, 255)), 2.0);
+    // The outer Stage 2 window is context; the central focus keeps the stronger pen.
+    private readonly Pen _stage2WindowPen = new(new SolidColorBrush(Color.FromArgb(120, 0, 200, 255)), 1.0);
 
     // Stage-1 badges. The dark pill keeps both key colors legible over arbitrary
     // screen content without sampling the background.
@@ -70,6 +72,7 @@ public class OverlayRenderElement : FrameworkElement
         _gridDarkBrush.Freeze();
         _gridLightBrush.Freeze();
         _bboxPen.Freeze();
+        _stage2WindowPen.Freeze();
         _badgeBgBrush.Freeze();
         _badgeBorderPen.Freeze();
         _activeBadgeBgBrush.Freeze();
@@ -121,9 +124,13 @@ public class OverlayRenderElement : FrameworkElement
         double monitorHeightDip = _monitorRect.Height / dpiY;
         var fullMonitorDipRect = new Rect(0, 0, monitorWidthDip, monitorHeightDip);
 
-        // 1. Draw Dimmed Mask outside selection
+        // 1. Draw Dimmed Mask outside selection. In Stage 2 the Stage 1 cell stays
+        // bright as the focus while the surrounding context margin is dimmed.
+        var focusSelection = _selectionManager.CurrentStage >= 2
+            ? _selectionManager.FocusSelection
+            : _selectionManager.CurrentSelection;
         var selectionGeometries = new GeometryGroup();
-        foreach (var rect in _selectionManager.CurrentSelection)
+        foreach (var rect in focusSelection)
         {
             var intersection = rect.Intersect(_monitorRect);
             if (!intersection.IsEmpty)
@@ -140,7 +147,9 @@ public class OverlayRenderElement : FrameworkElement
         dc.DrawGeometry(_dimBrush, null, maskGeometry);
 
         // 2. Draw Column Highlight (if 1st keystroke of stage completed)
-        if (_selectionManager.SelectedColumnIndex >= 0 && _selectionManager.SelectedColumnIndex < _selectionManager.ColumnCount)
+        if (_selectionManager.CurrentStage == 1
+            && _selectionManager.SelectedColumnIndex >= 0
+            && _selectionManager.SelectedColumnIndex < _selectionManager.ColumnCount)
         {
             int colIdx = _selectionManager.SelectedColumnIndex;
             int colLeft = _selectionManager.XBoundaries[colIdx];
@@ -180,11 +189,14 @@ public class OverlayRenderElement : FrameworkElement
         }
 
         // 4. Draw Grid Lines & Bounding Box
-        var bboxIntersection = _selectionManager.CurrentBoundingBox.Intersect(_monitorRect);
+        var gridBox = _selectionManager.GridBoundingBox;
+        var bboxIntersection = gridBox.Intersect(_monitorRect);
         if (!bboxIntersection.IsEmpty)
         {
-            // Bounding box border
-            dc.DrawRectangle(null, _bboxPen, ToDipRect(bboxIntersection, dpiX, dpiY));
+            // Bounding box border. The Stage 2 context window uses a lighter pen
+            // so the central focus remains the visual anchor.
+            var bboxPen = _selectionManager.CurrentStage >= 2 ? _stage2WindowPen : _bboxPen;
+            dc.DrawRectangle(null, bboxPen, ToDipRect(bboxIntersection, dpiX, dpiY));
 
             // Vertical grid lines
             for (int c = 1; c < _selectionManager.ColumnCount; c++)
@@ -192,8 +204,8 @@ public class OverlayRenderElement : FrameworkElement
                 int x = _selectionManager.XBoundaries[c];
                 if (x >= _monitorRect.Left && x < _monitorRect.Right)
                 {
-                    int startY = Math.Max(_selectionManager.CurrentBoundingBox.Top, _monitorRect.Top);
-                    int endY = Math.Min(_selectionManager.CurrentBoundingBox.Bottom, _monitorRect.Bottom);
+                    int startY = Math.Max(gridBox.Top, _monitorRect.Top);
+                    int endY = Math.Min(gridBox.Bottom, _monitorRect.Bottom);
                     if (startY < endY)
                     {
                         DrawVerticalGridLine(dc, x, startY, endY, dpiX, dpiY);
@@ -207,12 +219,27 @@ public class OverlayRenderElement : FrameworkElement
                 int y = _selectionManager.YBoundaries[r];
                 if (y >= _monitorRect.Top && y < _monitorRect.Bottom)
                 {
-                    int startX = Math.Max(_selectionManager.CurrentBoundingBox.Left, _monitorRect.Left);
-                    int endX = Math.Min(_selectionManager.CurrentBoundingBox.Right, _monitorRect.Right);
+                    int startX = Math.Max(gridBox.Left, _monitorRect.Left);
+                    int endX = Math.Min(gridBox.Right, _monitorRect.Right);
                     if (startX < endX)
                     {
                         DrawHorizontalGridLine(dc, y, startX, endX, dpiX, dpiY);
                     }
+                }
+            }
+
+            // The middle 5x5 cells match the Stage 1 selection exactly.
+            if (_selectionManager.CurrentStage >= 2)
+            {
+                var focusBox = PixelRect.FromEdges(
+                    _selectionManager.XBoundaries[SelectionManager.Stage2MarginColumns],
+                    _selectionManager.YBoundaries[SelectionManager.Stage2MarginRows],
+                    _selectionManager.XBoundaries[SelectionManager.Stage2MarginColumns + SelectionManager.Stage2FocusColumnCount],
+                    _selectionManager.YBoundaries[SelectionManager.Stage2MarginRows + SelectionManager.Stage2FocusRowCount]);
+                var focusIntersection = focusBox.Intersect(_monitorRect);
+                if (!focusIntersection.IsEmpty)
+                {
+                    dc.DrawRectangle(null, _bboxPen, ToDipRect(focusIntersection, dpiX, dpiY));
                 }
             }
         }

@@ -1,3 +1,4 @@
+using KeyGrid.Core.Calculation;
 using KeyGrid.Core.Geometry;
 using KeyGrid.Core.Selection;
 using Xunit;
@@ -93,8 +94,8 @@ public class SelectionManagerTests
         Assert.Equal(SelectionState.Selecting, mgr.State);
         Assert.Equal(2, mgr.CurrentStage);
         Assert.Equal(2, mgr.History.Count);
-        Assert.Equal(5, mgr.ColumnCount);
-        Assert.Equal(5, mgr.RowCount);
+        Assert.Equal(SelectionManager.Stage2ColumnCount, mgr.ColumnCount);
+        Assert.Equal(SelectionManager.Stage2RowCount, mgr.RowCount);
 
         int startingColumn = mgr.SelectedColumnIndex;
         int startingRow = mgr.SelectedRowIndex;
@@ -154,13 +155,49 @@ public class SelectionManagerTests
         Assert.Equal(initialColumn, mgr.SelectedColumnIndex);
         Assert.Equal(initialRow, mgr.SelectedRowIndex);
 
+        // The context window extends past the monitor, so movement stops at the
+        // first cell inside the monitor (the Stage 2 focus margin).
         while (mgr.MoveStage2Cursor(-1, 0)) { }
-        Assert.Equal(0, mgr.SelectedColumnIndex);
+        Assert.Equal(SelectionManager.Stage2MarginColumns, mgr.SelectedColumnIndex);
         Assert.False(mgr.MoveStage2Cursor(-1, 0));
 
         while (mgr.MoveStage2Cursor(0, -1)) { }
-        Assert.Equal(0, mgr.SelectedRowIndex);
+        Assert.Equal(SelectionManager.Stage2MarginRows, mgr.SelectedRowIndex);
         Assert.False(mgr.MoveStage2Cursor(0, -1));
+    }
+
+    [Fact]
+    public void Stage2Context_AllowsTargetsOutsideTheStage1Cell()
+    {
+        var mgr = new SelectionManager();
+        mgr.StartSelection(_single1080pMonitor);
+        Assert.True(mgr.ProcessKey('Q'));
+        Assert.True(mgr.ProcessKey('U'));
+
+        var focusBox = PixelRect.BoundingBox(mgr.FocusSelection);
+        Assert.Equal(new PixelRect(0, 0, 120, 108), focusBox);
+
+        Assert.True(mgr.TryGetStage2Target(out var focusTarget));
+        Assert.True(focusBox.Contains(focusTarget));
+
+        // Move from the center cell into the first context column to the right.
+        int contextColumn = SelectionManager.Stage2MarginColumns + SelectionManager.Stage2FocusColumnCount;
+        for (int column = mgr.SelectedColumnIndex; column < contextColumn; column++)
+        {
+            Assert.True(mgr.MoveStage2Cursor(1, 0));
+        }
+
+        Assert.Equal(
+            SelectionManager.Stage2MarginColumns + SelectionManager.Stage2FocusColumnCount,
+            mgr.SelectedColumnIndex);
+        Assert.True(mgr.TryGetStage2Target(out var contextTarget));
+        Assert.True(contextTarget.X >= focusBox.Right);
+        Assert.False(focusBox.Contains(contextTarget));
+
+        Assert.True(mgr.ProcessEnter());
+        Assert.Equal(SelectionState.ExecutingClick, mgr.State);
+        Assert.NotNull(mgr.TargetCoordinate);
+        Assert.True(mgr.TargetCoordinate.Value.X >= focusBox.Right);
     }
 
     [Fact]
@@ -178,13 +215,15 @@ public class SelectionManagerTests
         Assert.Empty(mgr.History);
         Assert.Empty(mgr.XBoundaries);
         Assert.Empty(mgr.YBoundaries);
+        Assert.Empty(mgr.FocusSelection);
+        Assert.True(mgr.Stage2Window.IsEmpty);
         Assert.Null(mgr.TargetCoordinate);
         Assert.Empty(mgr.ColumnKeys);
         Assert.Empty(mgr.RowKeys);
     }
 
     [Fact]
-    public void Stage2_UsesFixedFiveByFiveGrid()
+    public void Stage2_UsesCenteredContextGridWithFiveByFiveFocus()
     {
         var mgr = new SelectionManager();
         mgr.StartSelection(_single1080pMonitor);
@@ -195,12 +234,30 @@ public class SelectionManagerTests
         Assert.True(mgr.ProcessKey('Q'));
         Assert.True(mgr.ProcessKey('U'));
 
-        Assert.Equal(5, mgr.ColumnCount);
-        Assert.Equal(5, mgr.RowCount);
-        Assert.Equal(6, mgr.XBoundaries.Length);
-        Assert.Equal(6, mgr.YBoundaries.Length);
-        Assert.InRange(mgr.SelectedColumnIndex, 0, 4);
-        Assert.InRange(mgr.SelectedRowIndex, 0, 4);
+        Assert.Equal(SelectionManager.Stage2ColumnCount, mgr.ColumnCount);
+        Assert.Equal(SelectionManager.Stage2RowCount, mgr.RowCount);
+        Assert.Equal(26, mgr.XBoundaries.Length);
+        Assert.Equal(26, mgr.YBoundaries.Length);
+        Assert.Equal(new PixelRect(-240, -216, 600, 540), mgr.Stage2Window);
+        Assert.Equal(SelectionManager.Stage2ColumnCount / 2, mgr.SelectedColumnIndex);
+        Assert.Equal(SelectionManager.Stage2RowCount / 2, mgr.SelectedRowIndex);
+
+        // The central 5x5 keeps the exact boundaries and pixel size of the
+        // previous fixed Stage 2 grid.
+        var focusX = GridCalculator.CalculateBoundaries(0, 120, 5);
+        var focusY = GridCalculator.CalculateBoundaries(0, 108, 5);
+        Assert.Equal(
+            focusX,
+            mgr.XBoundaries
+                .Skip(SelectionManager.Stage2MarginColumns)
+                .Take(SelectionManager.Stage2FocusColumnCount + 1)
+                .ToArray());
+        Assert.Equal(
+            focusY,
+            mgr.YBoundaries
+                .Skip(SelectionManager.Stage2MarginRows)
+                .Take(SelectionManager.Stage2FocusRowCount + 1)
+                .ToArray());
 
         Assert.True(mgr.ProcessEnter());
         Assert.Equal(SelectionState.ExecutingClick, mgr.State);
@@ -251,6 +308,8 @@ public class SelectionManagerTests
         Assert.Equal(11, mgr.YBoundaries.Length);
         Assert.Equal("QWERTASDFGZXCVBY", new string(mgr.ColumnKeys.ToArray()));
         Assert.Equal("UIOPHJKLNM", new string(mgr.RowKeys.ToArray()));
+        Assert.Empty(mgr.FocusSelection);
+        Assert.True(mgr.Stage2Window.IsEmpty);
 
         // Backspace removes the first Stage 1 key.
         Assert.True(mgr.ProcessBackspace());
@@ -329,8 +388,8 @@ public class SelectionManagerTests
         Assert.True(mgr.ProcessKey('H'));
 
         // Stage 2 uses a fixed arrow-navigated grid.
-        Assert.Equal(5, mgr.ColumnCount);
-        Assert.Equal(5, mgr.RowCount);
+        Assert.Equal(SelectionManager.Stage2ColumnCount, mgr.ColumnCount);
+        Assert.Equal(SelectionManager.Stage2RowCount, mgr.RowCount);
         Assert.False(mgr.ProcessKey('U'));
         Assert.True(mgr.ProcessEnter());
         Assert.Equal(SelectionState.ExecutingClick, mgr.State);
@@ -352,8 +411,8 @@ public class SelectionManagerTests
         Assert.Equal(2, mgr.CurrentStage);
 
         // The second-stage grid is navigated with arrows and confirmed with Enter.
-        Assert.Equal(5, mgr.ColumnCount);
-        Assert.Equal(5, mgr.RowCount);
+        Assert.Equal(SelectionManager.Stage2ColumnCount, mgr.ColumnCount);
+        Assert.Equal(SelectionManager.Stage2RowCount, mgr.RowCount);
         Assert.False(mgr.ProcessKey('V'));
         Assert.True(mgr.ProcessEnter());
         Assert.Equal(SelectionState.ExecutingClick, mgr.State);

@@ -117,10 +117,11 @@ public class MultiMonitorIntegrationTests
         Assert.True(mgr.ProcessKey('Q'));
         Assert.True(mgr.ProcessKey('H')); // Stage 1 row 4 spans the 45px monitor gap.
         Assert.Equal(2, mgr.CurrentStage);
-        Assert.Equal(2, mgr.SelectedRowIndex);
+        Assert.Equal(SelectionManager.Stage2RowCount / 2, mgr.SelectedRowIndex);
 
         Assert.True(mgr.MoveStage2Cursor(0, 1));
 
-        Assert.Equal(4, mgr.SelectedRowIndex); // Stage 2 row 3 is entirely in the gap.
+        // Stage 2 row 13 is entirely in the gap; movement skips it to row 14.
+        Assert.Equal(14, mgr.SelectedRowIndex);
     }
 }
