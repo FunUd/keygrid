@@ -22,6 +22,7 @@ public class OverlayRenderElement : FrameworkElement
     private PixelPoint? _rangeStartPoint;
     private PixelPoint? _dragStartPoint;
     private bool _isScrollMode;
+    private bool _isRangeDragWorkflow;
 
     private readonly Brush _dimBrush = new SolidColorBrush(Color.FromArgb(145, 10, 15, 25));
     private readonly Brush _columnHighlightBrush = new SolidColorBrush(Color.FromArgb(55, 0, 229, 255));
@@ -96,6 +97,7 @@ public class OverlayRenderElement : FrameworkElement
         bool isContinuousMode = false,
         PixelPoint? rangeStartPoint = null,
         bool isScrollMode = false,
+        bool isRangeDragWorkflow = false,
         PixelPoint? dragStartPoint = null)
     {
         _monitorRect = monitorRect;
@@ -106,6 +108,7 @@ public class OverlayRenderElement : FrameworkElement
         _rangeStartPoint = rangeStartPoint;
         _dragStartPoint = dragStartPoint;
         _isScrollMode = isScrollMode;
+        _isRangeDragWorkflow = isRangeDragWorkflow;
         InvalidateVisual();
     }
 
@@ -278,7 +281,12 @@ public class OverlayRenderElement : FrameworkElement
         double top = 12.0;
         if (_rangeStartPoint.HasValue)
         {
-            top = DrawStatusBadge(dc, "Range: Enter to select", top) + 4.0;
+            // The composite workflow reuses the range anchor but advertises the
+            // two-phase flow so the user knows a drag follows the selection.
+            string rangeBadge = _isRangeDragWorkflow
+                ? "Range-to-Drag: Enter to select"
+                : "Range: Enter to select";
+            top = DrawStatusBadge(dc, rangeBadge, top) + 4.0;
         }
 
         if (_dragStartPoint.HasValue)

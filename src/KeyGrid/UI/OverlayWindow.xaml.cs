@@ -23,6 +23,7 @@ public partial class OverlayWindow : Window, IOverlayWindowSurface
     public event Action? ContinuousModeToggleRequested;
     public event Action? RangeStartRequested;
     public event Action? DragStartRequested;
+    public event Action? RangeDragWorkflowRequested;
     public event Action<int>? PageScrollRequested;
     public event Action? FocusLost;
     public event Action? DisplayConfigurationChanged;
@@ -49,6 +50,7 @@ public partial class OverlayWindow : Window, IOverlayWindowSurface
         _keyHandler.ContinuousModeToggleRequested += () => ContinuousModeToggleRequested?.Invoke();
         _keyHandler.RangeStartRequested += () => RangeStartRequested?.Invoke();
         _keyHandler.DragStartRequested += () => DragStartRequested?.Invoke();
+        _keyHandler.RangeDragWorkflowRequested += () => RangeDragWorkflowRequested?.Invoke();
         _keyHandler.PageScrollRequested += direction => PageScrollRequested?.Invoke(direction);
 
         Focusable = isPrimary;
@@ -101,11 +103,21 @@ public partial class OverlayWindow : Window, IOverlayWindowSurface
         bool isContinuousMode,
         PixelPoint? rangeStartPoint = null,
         bool isScrollMode = false,
+        bool isRangeDragWorkflow = false,
         PixelPoint? dragStartPoint = null)
     {
         // Holding an arrow key repeats cursor movement only during Stage 2 cursor
         // navigation. Repeats stay ignored in Stage 1 and Scroll Mode.
         _keyHandler.AllowArrowKeyRepeat = selectionManager.CurrentStage == 2 && !isScrollMode;
+
+        // The R+D chord is eligible only for a plain Stage 2 target with no
+        // anchor or Scroll Mode active. Stage 1 letters stay immediate keys.
+        _keyHandler.AllowRangeDragChord = IsPrimary
+            && selectionManager.CurrentStage == 2
+            && !isScrollMode
+            && !isRangeDragWorkflow
+            && rangeStartPoint is null
+            && dragStartPoint is null;
 
         RenderElement.UpdateState(
             MonitorRect,
@@ -115,6 +127,7 @@ public partial class OverlayWindow : Window, IOverlayWindowSurface
             isContinuousMode,
             rangeStartPoint,
             isScrollMode,
+            isRangeDragWorkflow,
             dragStartPoint);
     }
 
@@ -365,13 +378,13 @@ public partial class OverlayWindow : Window, IOverlayWindowSurface
                 // OverlayManager decides whether to reclaim focus or cancel.
                 FileLogger.LogDebug(
                     $"Primary overlay received WM_KILLFOCUS (newFocus=0x{wParam.ToInt64():X}).");
-                FocusLost?.Invoke();
+                NotifyFocusLost();
             }
             else if (msg == WM_ACTIVATEAPP && wParam == nint.Zero)
             {
                 FileLogger.LogDebug(
                     $"Primary overlay received WM_ACTIVATEAPP (active=False, threadId={lParam}).");
-                FocusLost?.Invoke();
+                NotifyFocusLost();
             }
             else if (msg == WM_ACTIVATE)
             {
@@ -382,7 +395,7 @@ public partial class OverlayWindow : Window, IOverlayWindowSurface
                 {
                     // WM_KILLFOCUS is not guaranteed when the whole application is
                     // deactivated, so use the window-level activation transition too.
-                    FocusLost?.Invoke();
+                    NotifyFocusLost();
                 }
             }
             else if (msg == WM_ACTIVATEAPP)
@@ -393,6 +406,16 @@ public partial class OverlayWindow : Window, IOverlayWindowSurface
         }
 
         return nint.Zero;
+    }
+
+    /// <summary>
+    /// Reports focus loss and drops any deferred R/D chord key, because the
+    /// matching key-up may never reach the overlay once focus has moved.
+    /// </summary>
+    private void NotifyFocusLost()
+    {
+        _keyHandler.ClearPendingChord();
+        FocusLost?.Invoke();
     }
 
     private static string GetKeyCategory(Key key)
@@ -434,6 +457,7 @@ public partial class OverlayWindow : Window, IOverlayWindowSurface
     protected override void OnClosed(EventArgs e)
     {
         FileLogger.LogInfo($"Overlay window closed (primary={IsPrimary}).");
+        _keyHandler.ClearPendingChord();
         base.OnClosed(e);
 
         if (IsPrimary && _imeDisabled)

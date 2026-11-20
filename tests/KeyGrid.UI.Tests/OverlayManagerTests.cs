@@ -1041,6 +1041,91 @@ public class OverlayManagerTests
     }
 
     [Fact]
+    public void RangeDragWorkflowStart_CapturesRangeAnchorAndReturnsToStage1()
+    {
+        UiTestThread.Run(() =>
+        {
+            var factory = new FakeOverlayFactory();
+            var manager = CreateManager(
+                SingleMonitorProvider(),
+                factory,
+                new FakeWindowFocusService(),
+                new FakeClickSender());
+            manager.ShowOverlays();
+            UiTestThread.DrainDispatcher();
+            var primary = Assert.Single(factory.Windows);
+            primary.RaiseKey(manager.SelectionManager.ColumnKeys[0]);
+            primary.RaiseKey(manager.SelectionManager.RowKeys[0]);
+            Assert.True(manager.SelectionManager.TryGetStage2Target(out var expectedStart));
+            Assert.True(primary.LastAllowRangeDragChord);
+
+            primary.RaiseRangeDragWorkflow();
+
+            Assert.True(manager.IsRangeDragWorkflow);
+            Assert.True(manager.HasRangeSelection);
+            Assert.False(manager.HasDragSelection);
+            Assert.Equal(expectedStart, primary.LastRangeStartPoint);
+            Assert.True(primary.LastRangeDragWorkflow);
+            Assert.Equal(1, manager.SelectionManager.CurrentStage);
+            Assert.Empty(manager.SelectionManager.History);
+            Assert.False(primary.LastAllowRangeDragChord);
+
+            manager.CloseOverlays();
+        });
+    }
+
+    [Fact]
+    public void RangeDragWorkflow_RangeEndpointBecomesDragAnchorAndCompletes()
+    {
+        UiTestThread.Run(() =>
+        {
+            var factory = new FakeOverlayFactory();
+            var focus = new FakeWindowFocusService { ForegroundWindow = new nint(71) };
+            var clickSender = new FakeClickSender();
+            var manager = CreateManager(SingleMonitorProvider(), factory, focus, clickSender);
+            manager.ShowOverlays();
+            UiTestThread.DrainDispatcher();
+            var firstPrimary = Assert.Single(factory.Windows);
+            firstPrimary.RaiseKey(manager.SelectionManager.ColumnKeys[0]);
+            firstPrimary.RaiseKey(manager.SelectionManager.RowKeys[0]);
+            Assert.True(manager.SelectionManager.TryGetStage2Target(out var expectedRangeStart));
+            firstPrimary.RaiseRangeDragWorkflow();
+            firstPrimary.RaiseKey(manager.SelectionManager.ColumnKeys[0]);
+            firstPrimary.RaiseKey(manager.SelectionManager.RowKeys[0]);
+            firstPrimary.RaiseMove(1, 0);
+            Assert.True(manager.SelectionManager.TryGetStage2Target(out var expectedDragStart));
+
+            firstPrimary.RaiseConfirm(ClickKind.Left);
+
+            Assert.Equal(1, clickSender.RangeCallCount);
+            Assert.Equal(expectedRangeStart, clickSender.LastRangeStart);
+            Assert.Equal(expectedDragStart, clickSender.LastRangeEnd);
+            Assert.True(manager.IsActive);
+            Assert.False(manager.HasRangeSelection);
+            Assert.True(manager.HasDragSelection);
+            Assert.True(manager.IsRangeDragWorkflow);
+            Assert.Equal(1, manager.SelectionManager.CurrentStage);
+            Assert.Empty(manager.SelectionManager.History);
+
+            var secondPrimary = factory.Windows[1];
+            Assert.True(firstPrimary.CloseCount > 0);
+            Assert.Equal(expectedDragStart, secondPrimary.LastDragStartPoint);
+            Assert.True(secondPrimary.LastRangeDragWorkflow);
+
+            secondPrimary.RaiseKey(manager.SelectionManager.ColumnKeys[0]);
+            secondPrimary.RaiseKey(manager.SelectionManager.RowKeys[0]);
+            Assert.True(manager.SelectionManager.TryGetStage2Target(out var dropTarget));
+            secondPrimary.RaiseConfirm(ClickKind.Left);
+
+            Assert.Equal(1, clickSender.DragCallCount);
+            Assert.Equal(expectedDragStart, clickSender.LastDragStart);
+            Assert.Equal(dropTarget, clickSender.LastDragEnd);
+            Assert.False(manager.IsRangeDragWorkflow);
+            Assert.False(manager.IsActive);
+        });
+    }
+
+    [Fact]
     public void RangeExecution_DispatchesAnchorAndEndpointClicksAndClosesOverlays()
     {
         UiTestThread.Run(() =>
@@ -1492,6 +1577,7 @@ public class OverlayManagerTests
         public bool HasRangeSelection => Manager.HasRangeSelection;
         public bool HasDragSelection => Manager.HasDragSelection;
         public bool IsScrollMode => Manager.IsScrollMode;
+        public bool IsRangeDragWorkflow => Manager.IsRangeDragWorkflow;
 
         public event Action<string>? ErrorOccurred
         {
@@ -1574,6 +1660,7 @@ public class OverlayManagerTests
         public event Action? ContinuousModeToggleRequested;
         public event Action? RangeStartRequested;
         public event Action? DragStartRequested;
+        public event Action? RangeDragWorkflowRequested;
         public event Action<int>? PageScrollRequested;
         public event Action? FocusLost;
         public event Action? DisplayConfigurationChanged;
@@ -1586,6 +1673,8 @@ public class OverlayManagerTests
         public PixelPoint? LastRangeStartPoint { get; private set; }
         public bool LastScrollMode { get; private set; }
         public PixelPoint? LastDragStartPoint { get; private set; }
+        public bool LastRangeDragWorkflow { get; private set; }
+        public bool LastAllowRangeDragChord { get; private set; }
         public int ShowCount { get; private set; }
         public int CloseCount { get; private set; }
         public int RenderUpdateCount { get; private set; }
@@ -1618,6 +1707,7 @@ public class OverlayManagerTests
             bool isContinuousMode,
             PixelPoint? rangeStartPoint = null,
             bool isScrollMode = false,
+            bool isRangeDragWorkflow = false,
             PixelPoint? dragStartPoint = null)
         {
             Assert.NotEqual(SelectionState.Standby, selectionManager.State);
@@ -1626,6 +1716,14 @@ public class OverlayManagerTests
             LastRangeStartPoint = rangeStartPoint;
             LastDragStartPoint = dragStartPoint;
             LastScrollMode = isScrollMode;
+            LastRangeDragWorkflow = isRangeDragWorkflow;
+            // Mirrors the eligibility computed by OverlayWindow.UpdateRenderState.
+            LastAllowRangeDragChord = IsPrimary
+                && selectionManager.CurrentStage == 2
+                && !isScrollMode
+                && !isRangeDragWorkflow
+                && rangeStartPoint is null
+                && dragStartPoint is null;
             RenderUpdateCount++;
         }
 
@@ -1656,6 +1754,8 @@ public class OverlayManagerTests
         public void RaiseRangeStart() => RangeStartRequested?.Invoke();
 
         public void RaiseDragStart() => DragStartRequested?.Invoke();
+
+        public void RaiseRangeDragWorkflow() => RangeDragWorkflowRequested?.Invoke();
 
         public void RaisePageScroll(int direction) => PageScrollRequested?.Invoke(direction);
 

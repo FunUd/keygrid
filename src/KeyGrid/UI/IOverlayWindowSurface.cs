@@ -14,6 +14,7 @@ public interface IOverlayWindowSurface
     event Action? ContinuousModeToggleRequested;
     event Action? RangeStartRequested;
     event Action? DragStartRequested;
+    event Action? RangeDragWorkflowRequested;
     event Action<int>? PageScrollRequested;
     event Action? FocusLost;
     event Action? DisplayConfigurationChanged;
@@ -26,6 +27,7 @@ public interface IOverlayWindowSurface
         bool isContinuousMode,
         PixelPoint? rangeStartPoint = null,
         bool isScrollMode = false,
+        bool isRangeDragWorkflow = false,
         PixelPoint? dragStartPoint = null);
     void RefreshExpectedDpi();
     void EnableDpiChangeNotifications();

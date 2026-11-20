@@ -21,6 +21,18 @@ public class OverlayManager
     // PageUp/PageDown scroll by five wheel notches; arrow keys scroll by one.
     private const int ScrollNotchesPerPage = 5;
 
+    /// <summary>
+    /// Phase of the composite range-then-drag workflow started by the R+D chord.
+    /// The range phase keeps the captured anchor while the user selects the range
+    /// endpoint; the drag phase reuses that endpoint as the drag anchor.
+    /// </summary>
+    private enum RangeDragPhase
+    {
+        None,
+        Range,
+        Drag
+    }
+
     private readonly IMonitorProvider _monitorProvider;
     private readonly SelectionManager _selectionManager;
     private readonly ClickExecutor _clickExecutor;
@@ -39,6 +51,7 @@ public class OverlayManager
     private PixelPoint? _rangeStartPoint;
     private PixelPoint? _dragStartPoint;
     private bool _scrollMode;
+    private RangeDragPhase _rangeDragPhase = RangeDragPhase.None;
     private bool _isInputInProgress;
     private int _selectionGeneration;
     private int _confirmationAttempt;
@@ -67,6 +80,12 @@ public class OverlayManager
     /// Whether Scroll Mode is active for the current Stage 2 selection.
     /// </summary>
     internal bool IsScrollMode => _scrollMode;
+
+    /// <summary>
+    /// Whether the composite range-then-drag workflow is active, either while
+    /// selecting the range endpoint or the drag drop target.
+    /// </summary>
+    internal bool IsRangeDragWorkflow => _rangeDragPhase != RangeDragPhase.None;
 
     private bool IsClosing => Volatile.Read(ref _isClosing) != 0;
 
@@ -103,6 +122,7 @@ public class OverlayManager
     {
         // A hotkey start or explicit restart always begins in normal mode.
         _continuousMode = false;
+        _rangeDragPhase = RangeDragPhase.None;
         ShowOverlaysCore();
     }
 
@@ -110,8 +130,14 @@ public class OverlayManager
     {
         // Every new Stage 1 session starts without sub-mode state. Continuous mode
         // itself is preserved by the caller when the session is intentionally kept open.
-        _rangeStartPoint = null;
-        _dragStartPoint = null;
+        // The workflow's drag anchor is the exception: it is installed before the
+        // reopen so the new Stage 1 session renders it immediately.
+        if (_rangeDragPhase == RangeDragPhase.None)
+        {
+            _rangeStartPoint = null;
+            _dragStartPoint = null;
+        }
+
         _scrollMode = false;
         _isInputInProgress = false;
 
@@ -213,6 +239,7 @@ public class OverlayManager
                 overlay.ContinuousModeToggleRequested += OnContinuousModeToggleRequested;
                 overlay.RangeStartRequested += OnRangeStartRequested;
                 overlay.DragStartRequested += OnDragStartRequested;
+                overlay.RangeDragWorkflowRequested += OnRangeDragWorkflowRequested;
                 overlay.PageScrollRequested += OnPageScrollRequested;
                 overlay.FocusLost += () => OnFocusLost(generation);
             }
@@ -225,6 +252,7 @@ public class OverlayManager
                 _continuousMode,
                 _rangeStartPoint,
                 _scrollMode,
+                IsRangeDragWorkflow,
                 _dragStartPoint);
         }
 
@@ -360,6 +388,32 @@ public class OverlayManager
         }
     }
 
+    private void OnRangeDragWorkflowRequested()
+    {
+        if (IsClosing
+            || !IsActive
+            || _isInputInProgress
+            || _scrollMode
+            || _rangeDragPhase != RangeDragPhase.None
+            || _rangeStartPoint.HasValue
+            || _dragStartPoint.HasValue
+            || _selectionManager.State != SelectionState.Selecting
+            || _selectionManager.CurrentStage != 2
+            || !_selectionManager.TryGetStage2Target(out var startPoint))
+        {
+            return;
+        }
+
+        // The chord captures the current Stage 2 target as the range anchor and
+        // returns to the full Stage 1 grid. The range endpoint becomes the drag
+        // anchor once the range selection succeeds.
+        _rangeStartPoint = startPoint;
+        _rangeDragPhase = RangeDragPhase.Range;
+        ReturnToStage1();
+        FileLogger.LogDebug($"Range-drag workflow started; range anchor at ({startPoint.X}, {startPoint.Y}).");
+        UpdateAllOverlays();
+    }
+
     private void ReturnToStage1()
     {
         while (_selectionManager.History.Count > 0)
@@ -441,6 +495,7 @@ public class OverlayManager
         if (IsClosing
             || !IsActive
             || _scrollMode
+            || IsRangeDragWorkflow
             || _rangeStartPoint.HasValue
             || _dragStartPoint.HasValue
             || _selectionManager.State != SelectionState.Selecting)
@@ -535,6 +590,9 @@ public class OverlayManager
         if (_rangeStartPoint.HasValue)
         {
             _rangeStartPoint = null;
+            // Clearing the anchor also ends the composite workflow; a second
+            // Esc then exits the selection session as usual.
+            _rangeDragPhase = RangeDragPhase.None;
             FileLogger.LogInfo("Range start cleared by Esc; selection remains active.");
             UpdateAllOverlays();
             return;
@@ -543,6 +601,7 @@ public class OverlayManager
         if (_dragStartPoint.HasValue)
         {
             _dragStartPoint = null;
+            _rangeDragPhase = RangeDragPhase.None;
             FileLogger.LogInfo("Drag start cleared by Esc; selection remains active.");
             UpdateAllOverlays();
             return;
@@ -649,7 +708,9 @@ public class OverlayManager
                 $"visible={foregroundIsVisible}).");
             _continuousMode = false;
             _rangeStartPoint = null;
+            _dragStartPoint = null;
             _scrollMode = false;
+            _rangeDragPhase = RangeDragPhase.None;
             _isInputInProgress = false;
             _selectionManager.Cancel();
             if (action == FocusLossAction.CancelSelection)
@@ -754,7 +815,9 @@ public class OverlayManager
         {
             // spec 5.3: Discard selection on monitor / DPI change
             _rangeStartPoint = null;
+            _dragStartPoint = null;
             _scrollMode = false;
+            _rangeDragPhase = RangeDragPhase.None;
             _isInputInProgress = false;
             _selectionManager.Cancel();
             CloseOverlays();
@@ -771,6 +834,7 @@ public class OverlayManager
                 _continuousMode,
                 _rangeStartPoint,
                 _scrollMode,
+                IsRangeDragWorkflow,
                 _dragStartPoint);
         }
     }
@@ -988,6 +1052,7 @@ public class OverlayManager
         {
             _isInputInProgress = false;
             _dragStartPoint = null;
+            _rangeDragPhase = RangeDragPhase.None;
             _selectionManager.Cancel();
             CloseOverlaysWithoutRestore();
             RestoreOriginatingForegroundWindow();
@@ -1004,6 +1069,7 @@ public class OverlayManager
             }
 
             _dragStartPoint = null;
+            _rangeDragPhase = RangeDragPhase.None;
             UpdateAllOverlays();
             ErrorOccurred?.Invoke(preparationFailure);
             return;
@@ -1011,6 +1077,7 @@ public class OverlayManager
 
         _isInputInProgress = false;
         _dragStartPoint = null;
+        _rangeDragPhase = RangeDragPhase.None;
 
         if (success)
         {
@@ -1061,6 +1128,7 @@ public class OverlayManager
         var start = _rangeStartPoint!.Value;
         var virtualScreen = _virtualScreenBounds;
         bool continueSelection = _continuousMode;
+        bool wasRangeDragWorkflow = _rangeDragPhase == RangeDragPhase.Range;
         string? preparationFailure = null;
         bool success;
 
@@ -1137,6 +1205,7 @@ public class OverlayManager
         {
             _isInputInProgress = false;
             _rangeStartPoint = null;
+            _rangeDragPhase = RangeDragPhase.None;
             _selectionManager.Cancel();
             CloseOverlaysWithoutRestore();
             RestoreOriginatingForegroundWindow();
@@ -1155,6 +1224,7 @@ public class OverlayManager
             }
 
             _rangeStartPoint = null;
+            _rangeDragPhase = RangeDragPhase.None;
             UpdateAllOverlays();
             ErrorOccurred?.Invoke(preparationFailure);
             return;
@@ -1162,6 +1232,19 @@ public class OverlayManager
 
         _isInputInProgress = false;
         _rangeStartPoint = null;
+
+        // A successful range inside the composite workflow reuses the exact
+        // endpoint as the drag anchor and reopens Stage 1 for the drop target.
+        bool reopenForDrag = wasRangeDragWorkflow && success;
+        if (reopenForDrag)
+        {
+            _dragStartPoint = end;
+            _rangeDragPhase = RangeDragPhase.Drag;
+        }
+        else
+        {
+            _rangeDragPhase = RangeDragPhase.None;
+        }
 
         if (success)
         {
@@ -1179,14 +1262,18 @@ public class OverlayManager
         _selectionManager.CompleteClick();
         CloseOverlaysWithoutRestore();
 
-        if (continueSelection)
+        if (continueSelection || reopenForDrag)
         {
-            FileLogger.LogInfo($"Range #{attempt} completed in continuous mode; reopening Stage 1.");
+            FileLogger.LogInfo(
+                reopenForDrag
+                    ? $"Range #{attempt} completed in the range-drag workflow; reopening Stage 1 for the drag target."
+                    : $"Range #{attempt} completed in continuous mode; reopening Stage 1.");
             Thread.Sleep(ContinuousModeClickSettleMilliseconds);
             ShowOverlaysCore();
             if (!IsActive)
             {
                 _continuousMode = false;
+                _rangeDragPhase = RangeDragPhase.None;
             }
         }
         else
@@ -1341,6 +1428,7 @@ public class OverlayManager
             _continuousMode = false;
             _rangeStartPoint = null;
             _scrollMode = false;
+            _rangeDragPhase = RangeDragPhase.None;
             _selectionManager.Cancel();
             CloseOverlaysWithoutRestore();
             RestoreOriginatingForegroundWindow();
@@ -1358,7 +1446,9 @@ public class OverlayManager
     {
         _continuousMode = false;
         _rangeStartPoint = null;
+        _dragStartPoint = null;
         _scrollMode = false;
+        _rangeDragPhase = RangeDragPhase.None;
         _isInputInProgress = false;
         CloseOverlaysWithoutRestore();
         RestoreOriginatingForegroundWindow();

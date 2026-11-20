@@ -1,5 +1,11 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+
+- Add a range-then-drag workflow: press and hold `R` and `D` together in Stage 2 to capture a range anchor, select the range endpoint, and automatically reuse that endpoint as the drag anchor for the drop-target selection. Single `R`/`D` presses and Stage 1 letter keys are unchanged.
+
 ## [0.2.0] - 2026-11-20
 
 ### Changed

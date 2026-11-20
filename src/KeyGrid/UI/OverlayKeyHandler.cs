@@ -7,6 +7,7 @@ internal sealed class OverlayKeyHandler
 {
     private readonly bool _isPrimary;
     private ClickKind? _pendingClickKind;
+    private Key? _pendingChordKey;
 
     /// <summary>
     /// Whether repeated arrow keys should dispatch movement. Enabled only while
@@ -14,6 +15,13 @@ internal sealed class OverlayKeyHandler
     /// without changing the repeat policy in Stage 1 or Scroll Mode.
     /// </summary>
     public bool AllowArrowKeyRepeat { get; set; }
+
+    /// <summary>
+    /// Whether an overlapping R+D key-down pair requests the range-then-drag
+    /// workflow. Enabled only in eligible Stage 2 state; while enabled, a lone
+    /// R or D is deferred to key-up so the chord can be recognized first.
+    /// </summary>
+    public bool AllowRangeDragChord { get; set; }
 
     public event Action<char>? KeyPressed;
     public event Action<int, int>? MoveRequested;
@@ -23,6 +31,11 @@ internal sealed class OverlayKeyHandler
     public event Action? ContinuousModeToggleRequested;
     public event Action? RangeStartRequested;
     public event Action? DragStartRequested;
+    /// <summary>
+    /// Raised when R and D key-downs overlap in either press order. Neither
+    /// individual range nor drag action is dispatched for the chord.
+    /// </summary>
+    public event Action? RangeDragWorkflowRequested;
     /// <summary>
     /// Raised for plain PageUp (-1) or PageDown (+1). The manager decides whether
     /// the key enters Scroll Mode or scrolls an already active session.
@@ -44,6 +57,13 @@ internal sealed class OverlayKeyHandler
         if (isRepeat && !(AllowArrowKeyRepeat && IsArrowKey(key)))
         {
             return true;
+        }
+
+        // Any key other than the chord pair breaks the overlap, so a later
+        // key-up must not complete a chord across unrelated input.
+        if (key is not (Key.R or Key.D))
+        {
+            _pendingChordKey = null;
         }
 
         switch (key)
@@ -101,11 +121,43 @@ internal sealed class OverlayKeyHandler
                 MoveRequested?.Invoke(0, 1);
                 return true;
             case Key.R when modifiers == ModifierKeys.None:
+                if (AllowRangeDragChord)
+                {
+                    // Defer the single-key action to key-up so an overlapping D
+                    // can still turn the press into the composite workflow.
+                    if (_pendingChordKey == Key.D)
+                    {
+                        _pendingChordKey = null;
+                        RangeDragWorkflowRequested?.Invoke();
+                    }
+                    else
+                    {
+                        _pendingChordKey = Key.R;
+                    }
+
+                    return true;
+                }
+
                 // R is also a Stage 1 column key. The manager decides whether this
                 // press starts a range or is part of a Stage 1 selection.
                 RangeStartRequested?.Invoke();
                 return true;
             case Key.D when modifiers == ModifierKeys.None:
+                if (AllowRangeDragChord)
+                {
+                    if (_pendingChordKey == Key.R)
+                    {
+                        _pendingChordKey = null;
+                        RangeDragWorkflowRequested?.Invoke();
+                    }
+                    else
+                    {
+                        _pendingChordKey = Key.D;
+                    }
+
+                    return true;
+                }
+
                 // D is also a Stage 1 column key. The manager decides whether this
                 // press starts drag or is part of Stage 1 selection.
                 DragStartRequested?.Invoke();
@@ -128,11 +180,41 @@ internal sealed class OverlayKeyHandler
         return key is Key.Left or Key.Right or Key.Up or Key.Down;
     }
 
+    /// <summary>
+    /// Drops a deferred R/D press without dispatching it. Used when focus is
+    /// lost or the overlay is torn down, because the matching key-up may never
+    /// arrive.
+    /// </summary>
+    public void ClearPendingChord()
+    {
+        _pendingChordKey = null;
+    }
+
     public bool HandleKeyUp(Key key, ModifierKeys modifiers)
     {
         if (!_isPrimary)
         {
             return false;
+        }
+
+        if (key is Key.R or Key.D && AllowRangeDragChord)
+        {
+            // Consume chord keys even when nothing is pending so a stale key-up
+            // cannot leak to the window that receives focus next.
+            if (_pendingChordKey == key)
+            {
+                _pendingChordKey = null;
+                if (key == Key.R)
+                {
+                    RangeStartRequested?.Invoke();
+                }
+                else
+                {
+                    DragStartRequested?.Invoke();
+                }
+            }
+
+            return true;
         }
 
         if (key != Key.Enter)

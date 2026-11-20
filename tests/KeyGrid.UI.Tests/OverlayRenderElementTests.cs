@@ -129,6 +129,36 @@ public class OverlayRenderElementTests
     }
 
     [Fact]
+    public void RangeDragWorkflowIndicator_IsDrawnOnlyOnThePrimaryOverlay()
+    {
+        var selection = CreateSelection();
+        var anchor = new PixelPoint(150, 100);
+
+        string primaryText = new(
+            RenderGlyphDetails(
+                    LeftMonitor,
+                    selection,
+                    isPrimary: true,
+                    rangeStartPoint: anchor,
+                    isRangeDragWorkflow: true)
+                .Select(glyph => glyph.Character)
+                .ToArray());
+        string secondaryText = new(
+            RenderGlyphDetails(
+                    RightMonitor,
+                    selection,
+                    isPrimary: false,
+                    rangeStartPoint: anchor,
+                    isRangeDragWorkflow: true)
+                .Select(glyph => glyph.Character)
+                .ToArray());
+
+        Assert.Contains("Range-to-Drag: Enter to select", primaryText);
+        Assert.DoesNotContain("Range-to-Drag: Enter to select", secondaryText);
+        Assert.DoesNotContain("Range: Enter to select", primaryText);
+    }
+
+    [Fact]
     public void ContinuousModeIndicator_IsDrawnOnlyOnThePrimaryOverlayWhenEnabled()
     {
         var selection = CreateSelection();
@@ -204,7 +234,8 @@ public class OverlayRenderElementTests
         bool isPrimary = false,
         bool isContinuousMode = false,
         PixelPoint? rangeStartPoint = null,
-        bool isScrollMode = false)
+        bool isScrollMode = false,
+        bool isRangeDragWorkflow = false)
     {
         DrawingGroup drawing = RenderDrawings(
             monitor,
@@ -212,7 +243,8 @@ public class OverlayRenderElementTests
             isPrimary,
             isContinuousMode,
             rangeStartPoint,
-            isScrollMode);
+            isScrollMode,
+            isRangeDragWorkflow);
         return GetGlyphs(drawing).ToArray();
     }
 
@@ -222,7 +254,8 @@ public class OverlayRenderElementTests
         bool isPrimary = false,
         bool isContinuousMode = false,
         PixelPoint? rangeStartPoint = null,
-        bool isScrollMode = false)
+        bool isScrollMode = false,
+        bool isRangeDragWorkflow = false)
     {
         DrawingGroup? drawing = null;
         Exception? error = null;
@@ -238,7 +271,8 @@ public class OverlayRenderElementTests
                     isPrimary,
                     isContinuousMode,
                     rangeStartPoint,
-                    isScrollMode);
+                    isScrollMode,
+                    isRangeDragWorkflow);
                 var result = new DrawingGroup();
                 using (var context = result.Open())
                 {

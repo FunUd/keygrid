@@ -108,6 +108,84 @@ public class OverlayKeyHandlerTests
         });
     }
 
+    [Theory]
+    [InlineData(Key.R, Key.D)]
+    [InlineData(Key.D, Key.R)]
+    public void PrimaryOverlay_OverlappingRAndDRequestsWorkflowWithoutIndividualActions(
+        Key firstKey,
+        Key secondKey)
+    {
+        UiTestThread.Run(() =>
+        {
+            var handler = new OverlayKeyHandler(isPrimary: true)
+            {
+                AllowRangeDragChord = true
+            };
+            int rangeCount = 0;
+            int dragCount = 0;
+            int workflowCount = 0;
+            handler.RangeStartRequested += () => rangeCount++;
+            handler.DragStartRequested += () => dragCount++;
+            handler.RangeDragWorkflowRequested += () => workflowCount++;
+
+            Assert.True(handler.HandleKeyDown(firstKey, ModifierKeys.None, isRepeat: false));
+            Assert.Equal(0, workflowCount);
+            Assert.True(handler.HandleKeyDown(secondKey, ModifierKeys.None, isRepeat: false));
+            Assert.Equal(1, workflowCount);
+
+            Assert.True(handler.HandleKeyUp(secondKey, ModifierKeys.None));
+            Assert.True(handler.HandleKeyUp(firstKey, ModifierKeys.None));
+            Assert.Equal(0, rangeCount);
+            Assert.Equal(0, dragCount);
+            Assert.Equal(1, workflowCount);
+        });
+    }
+
+    [Theory]
+    [InlineData(Key.R)]
+    [InlineData(Key.D)]
+    public void PrimaryOverlay_EligibleSingleRangeOrDragKeyDispatchesOnKeyUp(Key key)
+    {
+        UiTestThread.Run(() =>
+        {
+            var handler = new OverlayKeyHandler(isPrimary: true)
+            {
+                AllowRangeDragChord = true
+            };
+            int rangeCount = 0;
+            int dragCount = 0;
+            handler.RangeStartRequested += () => rangeCount++;
+            handler.DragStartRequested += () => dragCount++;
+
+            Assert.True(handler.HandleKeyDown(key, ModifierKeys.None, isRepeat: false));
+            Assert.Equal(0, rangeCount + dragCount);
+            Assert.True(handler.HandleKeyUp(key, ModifierKeys.None));
+
+            Assert.Equal(key == Key.R ? 1 : 0, rangeCount);
+            Assert.Equal(key == Key.D ? 1 : 0, dragCount);
+        });
+    }
+
+    [Fact]
+    public void PrimaryOverlay_CancelClearsPendingRangeDragKey()
+    {
+        UiTestThread.Run(() =>
+        {
+            var handler = new OverlayKeyHandler(isPrimary: true)
+            {
+                AllowRangeDragChord = true
+            };
+            int rangeCount = 0;
+            handler.RangeStartRequested += () => rangeCount++;
+
+            Assert.True(handler.HandleKeyDown(Key.R, ModifierKeys.None, isRepeat: false));
+            Assert.True(handler.HandleKeyDown(Key.Escape, ModifierKeys.None, isRepeat: false));
+            Assert.True(handler.HandleKeyUp(Key.R, ModifierKeys.None));
+
+            Assert.Equal(0, rangeCount);
+        });
+    }
+
     [Fact]
     public void PrimaryOverlay_PlainPageKeysRequestPageScroll()
     {

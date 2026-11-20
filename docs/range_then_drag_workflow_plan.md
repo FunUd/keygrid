@@ -2,7 +2,7 @@
 
 **Date**: 2026-11-21
 
-**Status**: Proposed; implementation has not started
+**Status**: Implemented; real-application validation of the range endpoint as a drag origin remains a manual release gate
 **Related plans**: [Drag-and-Drop Implementation Plan](./drag_and_drop_plan.md)
 
 ## Summary

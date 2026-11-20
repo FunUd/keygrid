@@ -114,6 +114,17 @@ selection. Drag endpoints may belong to different top-level
 windows or monitors. The drag start window is activated independently and verified at the
 anchor coordinate; the drop target is not required to belong to the same window.
 
+The range-then-drag workflow combines both actions. In eligible Stage 2 state, pressing and
+holding `R` and `D` so their key-down events overlap starts the workflow: the current target
+becomes the range anchor and KeyGrid returns to the full Stage 1 grid. After the range is
+confirmed successfully, the exact range endpoint becomes the drag anchor and KeyGrid reopens
+Stage 1 without clearing the workflow. The user then selects the drop-target region and
+confirms with plain `Enter`. The workflow state is cleared after the drag completes,
+is cancelled, or fails. Single `R` and `D` presses keep their existing behavior: when there
+is no overlapping key-down, the pending single-key action is dispatched on key-up. The chord
+is recognized only in eligible Stage 2 state; Stage 1 `R` and `D` remain ordinary selection
+keys and do not participate.
+
 ### 3.3 選択キー
 
 列キーと行キーは、物理キーボード配列に基づく次の2ブロックから割り当てる。同じキーを列と行で共用しない。
@@ -147,6 +158,8 @@ anchor coordinate; the drop target is not required to belong to the same window.
 - 連続モードでもEscは選択を破棄して終了する。
 - 連続モードでクリックを送信できなかった場合も第1段階から再開し、エラーを通知する。
 - Range selection uses plain `Enter` only. The start and end points must resolve to the same top-level window after the overlays are hidden; otherwise no synthetic input is sent, the range is cleared, Stage 2 is restored, and an error is reported.
+- In the range-then-drag workflow, a successful range dispatch keeps the workflow alive: the exact range endpoint becomes the drag anchor, Stage 1 reopens, and the existing drag marker and `Drag: Enter to drop` badge are shown. A range validation or dispatch failure clears the workflow state and follows the normal range failure recovery.
+- While the workflow is active, `Esc` during the range phase clears the range anchor and the workflow state while keeping the selection session open; during the drag phase it clears the drag anchor and the workflow state the same way. Focus loss, overlay teardown, and display-configuration changes clear pending chord keys and the workflow state, and continuous-mode toggling is ignored.
 - A completed range click follows the same normal/continuous-mode completion rules as a normal click. The range anchor is cleared before the next Stage 1 session starts.
 - `R` and `D` in Stage 1 keep their normal column/row key behavior, including while choosing the second-point region. They start range or drag only in Stage 2 when no anchor is already active.
 - After range or drag starts, pressing `Esc` clears the anchor and keeps the selection session open. A second `Esc` exits selection mode.
@@ -170,7 +183,8 @@ anchor coordinate; the drop target is not required to belong to the same window.
 | `Tab` | Toggle continuous mode while the grid is visible. Only an unmodified Tab press is accepted; ignored in Scroll Mode |
 | `R` (Stage 2) | Set the range anchor at the current target and return to Stage 1. Only an unmodified press is accepted; ignored while an anchor is already active or Scroll Mode is active |
 | `D` (Stage 2) | Set the drag anchor at the current target and return to Stage 1. Only an unmodified, non-repeat press is accepted; D remains a Stage 1 column key |
-| `Enter` while a range anchor is active | Execute the range: left click at the anchor, then Shift+left click at the current target |
+| `R`+`D` chord (Stage 2) | Press and hold `R` and `D` so their key-down events overlap to start the range-then-drag workflow. Accepted only with no modifiers, no repeats, and no active range, drag, or Scroll Mode; a lone `R` or `D` still performs its existing action on key-up |
+| `Enter` while a range anchor is active | Execute the range: left click at the anchor, then Shift+left click at the current target. In the range-then-drag workflow, the endpoint then becomes the drag anchor |
 | `Enter` while a drag anchor is active | Execute drag: left-button down at the anchor, move to the current target, then left-button up |
 | `PageUp` / `PageDown` (Stage 2) | Enter Scroll Mode and scroll vertically by five wheel notches. In Scroll Mode, scroll vertically by five wheel notches; key repeats are ignored |
 | `Esc` | Exit Scroll Mode first; then clear an active range or drag anchor; when neither sub-mode is active, discard the selection and exit, including continuous mode |
@@ -295,7 +309,7 @@ totalDeviation = |cellWidthPx - targetPx| + |cellHeightPx - targetPx|
 - 第2段階で確定キーを押すと、選択カーソルのセルを確定し、`Enter`は左、`Shift+Enter`は右、`Ctrl+Enter`は中（ホイール）クリックする。
 - 連続モードがONの間は、プライマリモニターのオーバーレイに「Continuous Mode」と表示する。表示は簡易的なテキストバッジとし、選択操作を妨げない。
 - While a range anchor is active, a high-contrast green ring and crosshair are drawn at the anchor's exact physical-pixel coordinate. The marker is drawn by the monitor that contains the point, including when it is not the primary monitor.
-- While a range anchor is active, the primary overlay shows the status badge `Range: Enter to select`. Status badges stack without overlapping, and an active continuous mode is shown below the range badge.
+- While a range anchor is active, the primary overlay shows the status badge `Range: Enter to select`. During the range phase of the range-then-drag workflow the badge reads `Range-to-Drag: Enter to select` instead. Status badges stack without overlapping, and an active continuous mode is shown below the range badge.
 - While Scroll Mode is active, the primary overlay shows the status badge `Scroll Mode`. Continuous mode remains visible below it when enabled.
 - 色・透明度は初期バージョンでは固定値とする。背景色に応じた自動色変更は行わない。
 
@@ -379,6 +393,7 @@ For Scroll Mode input, steps 2-4 of the normal click flow are applied to the scr
 - キーリピート（IsRepeat）は原則無視する。ただし第2段階のカーソル移動中に限り、矢印キーのリピートを連続移動として受け付ける。第1段階、Scroll Mode、Pageキー、その他のキーのリピートは無視する。
 - Tabは修飾キーなしの場合のみ連続モードの切り替えに使う。キーリピートは無視する。修飾キー付きのTabは連続モードを切り替えない。
 - `R` activates range selection only in Stage 2 with no modifiers. Unmodified `R` in Stage 1 remains an ordinary selection key, and modified `R` is treated as an ordinary letter key.
+- The `R`+`D` chord is recognized only while the primary overlay is in eligible Stage 2 state. The first of the pair is deferred to key-up; if the other key's key-down arrives first, the chord fires and neither single-key action is dispatched. Repeats and modified presses do not participate, and pending chord state is cleared on `Esc`, focus loss, and overlay teardown.
 - Plain `PageUp` and `PageDown` enter Scroll Mode in Stage 2 and scroll by five notches. Modified Page keys are consumed without entering or scrolling. In Scroll Mode, unmodified arrow keys are interpreted as scroll commands instead of cursor movement.
 - While Scroll Mode is active, letter keys, Tab, Backspace, R, and confirmation keys are ignored. Esc exits Scroll Mode before the normal cancellation behavior runs.
 
@@ -402,6 +417,7 @@ For Scroll Mode input, steps 2-4 of the normal click flow are applied to the scr
 - **範囲選択中**：選択中のセッション単位のフラグ。Stage 2で`R`を押した後にONになり、固定されたアンカー座標を保持する。`Enter`で範囲を実行するか、`Esc`でアンカーを消すまで継続する。
 - **ドラッグ選択中**：選択中のセッション単位のフラグ。Stage 2でDを押した後にONになり、固定された開始座標を保持する。`Enter`でドラッグを実行するか、`Esc`でアンカーを消すまで継続する。
 - **Scroll Mode**：A Stage 2 sub-mode entered with `PageUp` or `PageDown`. Arrow and Page keys send wheel input to the current target. `Esc` exits to Stage 2; continuous mode is retained.
+- **Range-then-drag workflow**：A session flag started by the overlapping `R`+`D` chord in eligible Stage 2 state. It has a range phase (the range anchor is active) and a drag phase (the range endpoint is reused as the drag anchor). It is cleared by drag completion, `Esc`, failure, focus loss, or display changes.
 - **クリック実行中**：第2段階または第1段階後の確定キーで確定座標を決めた後。オーバーレイ非表示からクリック送信までの間。
 
 第1段階では履歴0個のとき列キー、履歴1個のとき行キーを受け付ける。Backspace時は履歴から選択領域を再計算する。第2段階の矢印移動は打鍵履歴に含めない。連続モードの切り替えは打鍵履歴と選択カーソルを変更しない。範囲アンカーは打鍵履歴や第2段階カーソルとは独立して保持する。Scroll Modeも打鍵履歴と第2段階カーソルを変更せず、範囲アンカーとは同時に有効にならない。
@@ -424,6 +440,11 @@ For Scroll Mode input, steps 2-4 of the normal click flow are applied to the scr
 | Selecting (history length 2) | `Ctrl+Enter` | Executing click | Confirm the cursor cell with a middle (wheel) click |
 | Selecting (history length 2, no range anchor) | `R` (no modifiers) | Selecting (range active, history length 0) | Capture the current target as the range anchor and return to Stage 1 |
 | Selecting (history length 2, no drag anchor) | `D` (no modifiers) | Selecting (drag active, history length 0) | Capture the current target as the drag anchor and return to Stage 1 |
+| Selecting (history length 2, no anchors, no Scroll Mode) | `R`+`D` overlapping key-downs | Selecting (range-drag workflow, range phase, history length 0) | Capture the current target as the range anchor, enter the workflow, and return to Stage 1; neither single-key action fires |
+| Selecting (history length 2, eligible Stage 2) | Lone `R` or `D` key-up | Selecting (range/drag active, history length 0) | Dispatch the deferred single-key action on key-up when no chord completed |
+| Selecting (range-drag workflow, range phase, history length 2) | `Enter` | Selecting (range-drag workflow, drag phase, history length 0) | Execute the range, reuse the exact endpoint as the drag anchor, and reopen Stage 1 |
+| Selecting (range-drag workflow, drag phase, history length 2) | `Enter` | Executing drag | Execute the drag, then clear the workflow and apply the normal/continuous completion rule |
+| Selecting (range-drag workflow) | `Esc` | Selecting (no workflow) | Clear the active anchor and the workflow state; keep the session open |
 | Selecting (range/drag active, history length 0 or 1) | Stage 1 key | Selecting (range/drag active) | Select the endpoint region; keep the anchor fixed |
 | Selecting (range/drag active, history length 2) | Arrow keys | Selecting (range/drag active) | Move the endpoint cursor; the anchor stays fixed |
 | Selecting (range active, history length 2) | `Enter` | Executing range | Validate both endpoints, then send left click + Shift+left click |
@@ -503,6 +524,7 @@ For Scroll Mode input, steps 2-4 of the normal click flow are applied to the scr
 | 連続モード | 初期値OFF。グリッド表示中にTabでON/OFF。ONの間は確定後も第1段階へ戻る |
 | Click kinds | Left, right, and middle (wheel) clicks |
 | Range selection | Stage 2で`R`。アンカーは固定し、`Enter`で左クリック＋Shift+左クリック。Escでアンカーを解除 |
+| Range-then-drag | Stage 2で`R`と`D`を同時押し。範囲確定後に範囲終点をドラッグアンカーとしてStage 1を再表示し、ドロップ先を選んで`Enter` |
 | Scroll Mode | Stage 2でPageUp/PageDown。矢印は1ノッチ、Pageは5ノッチ。EscでStage 2へ戻る |
 | 確定後の動作 | 通常モードはオーバーレイ終了。連続モードは第1段階へ戻る。カーソルは元の位置に戻さない |
 
