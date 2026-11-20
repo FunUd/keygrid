@@ -84,6 +84,83 @@ public class Win32ClickSenderTests
     }
 
     [Fact]
+    public void SendDrag_EmitsMoveDownInterpolatedMovesAndUp()
+    {
+        UiTestThread.Run(() =>
+        {
+            var capturedInputs = new List<NativeMethods.INPUT[]>();
+            var sender = new Win32ClickSender((count, inputs, _) =>
+            {
+                capturedInputs.Add(inputs.Take((int)count).ToArray());
+                return count;
+            });
+            var virtualScreen = new PixelRect(-1920, -200, 3840, 2160);
+            var start = new PixelPoint(-100, 50);
+            var end = new PixelPoint(1919, 1959);
+            var (startX, startY) = CoordinateConverter.ToNormalizedVirtualDesktop(start, virtualScreen);
+            var (endX, endY) = CoordinateConverter.ToNormalizedVirtualDesktop(end, virtualScreen);
+
+            bool succeeded = sender.SendDrag(start, end, virtualScreen);
+
+            Assert.True(succeeded);
+            Assert.True(capturedInputs.Count >= 5);
+            var allInputs = capturedInputs.SelectMany(items => items).ToArray();
+            uint commonFlags = NativeMethods.MOUSEEVENTF_ABSOLUTE
+                | NativeMethods.MOUSEEVENTF_VIRTUALDESK;
+            Assert.Equal(
+                commonFlags | NativeMethods.MOUSEEVENTF_MOVE,
+                allInputs.First().mi.dwFlags);
+            Assert.Equal(
+                commonFlags | NativeMethods.MOUSEEVENTF_LEFTDOWN,
+                allInputs[1].mi.dwFlags);
+            Assert.Equal(
+                commonFlags | NativeMethods.MOUSEEVENTF_LEFTUP,
+                allInputs.Last().mi.dwFlags);
+            Assert.Equal(startX, allInputs[0].mi.dx);
+            Assert.Equal(startY, allInputs[0].mi.dy);
+            Assert.Equal(startX, allInputs[1].mi.dx);
+            Assert.Equal(startY, allInputs[1].mi.dy);
+            Assert.Equal(endX, allInputs.Last().mi.dx);
+            Assert.Equal(endY, allInputs.Last().mi.dy);
+        });
+    }
+
+    [Fact]
+    public void SendDrag_WhenSendIsPartial_ReleasesLeftButtonAtEnd()
+    {
+        UiTestThread.Run(() =>
+        {
+            NativeMethods.INPUT[]? cleanupInputs = null;
+            int callCount = 0;
+            var sender = new Win32ClickSender((count, inputs, _) =>
+            {
+                callCount++;
+                if (callCount == 1)
+                {
+                    return count - 1;
+                }
+
+                cleanupInputs = inputs.ToArray();
+                return count;
+            });
+
+            bool succeeded = sender.SendDrag(
+                new PixelPoint(10, 10),
+                new PixelPoint(20, 20),
+                new PixelRect(0, 0, 1920, 1080));
+
+            Assert.False(succeeded);
+            Assert.NotNull(cleanupInputs);
+            Assert.Single(cleanupInputs);
+            Assert.Equal(
+                NativeMethods.MOUSEEVENTF_ABSOLUTE
+                | NativeMethods.MOUSEEVENTF_VIRTUALDESK
+                | NativeMethods.MOUSEEVENTF_LEFTUP,
+                cleanupInputs[0].mi.dwFlags);
+        });
+    }
+
+    [Fact]
     public void SendRangeClick_EmitsNormalClickThenShiftClickAtEachEndpoint()
     {
         UiTestThread.Run(() =>

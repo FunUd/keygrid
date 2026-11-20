@@ -22,6 +22,7 @@ public partial class OverlayWindow : Window, IOverlayWindowSurface
     public event Action? CancelRequested;
     public event Action? ContinuousModeToggleRequested;
     public event Action? RangeStartRequested;
+    public event Action? DragStartRequested;
     public event Action<int>? PageScrollRequested;
     public event Action? FocusLost;
     public event Action? DisplayConfigurationChanged;
@@ -47,6 +48,7 @@ public partial class OverlayWindow : Window, IOverlayWindowSurface
         _keyHandler.CancelRequested += () => CancelRequested?.Invoke();
         _keyHandler.ContinuousModeToggleRequested += () => ContinuousModeToggleRequested?.Invoke();
         _keyHandler.RangeStartRequested += () => RangeStartRequested?.Invoke();
+        _keyHandler.DragStartRequested += () => DragStartRequested?.Invoke();
         _keyHandler.PageScrollRequested += direction => PageScrollRequested?.Invoke(direction);
 
         Focusable = isPrimary;
@@ -98,7 +100,8 @@ public partial class OverlayWindow : Window, IOverlayWindowSurface
         IReadOnlyList<PixelRect> monitorRects,
         bool isContinuousMode,
         PixelPoint? rangeStartPoint = null,
-        bool isScrollMode = false)
+        bool isScrollMode = false,
+        PixelPoint? dragStartPoint = null)
     {
         // Holding an arrow key repeats cursor movement only during Stage 2 cursor
         // navigation. Repeats stay ignored in Stage 1 and Scroll Mode.
@@ -111,7 +114,8 @@ public partial class OverlayWindow : Window, IOverlayWindowSurface
             IsPrimary,
             isContinuousMode,
             rangeStartPoint,
-            isScrollMode);
+            isScrollMode,
+            dragStartPoint);
     }
 
     /// <summary>

@@ -26,6 +26,12 @@ public interface IClickSender
     bool SendRangeClick(PixelPoint start, PixelPoint end, PixelRect virtualScreen);
 
     /// <summary>
+    /// Performs a left-button drag from the start point to the end point.
+    /// The sender must release the synthetic left button if sending is partial or throws.
+    /// </summary>
+    bool SendDrag(PixelPoint start, PixelPoint end, PixelRect virtualScreen);
+
+    /// <summary>
     /// Sends mouse wheel input at the specified physical pixel target. Positive
     /// notches scroll up or right; negative notches scroll down or left.
     /// </summary>

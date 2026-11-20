@@ -1,0 +1,124 @@
+batch_id: "DND-B01"
+completed_tasks:
+  - "T001"
+  - "T002"
+  - "T004"
+  - "T005"
+  - "T006"
+  - "T007"
+  - "T008"
+  - "T009"
+  - "T010"
+  - "T011"
+  - "T012"
+  - "T014"
+  - "T017"
+  - "T019"
+  - "T020"
+  - "T021"
+  - "T022"
+blocked_tasks:
+  - task_id: "T003"
+    reason: "Requires real Windows applications and human/manual runtime validation"
+    required_task_ids: []
+  - task_id: "T013"
+    reason: "Native exception, cleanup-failure, interpolation, and negative-origin edge tests remain"
+    required_task_ids: ["T003", "T004"]
+  - task_id: "T015"
+    reason: "Gap rejection and sub-mode mutual-exclusion edge tests remain"
+    required_task_ids: ["T009", "T010"]
+  - task_id: "T016"
+    reason: "Rendering tests remain"
+    required_task_ids: ["T011", "T012"]
+  - task_id: "T018"
+    reason: "Requires real Explorer, browser, VS Code, multi-monitor, and UIPI validation"
+    required_task_ids: ["T010", "T011", "T012"]
+files_changed:
+  T001:
+    - file: "src/KeyGrid.Core/Abstractions/IClickSender.cs"
+      change_type: "modified"
+      description: "Added SendDrag contract"
+  T004:
+    - file: "src/KeyGrid/Interop/Win32ClickSender.cs"
+      change_type: "modified"
+      description: "Added direct move/down/move/up drag send and left-button cleanup"
+  T005:
+    - file: "src/KeyGrid.Core/Services/ClickExecutor.cs"
+      change_type: "modified"
+      description: "Added render-synchronized ExecuteDrag"
+  T007:
+    - file: "src/KeyGrid/UI/OverlayKeyHandler.cs"
+      change_type: "modified"
+      description: "Added plain-D drag-start event and modified-D consumption"
+  T009:
+    - file: "src/KeyGrid/UI/OverlayManager.cs"
+      change_type: "modified"
+      description: "Added drag anchor lifecycle, confirmation, exclusion, and failure recovery"
+  T011:
+    - file: "src/KeyGrid/UI/OverlayRenderElement.cs"
+      change_type: "modified"
+      description: "Added drag marker rendering and primary-only badge"
+  T019:
+    - file: "spec.md"
+      change_type: "modified"
+      description: "Documented drag behavior and interface"
+  T020:
+    - file: "README.md"
+      change_type: "modified"
+      description: "Documented cross-window drag feature"
+  T021:
+    - file: "CHANGELOG.md"
+      change_type: "modified"
+      description: "Added drag-and-drop changelog entry"
+  T022:
+    - file: "docs/checkpoints/tasks-to-impl.yaml"
+      change_type: "created"
+      description: "Recorded implementation traceability"
+upstream_artifacts_consumed:
+  T001:
+    - artifact: "docs/drag_and_drop_plan.md"
+      used_for: "Drag SendInput interface and requirements"
+    - artifact: "spec.md"
+      used_for: "Existing range and SendInput behavior"
+evidence_mapping:
+  T004:
+    - upstream: "docs/drag_and_drop_plan.md#Step 1"
+      output: "src/KeyGrid/Interop/Win32ClickSender.cs#SendDrag"
+      evidence: "Win32ClickSenderTests#SendDrag_*"
+  T009:
+    - upstream: "docs/drag_and_drop_plan.md#Step 3"
+      output: "src/KeyGrid/UI/OverlayManager.cs#OnDragStartRequested"
+      evidence: "OverlayManagerTests#Drag*"
+traceability:
+  - requirement: "REQ-DND-001"
+    plan_item: "3.1"
+    task: "T007, T008, T009"
+    files: ["src/KeyGrid/UI/OverlayKeyHandler.cs", "src/KeyGrid/UI/OverlayManager.cs"]
+    status: "completed"
+  - requirement: "REQ-DND-003"
+    plan_item: "1.1,2.1"
+    task: "T004, T006, T010"
+    files: ["src/KeyGrid/Interop/Win32ClickSender.cs", "src/KeyGrid/UI/OverlayManager.cs"]
+    status: "completed"
+  - requirement: "REQ-DND-006"
+    plan_item: "1.1,2.1"
+    task: "T004, T005"
+    files: ["src/KeyGrid/Interop/Win32ClickSender.cs", "src/KeyGrid/Core/Services/ClickExecutor.cs"]
+    status: "completed"
+  - requirement: "REQ-DND-011"
+    plan_item: "1.1,2.1"
+    task: "T004, T009"
+    files: ["src/KeyGrid/Interop/Win32ClickSender.cs", "src/KeyGrid/UI/OverlayManager.cs"]
+    status: "completed"
+protocol_violation: false
+errors: []
+warnings:
+  - "Native real-application drag recognition and UIPI/manual cross-monitor validation remain unavailable."
+  - "T013, T015, and T016 still need edge-case rendering/native tests."
+test_results:
+  dotnet_test:
+    command: "dotnet test --nologo"
+    passed: 243
+    failed: 0
+    skipped: 0
+    failures: []

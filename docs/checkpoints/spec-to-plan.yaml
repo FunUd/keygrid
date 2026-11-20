@@ -1,0 +1,121 @@
+# Spec-to-Plan Traceability Checkpoint
+metadata:
+  generated: "2026-11-21"
+  source_spec: "spec.md"
+  target_plan: "docs/drag_and_drop_plan.md"
+
+summary:
+  total_requirements: 11
+  covered_requirements: 11
+  missing_requirements: 0
+  coverage_percentage: 100.0
+
+requirements:
+  - req_id: "REQ-DND-001"
+    req_description: "Stage 2 plain D sets a drag anchor"
+    implementation_evidence: "T008, T009, T014, T015"
+    plan_mapping:
+      phase: "Phase-3"
+      phase_name: "Drag state and key handling"
+      items:
+        - item_id: "3.1"
+          description: "Add D drag-start handling"
+  - req_id: "REQ-DND-002"
+    req_description: "Drag remains in the all-monitor Stage 2 grid"
+    implementation_evidence: "T009, T010, T011, T012"
+    plan_mapping:
+      phase: "Phase-3"
+      phase_name: "Drag state and key handling"
+      items:
+        - item_id: "3.1"
+          description: "Preserve all-monitor Stage 2 cursor and anchor state"
+  - req_id: "REQ-DND-003"
+    req_description: "Cross-window and cross-monitor drag targets are allowed"
+    implementation_evidence: "T004, T006, T010, T018"
+    plan_mapping:
+      phase: "Phase-2"
+      phase_name: "Foundational drag dispatch"
+      items:
+        - item_id: "2.1"
+          description: "Execute drag without same-window validation"
+  - req_id: "REQ-DND-004"
+    req_description: "Plain Enter executes drag"
+    implementation_evidence: "T008, T009, T014, T015"
+    plan_mapping:
+      phase: "Phase-3"
+      phase_name: "Drag state and key handling"
+      items:
+        - item_id: "3.1"
+          description: "Apply modifier and sub-mode confirmation rules"
+  - req_id: "REQ-DND-005"
+    req_description: "Drag anchor persists across cursor movement and Backspace"
+    implementation_evidence: "T009, T011, T015"
+    plan_mapping:
+      phase: "Phase-3"
+      phase_name: "Drag state and key handling"
+      items:
+        - item_id: "3.1"
+          description: "Preserve anchor across Backspace"
+  - req_id: "REQ-DND-006"
+    req_description: "SendInput move/down/move/up sequence"
+    implementation_evidence: "T003, T004, T013, T018"
+    plan_mapping:
+      phase: "Phase-1"
+      phase_name: "Setup and technical validation"
+      items:
+        - item_id: "1.1"
+          description: "Implement native drag primitive"
+  - req_id: "REQ-DND-007"
+    req_description: "Partial SendInput releases left button"
+    implementation_evidence: "T004, T013"
+    plan_mapping:
+      phase: "Phase-1"
+      phase_name: "Setup and technical validation"
+      items:
+        - item_id: "1.1"
+          description: "Implement native cleanup"
+  - req_id: "REQ-DND-008"
+    req_description: "Drag follows normal and continuous completion"
+    implementation_evidence: "T005, T009, T015"
+    plan_mapping:
+      phase: "Phase-2"
+      phase_name: "Foundational drag dispatch"
+      items:
+        - item_id: "2.1"
+          description: "Apply completion policy"
+  - req_id: "REQ-DND-009"
+    req_description: "Drag range and Scroll are mutually exclusive"
+    implementation_evidence: "T009, T015"
+    plan_mapping:
+      phase: "Phase-3"
+      phase_name: "Drag state and key handling"
+      items:
+        - item_id: "3.1"
+          description: "Centralize sub-mode exclusions"
+  - req_id: "REQ-DND-010"
+    req_description: "Drag marker and badge render on the correct overlays"
+    implementation_evidence: "T011, T012, T016"
+    plan_mapping:
+      phase: "Phase-4"
+      phase_name: "Drag rendering"
+      items:
+        - item_id: "4.1"
+          description: "Render monitor-owned marker and primary badge"
+  - req_id: "REQ-DND-011"
+    req_description: "Drag failures are explicit and recover selection"
+    implementation_evidence: "T004, T006, T013, T015, T018"
+    plan_mapping:
+      phase: "Phase-2"
+      phase_name: "Foundational drag dispatch"
+      items:
+        - item_id: "2.1"
+          description: "Restore Stage 2 or close on failure"
+
+missing_requirements: []
+orphan_plan_items: []
+
+validation:
+  passed: true
+  errors: []
+  warnings:
+    - "Existing spec.md has no REQ-XXX IDs; T019 will add and formalize REQ-DND-IDs before implementation sign-off."

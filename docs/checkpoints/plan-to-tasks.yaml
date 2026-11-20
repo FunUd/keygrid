@@ -1,0 +1,92 @@
+# Plan-to-Tasks Traceability Checkpoint
+metadata:
+  generated: "2026-11-21"
+  source_plan: "docs/drag_and_drop_plan.md"
+  target_tasks: "docs/drag_and_drop_plan.md"
+
+summary:
+  total_plan_items: 7
+  covered_plan_items: 7
+  missing_plan_items: 0
+  coverage_percentage: 100.0
+  total_tasks_generated: 22
+  orphan_tasks: 0
+
+phases:
+  - phase_id: "Phase-1"
+    phase_name: "Setup and technical validation"
+    items:
+      - item_id: "1.1"
+        description: "Native SendInput drag primitive"
+        tasks: ["T001", "T002", "T003", "T004"]
+        dependencies: ["T002 -> T003", "T003 -> T004"]
+  - phase_id: "Phase-2"
+    phase_name: "Foundational drag dispatch"
+    items:
+      - item_id: "2.1"
+        description: "ClickExecutor and OverlayManager drag dispatch"
+        tasks: ["T005", "T006", "T010"]
+        dependencies: ["T004 -> T005", "T003/T004/T005 -> T006", "T005/T006/T009 -> T010"]
+  - phase_id: "Phase-3"
+    phase_name: "Drag state and key handling"
+    items:
+      - item_id: "3.1"
+        description: "Stage 2 D anchor and sub-mode lifecycle"
+        tasks: ["T007", "T008", "T009", "T010"]
+        dependencies: ["T001 -> T007", "T007 -> T008", "T006/T008 -> T009", "T005/T006/T009 -> T010"]
+  - phase_id: "Phase-4"
+    phase_name: "Drag rendering"
+    items:
+      - item_id: "4.1"
+        description: "Monitor-aware marker and primary badge"
+        tasks: ["T011", "T012"]
+        dependencies: ["T009 -> T011", "T009 -> T012"]
+  - phase_id: "Phase-5"
+    phase_name: "Automated and manual verification"
+    items:
+      - item_id: "5.1"
+        description: "Runtime spike"
+        tasks: ["T003", "T018"]
+        dependencies: ["T002 -> T003", "T010/T011/T012 -> T018"]
+      - item_id: "6.1"
+        description: "Automated tests"
+        tasks: ["T013", "T014", "T015", "T016", "T017"]
+        dependencies: ["T003/T004 -> T013", "T008 -> T014", "T009/T010 -> T015", "T011/T012 -> T016", "T005 -> T017"]
+  - phase_id: "Phase-6"
+    phase_name: "Specification and polish"
+    items:
+      - item_id: "7.1"
+        description: "Update specifications and documentation"
+        tasks: ["T019", "T020", "T021", "T022"]
+        dependencies: ["T003/T018 -> T019", "T019 -> T020/T021", "T013-T021 -> T022"]
+
+missing_plan_items: []
+orphan_tasks: []
+
+upstream_trace:
+  - plan_item: "1.1"
+    source_requirements: ["REQ-DND-003", "REQ-DND-006", "REQ-DND-007", "REQ-DND-011"]
+    tasks: ["T001", "T002", "T003", "T004"]
+  - plan_item: "2.1"
+    source_requirements: ["REQ-DND-006", "REQ-DND-008", "REQ-DND-011"]
+    tasks: ["T005", "T006", "T010"]
+  - plan_item: "3.1"
+    source_requirements: ["REQ-DND-001", "REQ-DND-002", "REQ-DND-004", "REQ-DND-005", "REQ-DND-008", "REQ-DND-009"]
+    tasks: ["T007", "T008", "T009", "T010"]
+  - plan_item: "4.1"
+    source_requirements: ["REQ-DND-002", "REQ-DND-005", "REQ-DND-010"]
+    tasks: ["T011", "T012"]
+  - plan_item: "5.1"
+    source_requirements: ["REQ-DND-006", "REQ-DND-011"]
+    tasks: ["T003", "T018"]
+  - plan_item: "6.1"
+    source_requirements: ["REQ-DND-001", "REQ-DND-002", "REQ-DND-003", "REQ-DND-004", "REQ-DND-005", "REQ-DND-006", "REQ-DND-007", "REQ-DND-008", "REQ-DND-009", "REQ-DND-010", "REQ-DND-011"]
+    tasks: ["T013", "T014", "T015", "T016", "T017"]
+  - plan_item: "7.1"
+    source_requirements: ["REQ-DND-001", "REQ-DND-002", "REQ-DND-003", "REQ-DND-004", "REQ-DND-005", "REQ-DND-006", "REQ-DND-007", "REQ-DND-008", "REQ-DND-009", "REQ-DND-010", "REQ-DND-011"]
+    tasks: ["T019", "T020", "T021", "T022"]
+
+validation:
+  passed: true
+  errors: []
+  warnings: []

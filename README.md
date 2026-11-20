@@ -13,6 +13,7 @@ KeyGrid is a lightweight, resident Windows 11 utility that enables mouse-free le
 - **Safe Fallback**: Excludes gaps between disjoint monitors, snapping center reference points to the closest valid display pixel.
 - **Continuous Mode**: Press `Tab` while the grid is visible to keep it open after each click and return to Stage 1 for the next selection. Press `Tab` again for normal mode, or `Esc` to exit.
 - **Two-Point Range Selection**: In Stage 2, press `R` to set an anchor, move to the endpoint, and press `Enter`. KeyGrid left-clicks the anchor and Shift+left-clicks the endpoint, which extends a browser text selection without using the mouse.
+- **Cross-Window Drag**: In Stage 2, press `D` to set a drag anchor, move to the drop target, and press `Enter`. KeyGrid moves to the anchor, holds the left button, moves to the drop target, and releases it. Drag can cross windows and monitors.
 - **Scroll Mode**: Press `PageUp` or `PageDown` in Stage 2 to scroll the window under the current target. Arrow keys scroll by one wheel notch and Page keys by five; `Esc` returns to Stage 2 without leaving the grid.
 - **Undo & Cancellation**: Step back through Stage 1 with `Backspace` or cancel immediately with `Esc`. With a range anchor or Scroll Mode active, `Esc` cancels that sub-mode first.
 

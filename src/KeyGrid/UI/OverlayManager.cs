@@ -37,6 +37,7 @@ public class OverlayManager
     private bool _isDisplayChangePending = false;
     private bool _continuousMode;
     private PixelPoint? _rangeStartPoint;
+    private PixelPoint? _dragStartPoint;
     private bool _scrollMode;
     private bool _isInputInProgress;
     private int _selectionGeneration;
@@ -56,6 +57,11 @@ public class OverlayManager
     /// Whether a two-point range anchor has been set for the current session.
     /// </summary>
     internal bool HasRangeSelection => _rangeStartPoint.HasValue;
+
+    /// <summary>
+    /// Whether a two-point drag anchor has been set for the current session.
+    /// </summary>
+    internal bool HasDragSelection => _dragStartPoint.HasValue;
 
     /// <summary>
     /// Whether Scroll Mode is active for the current Stage 2 selection.
@@ -105,6 +111,7 @@ public class OverlayManager
         // Every new Stage 1 session starts without sub-mode state. Continuous mode
         // itself is preserved by the caller when the session is intentionally kept open.
         _rangeStartPoint = null;
+        _dragStartPoint = null;
         _scrollMode = false;
         _isInputInProgress = false;
 
@@ -205,6 +212,7 @@ public class OverlayManager
                 overlay.CancelRequested += OnCancelRequested;
                 overlay.ContinuousModeToggleRequested += OnContinuousModeToggleRequested;
                 overlay.RangeStartRequested += OnRangeStartRequested;
+                overlay.DragStartRequested += OnDragStartRequested;
                 overlay.PageScrollRequested += OnPageScrollRequested;
                 overlay.FocusLost += () => OnFocusLost(generation);
             }
@@ -216,7 +224,8 @@ public class OverlayManager
                 _activeMonitorRects,
                 _continuousMode,
                 _rangeStartPoint,
-                _scrollMode);
+                _scrollMode,
+                _dragStartPoint);
         }
 
         if (_primaryOverlay == null || !_primaryOverlay.TryReactivate())
@@ -287,6 +296,7 @@ public class OverlayManager
             || !IsActive
             || _isInputInProgress
             || _scrollMode
+            || _dragStartPoint.HasValue
             || _selectionManager.State != SelectionState.Selecting)
         {
             return;
@@ -311,6 +321,38 @@ public class OverlayManager
         // In Stage 1, R remains an ordinary column key. This path preserves that
         // behavior for unmodified R while allowing the range action in Stage 2.
         if (_selectionManager.ProcessKey('R'))
+        {
+            UpdateAllOverlays();
+        }
+    }
+
+    private void OnDragStartRequested()
+    {
+        if (IsClosing
+            || !IsActive
+            || _isInputInProgress
+            || _scrollMode
+            || _rangeStartPoint.HasValue
+            || _selectionManager.State != SelectionState.Selecting)
+        {
+            return;
+        }
+
+        if (_selectionManager.CurrentStage == 2)
+        {
+            if (_dragStartPoint.HasValue
+                || !_selectionManager.TryGetStage2Target(out var startPoint))
+            {
+                return;
+            }
+
+            _dragStartPoint = startPoint;
+            FileLogger.LogDebug($"Drag start set at ({startPoint.X}, {startPoint.Y}).");
+            UpdateAllOverlays();
+            return;
+        }
+
+        if (_selectionManager.ProcessKey('D'))
         {
             UpdateAllOverlays();
         }
@@ -367,6 +409,7 @@ public class OverlayManager
             && _selectionManager.State == SelectionState.Selecting
             && _selectionManager.CurrentStage == 2
             && !_rangeStartPoint.HasValue
+            && !_dragStartPoint.HasValue
             && _selectionManager.TryGetStage2Target(out _);
     }
 
@@ -385,6 +428,8 @@ public class OverlayManager
         if (IsClosing
             || !IsActive
             || _scrollMode
+            || _rangeStartPoint.HasValue
+            || _dragStartPoint.HasValue
             || _selectionManager.State != SelectionState.Selecting)
         {
             return;
@@ -408,6 +453,19 @@ public class OverlayManager
         {
             FileLogger.LogDebug(
                 $"Confirmation #{attempt} ignored while Scroll Mode is active; press Esc to return to Stage 2.");
+            return;
+        }
+
+        if (_dragStartPoint.HasValue)
+        {
+            if (clickKind != ClickKind.Left)
+            {
+                FileLogger.LogDebug(
+                    $"Confirmation #{attempt} ignored because drag selection uses unmodified Enter.");
+                return;
+            }
+
+            ExecuteDragSelection(attempt);
             return;
         }
 
@@ -465,6 +523,14 @@ public class OverlayManager
         {
             _rangeStartPoint = null;
             FileLogger.LogInfo("Range start cleared by Esc; selection remains active.");
+            UpdateAllOverlays();
+            return;
+        }
+
+        if (_dragStartPoint.HasValue)
+        {
+            _dragStartPoint = null;
+            FileLogger.LogInfo("Drag start cleared by Esc; selection remains active.");
             UpdateAllOverlays();
             return;
         }
@@ -691,7 +757,8 @@ public class OverlayManager
                 _activeMonitorRects,
                 _continuousMode,
                 _rangeStartPoint,
-                _scrollMode);
+                _scrollMode,
+                _dragStartPoint);
         }
     }
 
@@ -820,6 +887,153 @@ public class OverlayManager
         {
             ErrorOccurred?.Invoke(
                 "Failed to dispatch click. The target window may require a higher integrity level (UIPI).");
+        }
+    }
+
+    private void ExecuteDragSelection(int attempt)
+    {
+        if (!_selectionManager.TryGetStage2Target(out var end))
+        {
+            FileLogger.LogDebug($"Drag #{attempt} ignored because the Stage 2 target is not confirmable.");
+            return;
+        }
+
+        var start = _dragStartPoint!.Value;
+        var virtualScreen = _virtualScreenBounds;
+        bool continueSelection = _continuousMode;
+        string? preparationFailure = null;
+        bool success;
+
+        FileLogger.LogInfo($"Drag #{attempt} started.");
+        FileLogger.LogDebug(
+            $"Drag #{attempt} target details (start=({start.X}, {start.Y}), " +
+            $"end=({end.X}, {end.Y}), virtualScreen={virtualScreen}).");
+
+        try
+        {
+            success = _clickExecutor.ExecuteDrag(
+                start,
+                end,
+                virtualScreen,
+                hideOverlaysAction: HideOverlaysForInput,
+                prepareClickAction: () =>
+                {
+                    Dispatcher.CurrentDispatcher.Invoke(() => { }, DispatcherPriority.Render);
+
+                    if (!_activeMonitorRects.Any(rect => rect.Contains(start))
+                        || !_activeMonitorRects.Any(rect => rect.Contains(end)))
+                    {
+                        preparationFailure =
+                            "The drag start or drop target is outside all monitor areas.";
+                        return false;
+                    }
+
+                    nint startWindow = _windowFocusService.GetWindowFromPoint(start);
+                    nint startRoot = _windowFocusService.GetRootWindow(startWindow);
+                    nint endWindow = _windowFocusService.GetWindowFromPoint(end);
+                    nint endRoot = _windowFocusService.GetRootWindow(endWindow);
+
+                    FileLogger.LogDebug(
+                        $"Drag #{attempt}: window context before activation " +
+                        $"(startWindow={FormatWindowHandle(startWindow)}, startRoot={FormatWindowHandle(startRoot)}, " +
+                        $"endWindow={FormatWindowHandle(endWindow)}, endRoot={FormatWindowHandle(endRoot)}, " +
+                        $"foreground={FormatWindowHandle(_windowFocusService.GetForegroundWindow())}).");
+
+                    if (startRoot == nint.Zero)
+                    {
+                        preparationFailure =
+                            "Could not find a window under the drag start point.";
+                        return false;
+                    }
+
+                    if (endRoot == nint.Zero)
+                    {
+                        preparationFailure =
+                            "Could not find a window under the drag drop target.";
+                        return false;
+                    }
+
+                    bool activated = RestoreForegroundWindow(startRoot, "Drag start");
+                    nint startAfterActivation = _windowFocusService.GetWindowFromPoint(start);
+                    nint endAfterActivation = _windowFocusService.GetWindowFromPoint(end);
+                    bool startStillHit = _windowFocusService.IsWindowOwnedBy(
+                        startAfterActivation,
+                        startRoot);
+                    nint endRootAfterActivation = _windowFocusService.GetRootWindow(endAfterActivation);
+
+                    if (!activated || !startStillHit || endRootAfterActivation == nint.Zero)
+                    {
+                        preparationFailure =
+                            "Could not activate the drag start or verify the drop target.";
+                        return false;
+                    }
+
+                    return true;
+                });
+        }
+        catch
+        {
+            _isInputInProgress = false;
+            _dragStartPoint = null;
+            _selectionManager.Cancel();
+            CloseOverlaysWithoutRestore();
+            RestoreOriginatingForegroundWindow();
+            _originatingForegroundWindow = nint.Zero;
+            throw;
+        }
+
+        if (preparationFailure != null)
+        {
+            FileLogger.LogWarning($"Drag #{attempt} aborted: {preparationFailure}");
+            if (!ShowOverlaysAfterInput())
+            {
+                return;
+            }
+
+            _dragStartPoint = null;
+            UpdateAllOverlays();
+            ErrorOccurred?.Invoke(preparationFailure);
+            return;
+        }
+
+        _isInputInProgress = false;
+        _dragStartPoint = null;
+
+        if (success)
+        {
+            _originatingForegroundWindow = nint.Zero;
+            FileLogger.LogInfo($"Drag #{attempt} completed successfully.");
+        }
+        else
+        {
+            FileLogger.LogWarning($"Drag #{attempt} SendInput failed.");
+            if (!ShowOverlaysAfterInput())
+            {
+                return;
+            }
+
+            UpdateAllOverlays();
+            ErrorOccurred?.Invoke(
+                "Failed to dispatch drag. The drag start or target window may require a higher integrity level (UIPI).");
+            return;
+        }
+
+        _selectionManager.CompleteClick();
+        CloseOverlaysWithoutRestore();
+
+        if (continueSelection)
+        {
+            FileLogger.LogInfo($"Drag #{attempt} completed in continuous mode; reopening Stage 1.");
+            Thread.Sleep(ContinuousModeClickSettleMilliseconds);
+            ShowOverlaysCore();
+            if (!IsActive)
+            {
+                _continuousMode = false;
+            }
+        }
+        else
+        {
+            FileLogger.LogInfo($"Drag #{attempt} finished; selection returned to standby.");
         }
     }
 

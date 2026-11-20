@@ -20,6 +20,7 @@ public class OverlayRenderElement : FrameworkElement
     private bool _isPrimary;
     private bool _isContinuousMode;
     private PixelPoint? _rangeStartPoint;
+    private PixelPoint? _dragStartPoint;
     private bool _isScrollMode;
 
     private readonly Brush _dimBrush = new SolidColorBrush(Color.FromArgb(145, 10, 15, 25));
@@ -94,7 +95,8 @@ public class OverlayRenderElement : FrameworkElement
         bool isPrimary = false,
         bool isContinuousMode = false,
         PixelPoint? rangeStartPoint = null,
-        bool isScrollMode = false)
+        bool isScrollMode = false,
+        PixelPoint? dragStartPoint = null)
     {
         _monitorRect = monitorRect;
         _monitorRects = monitorRects;
@@ -102,6 +104,7 @@ public class OverlayRenderElement : FrameworkElement
         _isPrimary = isPrimary;
         _isContinuousMode = isContinuousMode;
         _rangeStartPoint = rangeStartPoint;
+        _dragStartPoint = dragStartPoint;
         _isScrollMode = isScrollMode;
         InvalidateVisual();
     }
@@ -254,6 +257,11 @@ public class OverlayRenderElement : FrameworkElement
             DrawRangeStartMarker(dc, rangeStart, dpiX, dpiY);
         }
 
+        if (_dragStartPoint is { } dragStart && _selectionManager.State == SelectionState.Selecting)
+        {
+            DrawRangeStartMarker(dc, dragStart, dpiX, dpiY);
+        }
+
         // 7. Draw status badges on the primary overlay only.
         if (_isPrimary && _selectionManager.State == SelectionState.Selecting)
         {
@@ -271,6 +279,11 @@ public class OverlayRenderElement : FrameworkElement
         if (_rangeStartPoint.HasValue)
         {
             top = DrawStatusBadge(dc, "Range: Enter to select", top) + 4.0;
+        }
+
+        if (_dragStartPoint.HasValue)
+        {
+            top = DrawStatusBadge(dc, "Drag: Enter to drop", top) + 4.0;
         }
 
         if (_isScrollMode)

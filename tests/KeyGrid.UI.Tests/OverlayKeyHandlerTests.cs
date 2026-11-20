@@ -72,6 +72,23 @@ public class OverlayKeyHandlerTests
     }
 
     [Fact]
+    public void PrimaryOverlay_PlainDRequestsDragStart()
+    {
+        UiTestThread.Run(() =>
+        {
+            var handler = new OverlayKeyHandler(isPrimary: true);
+            int dragStartCount = 0;
+            handler.DragStartRequested += () => dragStartCount++;
+
+            Assert.True(handler.HandleKeyDown(Key.D, ModifierKeys.None, isRepeat: false));
+            Assert.True(handler.HandleKeyDown(Key.D, ModifierKeys.None, isRepeat: true));
+            Assert.True(handler.HandleKeyDown(Key.D, ModifierKeys.Shift, isRepeat: false));
+
+            Assert.Equal(1, dragStartCount);
+        });
+    }
+
+    [Fact]
     public void PrimaryOverlay_UnmodifiedRRequestsRangeStart()
     {
         UiTestThread.Run(() =>

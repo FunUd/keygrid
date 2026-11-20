@@ -1,0 +1,95 @@
+# Tasks-to-Implementation Traceability Checkpoint
+metadata:
+  generated: "2026-11-21"
+  source_tasks: "docs/drag_and_drop_plan.md"
+  last_updated: "2026-11-21"
+
+summary:
+  total_tasks: 22
+  completed_tasks: 16
+  in_progress_tasks: 0
+  pending_tasks: 6
+  completion_percentage: 72.7
+
+tasks:
+  - task_id: "T001"
+    status: "completed"
+  - task_id: "T002"
+    status: "completed"
+  - task_id: "T003"
+    status: "pending"
+  - task_id: "T004"
+    status: "completed"
+  - task_id: "T005"
+    status: "completed"
+  - task_id: "T006"
+    status: "completed"
+  - task_id: "T007"
+    status: "completed"
+  - task_id: "T008"
+    status: "completed"
+  - task_id: "T009"
+    status: "completed"
+  - task_id: "T010"
+    status: "completed"
+  - task_id: "T011"
+    status: "completed"
+  - task_id: "T012"
+    status: "completed"
+  - task_id: "T013"
+    status: "pending"
+  - task_id: "T014"
+    status: "completed"
+  - task_id: "T015"
+    status: "pending"
+  - task_id: "T016"
+    status: "pending"
+  - task_id: "T017"
+    status: "completed"
+  - task_id: "T018"
+    status: "pending"
+  - task_id: "T019"
+    status: "completed"
+  - task_id: "T020"
+    status: "completed"
+  - task_id: "T021"
+    status: "completed"
+  - task_id: "T022"
+    status: "completed"
+
+pending_tasks:
+  - task_id: "T003"
+    reason: "Runtime drag recognition spike against real applications is not complete"
+  - task_id: "T013"
+    reason: "Exception, cleanup-failure, interpolation, and complete negative-origin native cases remain"
+  - task_id: "T015"
+    reason: "Gap rejection and Range/Scroll mutual-exclusion edge cases remain"
+  - task_id: "T016"
+    reason: "Drag marker and primary badge rendering tests remain"
+  - task_id: "T018"
+    reason: "Physical cross-window/cross-monitor/UIPI manual matrix is not run"
+  - task_id: "T022"
+    reason: "Manual evidence is not yet available"
+
+untracked_changes: []
+traceability_chain:
+  - chain_id: "TRACE-DND-CORE"
+    requirement: "REQ-DND-001 through REQ-DND-011"
+    tasks: ["T001", "T004", "T005", "T007", "T008", "T009", "T010", "T011", "T012"]
+    files:
+      - "src/KeyGrid.Core/Abstractions/IClickSender.cs"
+      - "src/KeyGrid.Core/Services/ClickExecutor.cs"
+      - "src/KeyGrid/Interop/Win32ClickSender.cs"
+      - "src/KeyGrid/UI/OverlayKeyHandler.cs"
+      - "src/KeyGrid/UI/IOverlayWindowSurface.cs"
+      - "src/KeyGrid/UI/OverlayManager.cs"
+      - "src/KeyGrid/UI/OverlayRenderElement.cs"
+    status: "partial"
+
+validation:
+  passed: false
+  errors: []
+  warnings:
+    - "Real Windows drag recognition, UIPI, and multi-monitor manual validation remain blocked."
+  blocking_issues:
+    - "T003 and T018 are required to validate the native drag strategy."

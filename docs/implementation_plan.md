@@ -218,3 +218,12 @@ KeyGrid is designed around strict separation of concerns to maximize testability
 - [x] Update the specification, README, changelog, and implementation plan to the implemented geometry.
 - [x] Run the complete automated test suite (`dotnet test --nologo`).
 - [ ] Run the physical multi-monitor and DPI manual matrix; not run in this environment.
+
+### Phase 8: Drag-and-Drop
+- [ ] Implement `SendDrag` with virtual-screen normalization and left-button cleanup.
+- [ ] Implement Stage 2 plain-D drag anchor and Enter dispatch.
+- [ ] Preserve drag anchor across cursor movement and Backspace; Esc clears it first.
+- [ ] Allow cross-window and cross-monitor drag; reject monitor-gap endpoints.
+- [ ] Keep drag mutually exclusive with Range and Scroll modes.
+- [ ] Add native, key-handler, overlay-manager, and render tests.
+- [ ] Run cross-window/cross-monitor/UIPI manual validation.

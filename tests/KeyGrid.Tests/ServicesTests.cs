@@ -17,6 +17,8 @@ public class ServicesTests
 
         public PixelPoint? LastRangeStart { get; private set; }
         public PixelPoint? LastRangeEnd { get; private set; }
+        public PixelPoint? LastDragStart { get; private set; }
+        public PixelPoint? LastDragEnd { get; private set; }
         public PixelPoint? LastScrollTarget { get; private set; }
         public int LastScrollNotches { get; private set; }
         public bool LastScrollHorizontal { get; private set; }
@@ -35,6 +37,15 @@ public class ServicesTests
             Calls.Add("send-range");
             LastRangeStart = start;
             LastRangeEnd = end;
+            LastVirtualScreen = virtualScreen;
+            return ReturnResult;
+        }
+
+        public bool SendDrag(PixelPoint start, PixelPoint end, PixelRect virtualScreen)
+        {
+            Calls.Add("send-drag");
+            LastDragStart = start;
+            LastDragEnd = end;
             LastVirtualScreen = virtualScreen;
             return ReturnResult;
         }
@@ -113,6 +124,33 @@ public class ServicesTests
             prepareClickAction: null);
 
         Assert.False(result);
+    }
+
+    [Fact]
+    public void ClickExecutor_DragHidesWaitsThenSendsBothEndpoints()
+    {
+        var fakeSender = new FakeClickSender();
+        var executor = new ClickExecutor(fakeSender);
+        var start = new PixelPoint(100, 200);
+        var end = new PixelPoint(900, 800);
+        var screen = new PixelRect(0, 0, 1920, 1080);
+
+        bool result = executor.ExecuteDrag(
+            start,
+            end,
+            screen,
+            hideOverlaysAction: () => fakeSender.Calls.Add("hide"),
+            prepareClickAction: () =>
+            {
+                fakeSender.Calls.Add("wait");
+                return true;
+            });
+
+        Assert.True(result);
+        Assert.Equal(new[] { "hide", "wait", "send-drag" }, fakeSender.Calls);
+        Assert.Equal(start, fakeSender.LastDragStart);
+        Assert.Equal(end, fakeSender.LastDragEnd);
+        Assert.Equal(screen, fakeSender.LastVirtualScreen);
     }
 
     [Fact]

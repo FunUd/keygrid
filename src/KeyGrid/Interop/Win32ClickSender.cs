@@ -96,6 +96,166 @@ public class Win32ClickSender : IClickSender
         return succeeded;
     }
 
+    public bool SendDrag(PixelPoint start, PixelPoint end, PixelRect virtualScreen)
+    {
+        if (virtualScreen.IsEmpty)
+        {
+            return false;
+        }
+
+        var (startX, startY) = CoordinateConverter.ToNormalizedVirtualDesktop(start, virtualScreen);
+        var (endX, endY) = CoordinateConverter.ToNormalizedVirtualDesktop(end, virtualScreen);
+        uint commonFlags = NativeMethods.MOUSEEVENTF_ABSOLUTE
+            | NativeMethods.MOUSEEVENTF_VIRTUALDESK;
+
+        FileLogger.LogDebug(
+            $"SendInput drag starting (start=({start.X}, {start.Y}), end=({end.X}, {end.Y}), " +
+            $"virtualScreen={virtualScreen}).");
+
+        if (FileLogger.IsDebugEnabled)
+        {
+            nint foreground = NativeMethods.GetForegroundWindow();
+            nint startWindow = NativeMethods.WindowFromPoint(
+                new NativeMethods.POINT { X = start.X, Y = start.Y });
+            nint endWindow = NativeMethods.WindowFromPoint(
+                new NativeMethods.POINT { X = end.X, Y = end.Y });
+            NativeMethods.GetWindowThreadProcessId(foreground, out uint foregroundProcessId);
+            NativeMethods.GetWindowThreadProcessId(startWindow, out uint startProcessId);
+            NativeMethods.GetWindowThreadProcessId(endWindow, out uint endProcessId);
+            FileLogger.LogDebug(
+                $"SendInput drag window context (foreground={DescribeWindow(foreground)}, foregroundPid={foregroundProcessId}, " +
+                $"startWindow={DescribeWindow(startWindow)}, startPid={startProcessId}, " +
+                $"endWindow={DescribeWindow(endWindow)}, endPid={endProcessId}).");
+        }
+
+        try
+        {
+            if (!SendSingleMouseInput(
+                startX,
+                startY,
+                commonFlags | NativeMethods.MOUSEEVENTF_MOVE,
+                "drag move-start"))
+            {
+                return ReleaseDragLeftButton(endX, endY, commonFlags);
+            }
+
+            if (!SendSingleMouseInput(
+                startX,
+                startY,
+                commonFlags | NativeMethods.MOUSEEVENTF_LEFTDOWN,
+                "drag left-down"))
+            {
+                return ReleaseDragLeftButton(endX, endY, commonFlags);
+            }
+
+            Thread.Sleep(80);
+
+            foreach (var point in GetInterpolatedDragPoints(start, end))
+            {
+                var (normalizedX, normalizedY) =
+                    CoordinateConverter.ToNormalizedVirtualDesktop(point, virtualScreen);
+                if (!SendSingleMouseInput(
+                    normalizedX,
+                    normalizedY,
+                    commonFlags | NativeMethods.MOUSEEVENTF_MOVE,
+                    "drag interpolated move"))
+                {
+                    return ReleaseDragLeftButton(normalizedX, normalizedY, commonFlags);
+                }
+
+                Thread.Sleep(10);
+            }
+
+            Thread.Sleep(20);
+            if (!SendSingleMouseInput(
+                endX,
+                endY,
+                commonFlags | NativeMethods.MOUSEEVENTF_LEFTUP,
+                "drag left-up"))
+            {
+                return ReleaseDragLeftButton(endX, endY, commonFlags);
+            }
+
+            FileLogger.LogInfo(
+                $"SendInput drag succeeded (start=({start.X}, {start.Y}), " +
+                $"end=({end.X}, {end.Y}), intermediatePoints={GetInterpolatedDragPoints(start, end).Count}).");
+            return true;
+        }
+        catch (Exception ex)
+        {
+            FileLogger.LogWarning(
+                $"SendInput drag threw an exception. Releasing synthetic left button. " +
+                $"Error={ex.Message}");
+            return ReleaseDragLeftButton(endX, endY, commonFlags);
+        }
+    }
+
+    private bool SendSingleMouseInput(int normalizedX, int normalizedY, uint flags, string phase)
+    {
+        var input = CreateMouseInput(normalizedX, normalizedY, flags);
+        uint sent = _sendInput(1, new[] { input }, Marshal.SizeOf<NativeMethods.INPUT>());
+        if (sent == 1)
+        {
+            return true;
+        }
+
+        FileLogger.LogWarning(
+            $"SendInput {phase} incomplete (requested=1, sent={sent}, " +
+            $"lastError={Marshal.GetLastWin32Error()}).");
+        return false;
+    }
+
+    private bool ReleaseDragLeftButton(int normalizedX, int normalizedY, uint commonFlags)
+    {
+        try
+        {
+            var cleanup = CreateMouseInput(
+                normalizedX,
+                normalizedY,
+                commonFlags | NativeMethods.MOUSEEVENTF_LEFTUP);
+            uint cleanupSent = _sendInput(
+                1,
+                new[] { cleanup },
+                Marshal.SizeOf<NativeMethods.INPUT>());
+            if (cleanupSent != 1)
+            {
+                FileLogger.LogWarning(
+                    $"SendInput drag cleanup incomplete (requested=1, sent={cleanupSent}, " +
+                    $"lastError={Marshal.GetLastWin32Error()}).");
+            }
+        }
+        catch (Exception ex)
+        {
+            FileLogger.LogWarning(
+                $"SendInput drag cleanup threw an exception. Left button release may remain uncertain. " +
+                $"Error={ex.Message}");
+        }
+
+        return false;
+    }
+
+    private static IReadOnlyList<PixelPoint> GetInterpolatedDragPoints(PixelPoint start, PixelPoint end)
+    {
+        int distance = Math.Max(Math.Abs(end.X - start.X), Math.Abs(end.Y - start.Y));
+        int stepCount = Math.Clamp((distance + 119) / 120, 4, 24);
+        var points = new List<PixelPoint>(stepCount);
+
+        for (int step = 1; step <= stepCount; step++)
+        {
+            double ratio = (double)step / stepCount;
+            int x = start.X + (int)Math.Round((end.X - start.X) * ratio);
+            int y = start.Y + (int)Math.Round((end.Y - start.Y) * ratio);
+            points.Add(new PixelPoint(x, y));
+        }
+
+        if (points.Count == 0 || points[^1] != end)
+        {
+            points.Add(end);
+        }
+
+        return points;
+    }
+
     public bool SendRangeClick(PixelPoint start, PixelPoint end, PixelRect virtualScreen)
     {
         var (startX, startY) = CoordinateConverter.ToNormalizedVirtualDesktop(start, virtualScreen);

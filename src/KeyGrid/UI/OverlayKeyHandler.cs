@@ -22,6 +22,7 @@ internal sealed class OverlayKeyHandler
     public event Action? CancelRequested;
     public event Action? ContinuousModeToggleRequested;
     public event Action? RangeStartRequested;
+    public event Action? DragStartRequested;
     /// <summary>
     /// Raised for plain PageUp (-1) or PageDown (+1). The manager decides whether
     /// the key enters Scroll Mode or scrolls an already active session.
@@ -103,6 +104,14 @@ internal sealed class OverlayKeyHandler
                 // R is also a Stage 1 column key. The manager decides whether this
                 // press starts a range or is part of a Stage 1 selection.
                 RangeStartRequested?.Invoke();
+                return true;
+            case Key.D when modifiers == ModifierKeys.None:
+                // D is also a Stage 1 column key. The manager decides whether this
+                // press starts drag or is part of Stage 1 selection.
+                DragStartRequested?.Invoke();
+                return true;
+            case Key.D:
+                // Consume modified D so it cannot become a Stage 1 column key.
                 return true;
             default:
                 if (key >= Key.A && key <= Key.Z)

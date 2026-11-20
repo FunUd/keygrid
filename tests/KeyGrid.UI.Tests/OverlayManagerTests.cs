@@ -812,6 +812,170 @@ public class OverlayManagerTests
     }
 
     [Fact]
+    public void Stage1_DRemainsAColumnKeyAndDoesNotStartDrag()
+    {
+        UiTestThread.Run(() =>
+        {
+            var factory = new FakeOverlayFactory();
+            var manager = CreateManager(
+                SingleMonitorProvider(),
+                factory,
+                new FakeWindowFocusService(),
+                new FakeClickSender());
+            manager.ShowOverlays();
+            UiTestThread.DrainDispatcher();
+            var primary = Assert.Single(factory.Windows);
+
+            primary.RaiseDragStart();
+
+            Assert.False(manager.HasDragSelection);
+            Assert.Equal(1, manager.SelectionManager.CurrentStage);
+            Assert.Single(manager.SelectionManager.History);
+            Assert.Equal('D', manager.SelectionManager.History[0]);
+        });
+    }
+
+    [Fact]
+    public void DragStart_SetsAnchorAndEscClearsItBeforeExiting()
+    {
+        UiTestThread.Run(() =>
+        {
+            var factory = new FakeOverlayFactory();
+            var manager = CreateManager(
+                SingleMonitorProvider(),
+                factory,
+                new FakeWindowFocusService(),
+                new FakeClickSender());
+            manager.ShowOverlays();
+            UiTestThread.DrainDispatcher();
+            var primary = Assert.Single(factory.Windows);
+
+            primary.RaiseKey(manager.SelectionManager.ColumnKeys[0]);
+            primary.RaiseKey(manager.SelectionManager.RowKeys[0]);
+            Assert.True(manager.SelectionManager.TryGetStage2Target(out var expectedStart));
+
+            primary.RaiseDragStart();
+
+            Assert.True(manager.HasDragSelection);
+            Assert.Equal(expectedStart, primary.LastDragStartPoint);
+
+            primary.RaiseCancel();
+            Assert.False(manager.HasDragSelection);
+            Assert.True(manager.IsActive);
+
+            primary.RaiseCancel();
+            Assert.False(manager.IsActive);
+        });
+    }
+
+    [Fact]
+    public void DragExecution_DispatchesStartAndEndAndClosesOverlays()
+    {
+        UiTestThread.Run(() =>
+        {
+            var factory = new FakeOverlayFactory();
+            var focus = new FakeWindowFocusService { ForegroundWindow = new nint(71) };
+            var clickSender = new FakeClickSender();
+            var manager = CreateManager(SingleMonitorProvider(), factory, focus, clickSender);
+            manager.ShowOverlays();
+            UiTestThread.DrainDispatcher();
+            var primary = Assert.Single(factory.Windows);
+
+            primary.RaiseKey(manager.SelectionManager.ColumnKeys[0]);
+            primary.RaiseKey(manager.SelectionManager.RowKeys[0]);
+            Assert.True(manager.SelectionManager.TryGetStage2Target(out var expectedStart));
+            primary.RaiseDragStart();
+            primary.RaiseMove(1, 0);
+            Assert.True(manager.SelectionManager.TryGetStage2Target(out var expectedEnd));
+
+            focus.WindowAtPointResults.Enqueue(new nint(0x500));
+            focus.WindowAtPointResults.Enqueue(new nint(0x600));
+            focus.WindowAtPointResults.Enqueue(new nint(0x500));
+            focus.WindowAtPointResults.Enqueue(new nint(0x600));
+            clickSender.AreAllOverlaysHidden = () => primary.HideForInputCount > 0;
+
+            primary.RaiseConfirm(ClickKind.Left);
+
+            Assert.Equal(1, clickSender.DragCallCount);
+            Assert.Equal(expectedStart, clickSender.LastDragStart);
+            Assert.Equal(expectedEnd, clickSender.LastDragEnd);
+            Assert.True(clickSender.DragOverlaysWereHidden);
+            Assert.False(manager.HasDragSelection);
+            Assert.False(manager.IsActive);
+        });
+    }
+
+    [Fact]
+    public void DragExecution_InContinuousMode_ReopensStage1AfterSuccess()
+    {
+        UiTestThread.Run(() =>
+        {
+            var factory = new FakeOverlayFactory();
+            var focus = new FakeWindowFocusService { ForegroundWindow = new nint(71) };
+            var clickSender = new FakeClickSender();
+            var manager = CreateManager(SingleMonitorProvider(), factory, focus, clickSender);
+            manager.ShowOverlays();
+            UiTestThread.DrainDispatcher();
+            var primary = Assert.Single(factory.Windows);
+
+            primary.RaiseContinuousModeToggle();
+            primary.RaiseKey(manager.SelectionManager.ColumnKeys[0]);
+            primary.RaiseKey(manager.SelectionManager.RowKeys[0]);
+            primary.RaiseDragStart();
+
+            focus.WindowAtPointResults.Enqueue(new nint(0x500));
+            focus.WindowAtPointResults.Enqueue(new nint(0x600));
+            focus.WindowAtPointResults.Enqueue(new nint(0x500));
+            focus.WindowAtPointResults.Enqueue(new nint(0x600));
+
+            primary.RaiseConfirm(ClickKind.Left);
+
+            Assert.Equal(1, clickSender.DragCallCount);
+            Assert.True(manager.IsActive);
+            Assert.True(manager.IsContinuousMode);
+            Assert.Equal(SelectionState.Selecting, manager.SelectionManager.State);
+            Assert.Equal(1, manager.SelectionManager.CurrentStage);
+            Assert.False(manager.HasDragSelection);
+        });
+    }
+
+    [Fact]
+    public void DragExecution_WhenSendFails_RestoresStage2AndReportsError()
+    {
+        UiTestThread.Run(() =>
+        {
+            var factory = new FakeOverlayFactory();
+            var focus = new FakeWindowFocusService { ForegroundWindow = new nint(71) };
+            var clickSender = new FakeClickSender { ReturnResult = false };
+            var manager = CreateManager(SingleMonitorProvider(), factory, focus, clickSender);
+            manager.ShowOverlays();
+            UiTestThread.DrainDispatcher();
+            var primary = Assert.Single(factory.Windows);
+
+            primary.RaiseKey(manager.SelectionManager.ColumnKeys[0]);
+            primary.RaiseKey(manager.SelectionManager.RowKeys[0]);
+            primary.RaiseDragStart();
+            primary.RaiseMove(1, 0);
+
+            focus.WindowAtPointResults.Enqueue(new nint(0x500));
+            focus.WindowAtPointResults.Enqueue(new nint(0x600));
+            focus.WindowAtPointResults.Enqueue(new nint(0x500));
+            focus.WindowAtPointResults.Enqueue(new nint(0x600));
+
+            string? error = null;
+            manager.ErrorOccurred += message => error = message;
+            primary.RaiseConfirm(ClickKind.Left);
+
+            Assert.Equal(1, clickSender.DragCallCount);
+            Assert.True(manager.IsActive);
+            Assert.False(manager.HasDragSelection);
+            Assert.Equal(SelectionState.Selecting, manager.SelectionManager.State);
+            Assert.Equal(2, manager.SelectionManager.CurrentStage);
+            Assert.Contains("Failed to dispatch drag", error);
+        });
+    }
+
+    [Fact]
     public void RangeStart_SetsAnchorAndEscClearsItBeforeExiting()
     {
         UiTestThread.Run(() =>
@@ -1292,6 +1456,7 @@ public class OverlayManagerTests
         public bool IsActive => Manager.IsActive;
         public bool IsContinuousMode => Manager.IsContinuousMode;
         public bool HasRangeSelection => Manager.HasRangeSelection;
+        public bool HasDragSelection => Manager.HasDragSelection;
         public bool IsScrollMode => Manager.IsScrollMode;
 
         public event Action<string>? ErrorOccurred
@@ -1374,6 +1539,7 @@ public class OverlayManagerTests
         public event Action? CancelRequested;
         public event Action? ContinuousModeToggleRequested;
         public event Action? RangeStartRequested;
+        public event Action? DragStartRequested;
         public event Action<int>? PageScrollRequested;
         public event Action? FocusLost;
         public event Action? DisplayConfigurationChanged;
@@ -1385,6 +1551,7 @@ public class OverlayManagerTests
         public bool LastContinuousMode { get; private set; }
         public PixelPoint? LastRangeStartPoint { get; private set; }
         public bool LastScrollMode { get; private set; }
+        public PixelPoint? LastDragStartPoint { get; private set; }
         public int ShowCount { get; private set; }
         public int CloseCount { get; private set; }
         public int RenderUpdateCount { get; private set; }
@@ -1416,12 +1583,14 @@ public class OverlayManagerTests
             IReadOnlyList<PixelRect> monitorRects,
             bool isContinuousMode,
             PixelPoint? rangeStartPoint = null,
-            bool isScrollMode = false)
+            bool isScrollMode = false,
+            PixelPoint? dragStartPoint = null)
         {
             Assert.NotEqual(SelectionState.Standby, selectionManager.State);
             Assert.Contains(monitorRect, monitorRects);
             LastContinuousMode = isContinuousMode;
             LastRangeStartPoint = rangeStartPoint;
+            LastDragStartPoint = dragStartPoint;
             LastScrollMode = isScrollMode;
             RenderUpdateCount++;
         }
@@ -1451,6 +1620,8 @@ public class OverlayManagerTests
         public void RaiseContinuousModeToggle() => ContinuousModeToggleRequested?.Invoke();
 
         public void RaiseRangeStart() => RangeStartRequested?.Invoke();
+
+        public void RaiseDragStart() => DragStartRequested?.Invoke();
 
         public void RaisePageScroll(int direction) => PageScrollRequested?.Invoke(direction);
 
@@ -1543,6 +1714,10 @@ public class OverlayManagerTests
         public PixelPoint? LastRangeStart { get; private set; }
         public PixelPoint? LastRangeEnd { get; private set; }
         public bool RangeOverlaysWereHidden { get; private set; }
+        public int DragCallCount { get; private set; }
+        public PixelPoint? LastDragStart { get; private set; }
+        public PixelPoint? LastDragEnd { get; private set; }
+        public bool DragOverlaysWereHidden { get; private set; }
         public Func<bool>? AreAllOverlaysHidden { get; set; }
         public int ScrollCallCount { get; private set; }
         public PixelPoint? LastScrollTarget { get; private set; }
@@ -1568,6 +1743,16 @@ public class OverlayManagerTests
             LastRangeEnd = end;
             LastVirtualScreen = virtualScreen;
             RangeOverlaysWereHidden = AreAllOverlaysHidden?.Invoke() ?? false;
+            return ReturnResult;
+        }
+
+        public bool SendDrag(PixelPoint start, PixelPoint end, PixelRect virtualScreen)
+        {
+            DragCallCount++;
+            LastDragStart = start;
+            LastDragEnd = end;
+            LastVirtualScreen = virtualScreen;
+            DragOverlaysWereHidden = AreAllOverlaysHidden?.Invoke() ?? false;
             return ReturnResult;
         }
 

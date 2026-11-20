@@ -70,6 +70,26 @@ public class ClickExecutor
     }
 
     /// <summary>
+    /// Executes a two-point drag with the same hide/render synchronization used for clicks.
+    /// </summary>
+    public bool ExecuteDrag(
+        PixelPoint start,
+        PixelPoint end,
+        PixelRect virtualScreen,
+        Action hideOverlaysAction,
+        Func<bool>? prepareClickAction = null)
+    {
+        hideOverlaysAction();
+
+        if (prepareClickAction != null && !prepareClickAction())
+        {
+            return false;
+        }
+
+        return _clickSender.SendDrag(start, end, virtualScreen);
+    }
+
+    /// <summary>
     /// Executes wheel input at a target with the same hide/render synchronization
     /// used for clicks. Scroll mode uses this so the overlay cannot absorb the wheel event.
     /// </summary>

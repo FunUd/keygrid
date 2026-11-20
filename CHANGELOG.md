@@ -4,6 +4,7 @@
 
 ### Changed
 
+- Add cross-window drag-and-drop: in Stage 2, press `D`, move to the drop target, and press `Enter`.
 - Target Stage 1 cells at approximately 128 DIP using a deterministic division search within the 26-key budget, and use the foreground monitor's DPI for sizing with primary/first-monitor fallbacks.
 - Use a fixed 25×25 Stage 2 window with 24 DIP cells (600 DIP total). Keep the selected Stage 1 cell as the visual focus while the surrounding context provides nearby correction; the fixed click cell no longer scales with Stage 1.
 - Keep all monitors covered and use the virtual desktop bounds for click, range, and scroll coordinate normalization, including layouts with negative monitor origins.
