@@ -9,65 +9,71 @@ namespace KeyGrid.Core.Calculation;
 public static class GridCalculator
 {
     public const int MaxDivisions = 26;
+    public const double Stage1CellTargetDip = 128.0;
+    public const double Stage2CellDip = 24.0;
+    public const int Stage2ColumnCount = 25;
+    public const int Stage2RowCount = 25;
+    public const double Stage2WindowDip = Stage2ColumnCount * Stage2CellDip; // 600.0 DIP
 
     /// <summary>
-    /// Chooses the Stage 1 divisions that minimize the final cell size after dividing
-    /// each cell by the Stage 2 focus grid, while keeping the Stage 1 key allocation
-    /// within its 26-key budget. The focus dimensions, not the full context window,
-    /// determine the Stage 2 cell size.
+    /// Chooses the Stage 1 divisions that keep the physical cell size close to
+    /// <paramref name="targetCellPx"/> while keeping the total key count (Columns + Rows)
+    /// within the 26-key budget.
     /// </summary>
     public static (int Columns, int Rows) CalculateFirstStageDivisions(
-        int width,
-        int height,
-        int stage2Columns,
-        int stage2Rows)
+        int widthPx,
+        int heightPx,
+        int targetCellPx)
     {
-        if (width <= 0)
+        if (widthPx <= 0)
         {
-            throw new ArgumentOutOfRangeException(nameof(width));
+            throw new ArgumentOutOfRangeException(nameof(widthPx));
         }
 
-        if (height <= 0)
+        if (heightPx <= 0)
         {
-            throw new ArgumentOutOfRangeException(nameof(height));
+            throw new ArgumentOutOfRangeException(nameof(heightPx));
         }
 
-        if (stage2Columns <= 0)
+        if (targetCellPx <= 0)
         {
-            throw new ArgumentOutOfRangeException(nameof(stage2Columns));
-        }
-
-        if (stage2Rows <= 0)
-        {
-            throw new ArgumentOutOfRangeException(nameof(stage2Rows));
+            throw new ArgumentOutOfRangeException(nameof(targetCellPx));
         }
 
         int bestColumns = 1;
         int bestRows = 1;
-        int bestWorstFinalSize = int.MaxValue;
-        long bestCellCount = long.MaxValue;
+        int bestMaxDeviation = int.MaxValue;
+        int bestTotalDeviation = int.MaxValue;
         int bestKeyCount = int.MaxValue;
+        long bestCellCount = -1;
 
         for (int columns = 1; columns < MaxDivisions; columns++)
         {
             for (int rows = 1; columns + rows <= MaxDivisions; rows++)
             {
-                int finalWidth = DivideCeiling(DivideCeiling(width, columns), stage2Columns);
-                int finalHeight = DivideCeiling(DivideCeiling(height, rows), stage2Rows);
-                int worstFinalSize = Math.Max(finalWidth, finalHeight);
-                long cellCount = (long)columns * rows;
-                int keyCount = columns + rows;
+                int cellWidthPx = DivideCeiling(widthPx, columns);
+                int cellHeightPx = DivideCeiling(heightPx, rows);
 
-                bool isBetter = worstFinalSize < bestWorstFinalSize
-                    || (worstFinalSize == bestWorstFinalSize && cellCount > bestCellCount)
-                    || (worstFinalSize == bestWorstFinalSize && cellCount == bestCellCount && keyCount < bestKeyCount)
-                    || (worstFinalSize == bestWorstFinalSize && cellCount == bestCellCount && keyCount == bestKeyCount && columns < bestColumns);
+                int devWidth = Math.Abs(cellWidthPx - targetCellPx);
+                int devHeight = Math.Abs(cellHeightPx - targetCellPx);
+
+                int maxDeviation = Math.Max(devWidth, devHeight);
+                int totalDeviation = devWidth + devHeight;
+                int keyCount = columns + rows;
+                long cellCount = (long)columns * rows;
+
+                bool isBetter = maxDeviation < bestMaxDeviation
+                    || (maxDeviation == bestMaxDeviation && totalDeviation < bestTotalDeviation)
+                    || (maxDeviation == bestMaxDeviation && totalDeviation == bestTotalDeviation && keyCount < bestKeyCount)
+                    || (maxDeviation == bestMaxDeviation && totalDeviation == bestTotalDeviation && keyCount == bestKeyCount && cellCount > bestCellCount)
+                    || (maxDeviation == bestMaxDeviation && totalDeviation == bestTotalDeviation && keyCount == bestKeyCount && cellCount == bestCellCount && columns < bestColumns);
 
                 if (isBetter)
                 {
-                    bestWorstFinalSize = worstFinalSize;
-                    bestCellCount = cellCount;
+                    bestMaxDeviation = maxDeviation;
+                    bestTotalDeviation = totalDeviation;
                     bestKeyCount = keyCount;
+                    bestCellCount = cellCount;
                     bestColumns = columns;
                     bestRows = rows;
                 }
@@ -109,80 +115,48 @@ public static class GridCalculator
     }
 
     /// <summary>
-    /// Calculates the Stage 2 context window centered on the Stage 1 focus box.
-    /// The window contains <paramref name="contextColumns"/> x <paramref name="contextRows"/>
-    /// cells, and its central <paramref name="focusColumns"/> x <paramref name="focusRows"/>
-    /// cells exactly match the focus box. The context scale must be an odd multiple of
-    /// the focus count so both sides receive the same number of context cells.
+    /// Calculates the Stage 2 window centered on the Stage 1 focus box reference point.
+    /// The window is <paramref name="columnCount"/> x <paramref name="rowCount"/> cells,
+    /// each of exact size <paramref name="cellSizePx"/> physical pixels.
     /// </summary>
-    public static PixelRect CalculateCenteredContextWindow(
+    public static PixelRect CalculateCenteredStage2Window(
         PixelRect focusBox,
-        int contextColumns,
-        int contextRows,
-        int focusColumns,
-        int focusRows)
+        int cellSizePx,
+        int columnCount,
+        int rowCount)
     {
         if (focusBox.IsEmpty)
         {
             throw new ArgumentException("Focus box must not be empty.", nameof(focusBox));
         }
 
-        if (contextColumns <= 0)
+        if (cellSizePx <= 0)
         {
-            throw new ArgumentOutOfRangeException(nameof(contextColumns));
+            throw new ArgumentOutOfRangeException(nameof(cellSizePx), "Cell size must be positive.");
         }
 
-        if (contextRows <= 0)
+        if (columnCount <= 0)
         {
-            throw new ArgumentOutOfRangeException(nameof(contextRows));
+            throw new ArgumentOutOfRangeException(nameof(columnCount), "Column count must be positive.");
         }
 
-        if (focusColumns <= 0 || focusColumns > contextColumns)
+        if (rowCount <= 0)
         {
-            throw new ArgumentOutOfRangeException(nameof(focusColumns));
+            throw new ArgumentOutOfRangeException(nameof(rowCount), "Row count must be positive.");
         }
 
-        if (focusRows <= 0 || focusRows > contextRows)
-        {
-            throw new ArgumentOutOfRangeException(nameof(focusRows));
-        }
+        var refPoint = CalculateReferencePoint(focusBox);
+        long windowWidthPx = (long)columnCount * cellSizePx;
+        long windowHeightPx = (long)rowCount * cellSizePx;
 
-        if (contextColumns % focusColumns != 0)
-        {
-            throw new ArgumentException(
-                "Context column count must be an integer multiple of the focus column count.",
-                nameof(contextColumns));
-        }
-
-        if (contextRows % focusRows != 0)
-        {
-            throw new ArgumentException(
-                "Context row count must be an integer multiple of the focus row count.",
-                nameof(contextRows));
-        }
-
-        int scaleColumns = contextColumns / focusColumns;
-        int scaleRows = contextRows / focusRows;
-        if (scaleColumns % 2 == 0 || scaleRows % 2 == 0)
-        {
-            throw new ArgumentException(
-                "Context scale must be odd so the focus cells remain exactly centered.",
-                nameof(contextColumns));
-        }
-
-        int marginColumns = (contextColumns - focusColumns) / 2;
-        int marginRows = (contextRows - focusRows) / 2;
-
-        long left = (long)focusBox.Left - ((long)marginColumns * focusBox.Width / focusColumns);
-        long top = (long)focusBox.Top - ((long)marginRows * focusBox.Height / focusRows);
-        long width = (long)scaleColumns * focusBox.Width;
-        long height = (long)scaleRows * focusBox.Height;
+        long left = (long)refPoint.X - windowWidthPx / 2;
+        long top = (long)refPoint.Y - windowHeightPx / 2;
 
         return PixelRect.FromEdges(
             checked((int)left),
             checked((int)top),
-            checked((int)(left + width)),
-            checked((int)(top + height)));
+            checked((int)(left + windowWidthPx)),
+            checked((int)(top + windowHeightPx)));
     }
 
     /// <summary>

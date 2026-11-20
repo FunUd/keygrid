@@ -59,6 +59,40 @@ public class Win32MonitorProvider : IMonitorProvider
         return monitors;
     }
 
+    public MonitorInfo? GetMonitorForWindow(nint windowHandle)
+    {
+        if (windowHandle == nint.Zero)
+        {
+            return null;
+        }
+
+        nint hMonitor = NativeMethods.MonitorFromWindow(windowHandle, NativeMethods.MONITOR_DEFAULTTONEAREST);
+        if (hMonitor == nint.Zero)
+        {
+            return null;
+        }
+
+        var mi = new NativeMethods.MONITORINFO();
+        mi.cbSize = Marshal.SizeOf<NativeMethods.MONITORINFO>();
+        if (!NativeMethods.GetMonitorInfo(hMonitor, ref mi))
+        {
+            return null;
+        }
+
+        int left = mi.rcMonitor.Left;
+        int top = mi.rcMonitor.Top;
+        int width = mi.rcMonitor.Right - mi.rcMonitor.Left;
+        int height = mi.rcMonitor.Bottom - mi.rcMonitor.Top;
+        if (width <= 0 || height <= 0)
+        {
+            return null;
+        }
+
+        bool isPrimary = (mi.dwFlags & NativeMethods.MONITORINFOF_PRIMARY) != 0;
+        double dpiScale = GetDpiScale(hMonitor, left, top);
+        return new MonitorInfo(new PixelRect(left, top, width, height), dpiScale, isPrimary);
+    }
+
     private static double GetDpiScale(nint hMonitor, int left, int top)
     {
         int hResult = NativeMethods.GetDpiForMonitor(

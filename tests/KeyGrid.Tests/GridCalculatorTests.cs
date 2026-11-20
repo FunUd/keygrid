@@ -7,23 +7,33 @@ namespace KeyGrid.Tests;
 public class GridCalculatorTests
 {
     [Theory]
-    [InlineData(1920, 1080, 5, 5, 16, 10)]
-    [InlineData(3840, 2160, 5, 5, 16, 10)]
-    [InlineData(7680, 2160, 5, 5, 20, 6)]
-    [InlineData(7680, 4320, 5, 5, 16, 10)]
-    public void CalculateFirstStageDivisions_MinimizesFinalCellWithinKeyBudget(
+    [InlineData(1920, 1080, 128, 15, 8)]
+    [InlineData(1920, 1080, 160, 12, 7)]
+    [InlineData(1920, 1080, 192, 10, 6)]
+    [InlineData(1920, 1080, 224, 9, 5)]
+    [InlineData(1920, 1080, 256, 8, 4)]
+    [InlineData(2560, 1440, 128, 16, 10)]
+    [InlineData(2560, 1440, 192, 13, 8)]
+    [InlineData(3840, 2160, 128, 16, 10)]
+    [InlineData(3840, 2160, 192, 16, 10)]
+    [InlineData(3840, 2160, 256, 15, 8)]
+    [InlineData(5120, 1440, 128, 20, 6)]
+    [InlineData(5120, 2880, 128, 16, 10)]
+    [InlineData(7680, 2160, 128, 20, 6)]
+    [InlineData(7680, 4320, 128, 16, 10)]
+    [InlineData(1080, 1920, 128, 8, 15)]
+    [InlineData(2160, 3840, 128, 10, 16)]
+    public void CalculateFirstStageDivisions_RepresentativeResolutions_MatchPlanTable(
         int width,
         int height,
-        int stage2Columns,
-        int stage2Rows,
+        int targetCellPx,
         int expectedColumns,
         int expectedRows)
     {
         var (columns, rows) = GridCalculator.CalculateFirstStageDivisions(
             width,
             height,
-            stage2Columns,
-            stage2Rows);
+            targetCellPx);
 
         Assert.Equal(expectedColumns, columns);
         Assert.Equal(expectedRows, rows);
@@ -31,39 +41,47 @@ public class GridCalculatorTests
     }
 
     [Theory]
-    [InlineData(0, 1080, 5, 5)]
-    [InlineData(1920, 0, 5, 5)]
-    [InlineData(1920, 1080, 0, 5)]
-    [InlineData(1920, 1080, 5, 0)]
+    [InlineData(0, 1080, 256)]
+    [InlineData(1920, 0, 256)]
+    [InlineData(1920, 1080, 0)]
+    [InlineData(-1, 1080, 256)]
+    [InlineData(1920, -1, 256)]
+    [InlineData(1920, 1080, -1)]
     public void CalculateFirstStageDivisions_InvalidDimensions_Throws(
         int width,
         int height,
-        int stage2Columns,
-        int stage2Rows)
+        int targetCellPx)
     {
         Assert.Throws<ArgumentOutOfRangeException>(
-            () => GridCalculator.CalculateFirstStageDivisions(width, height, stage2Columns, stage2Rows));
+            () => GridCalculator.CalculateFirstStageDivisions(width, height, targetCellPx));
+    }
+
+    [Fact]
+    public void CalculateFirstStageDivisions_BeatsSimpleCeilingFormulaOn1080p()
+    {
+        // Simple ceiling formula: ceil(1920/128)=15, ceil(1080/128)=9 => cells 128x120, max deviation 8px.
+        // Target search chooses 15x8 => cells 128x135, max deviation 7px.
+        var (cols, rows) = GridCalculator.CalculateFirstStageDivisions(1920, 1080, 128);
+        Assert.Equal(15, cols);
+        Assert.Equal(8, rows);
     }
 
     [Theory]
-    [InlineData(1920, 1080)]
-    [InlineData(1080, 1920)]
-    [InlineData(7680, 2160)]
-    [InlineData(1, 1)]
-    [InlineData(int.MaxValue, 16384)]
+    [InlineData(1920, 1080, 256)]
+    [InlineData(1080, 1920, 256)]
+    [InlineData(7680, 2160, 256)]
+    [InlineData(1, 1, 256)]
+    [InlineData(int.MaxValue, 16384, 256)]
     public void CalculateFirstStageDivisions_MatchesBestCandidateFromKeyBudget(
         int width,
-        int height)
+        int height,
+        int targetCellPx)
     {
-        const int stage2Columns = 5;
-        const int stage2Rows = 5;
-
         var actual = GridCalculator.CalculateFirstStageDivisions(
             width,
             height,
-            stage2Columns,
-            stage2Rows);
-        var expected = FindBestCandidate(width, height, stage2Columns, stage2Rows);
+            targetCellPx);
+        var expected = FindBestCandidate(width, height, targetCellPx);
 
         Assert.Equal(expected, actual);
         Assert.True(actual.Columns + actual.Rows <= GridCalculator.MaxDivisions);
@@ -136,61 +154,56 @@ public class GridCalculatorTests
             () => GridCalculator.CalculateBoundaries(0, 100, count));
     }
 
-    [Fact]
-    public void CalculateCenteredContextWindow_ExpandsFocusByTenCellsOnEachSide()
-    {
-        var focusBox = new PixelRect(0, 0, 120, 108);
-
-        var window = GridCalculator.CalculateCenteredContextWindow(
-            focusBox,
-            contextColumns: 25,
-            contextRows: 25,
-            focusColumns: 5,
-            focusRows: 5);
-
-        Assert.Equal(new PixelRect(-240, -216, 600, 540), window);
-    }
-
     [Theory]
-    [InlineData(0, 0, 120, 108)]
-    [InlineData(-337, 205, 121, 107)]
-    [InlineData(1920, 1080, 33, 25)]
-    public void CalculateCenteredContextWindow_CentralCellsMatchFocusGrid(
+    [InlineData(0, 0, 240, 270, 24, 25, 25)]
+    [InlineData(100, 200, 256, 256, 24, 25, 25)]
+    [InlineData(-500, -300, 320, 288, 30, 25, 25)]
+    public void CalculateCenteredStage2Window_DimensionsAndCenteringAreExact(
         int left,
         int top,
         int width,
-        int height)
+        int height,
+        int cellSizePx,
+        int columnCount,
+        int rowCount)
     {
         var focusBox = new PixelRect(left, top, width, height);
-        var window = GridCalculator.CalculateCenteredContextWindow(
+        var window = GridCalculator.CalculateCenteredStage2Window(
             focusBox,
-            contextColumns: 25,
-            contextRows: 25,
-            focusColumns: 5,
-            focusRows: 5);
+            cellSizePx,
+            columnCount,
+            rowCount);
 
-        var contextX = GridCalculator.CalculateBoundaries(window.Left, window.Width, 25);
-        var contextY = GridCalculator.CalculateBoundaries(window.Top, window.Height, 25);
-        var focusX = GridCalculator.CalculateBoundaries(focusBox.Left, focusBox.Width, 5);
-        var focusY = GridCalculator.CalculateBoundaries(focusBox.Top, focusBox.Height, 5);
+        Assert.Equal(columnCount * cellSizePx, window.Width);
+        Assert.Equal(rowCount * cellSizePx, window.Height);
 
-        Assert.Equal(focusX, contextX.Skip(10).Take(6).ToArray());
-        Assert.Equal(focusY, contextY.Skip(10).Take(6).ToArray());
+        // Center cell contains the reference point of focusBox
+        var refPoint = GridCalculator.CalculateReferencePoint(focusBox);
+        int centerCol = columnCount / 2;
+        int centerRow = rowCount / 2;
+
+        int centerCellLeft = window.Left + centerCol * cellSizePx;
+        int centerCellRight = centerCellLeft + cellSizePx;
+        int centerCellTop = window.Top + centerRow * cellSizePx;
+        int centerCellBottom = centerCellTop + cellSizePx;
+
+        Assert.InRange(refPoint.X, centerCellLeft, centerCellRight - 1);
+        Assert.InRange(refPoint.Y, centerCellTop, centerCellBottom - 1);
     }
 
     [Fact]
-    public void CalculateCenteredContextWindow_InvalidConfiguration_Throws()
+    public void CalculateCenteredStage2Window_InvalidConfiguration_Throws()
     {
         var focusBox = new PixelRect(0, 0, 10, 10);
 
         Assert.Throws<ArgumentException>(
-            () => GridCalculator.CalculateCenteredContextWindow(PixelRect.Empty, 25, 25, 5, 5));
+            () => GridCalculator.CalculateCenteredStage2Window(PixelRect.Empty, 24, 25, 25));
         Assert.Throws<ArgumentOutOfRangeException>(
-            () => GridCalculator.CalculateCenteredContextWindow(focusBox, 0, 25, 5, 5));
-        Assert.Throws<ArgumentException>(
-            () => GridCalculator.CalculateCenteredContextWindow(focusBox, 20, 25, 5, 5));
-        Assert.Throws<ArgumentException>(
-            () => GridCalculator.CalculateCenteredContextWindow(focusBox, 25, 25, 3, 5));
+            () => GridCalculator.CalculateCenteredStage2Window(focusBox, 0, 25, 25));
+        Assert.Throws<ArgumentOutOfRangeException>(
+            () => GridCalculator.CalculateCenteredStage2Window(focusBox, 24, 0, 25));
+        Assert.Throws<ArgumentOutOfRangeException>(
+            () => GridCalculator.CalculateCenteredStage2Window(focusBox, 24, 25, 0));
     }
 
     [Theory]
@@ -315,27 +328,30 @@ public class GridCalculatorTests
     private static (int Columns, int Rows) FindBestCandidate(
         int width,
         int height,
-        int stage2Columns,
-        int stage2Rows)
+        int targetCellPx)
     {
         var candidates =
             from columns in Enumerable.Range(1, GridCalculator.MaxDivisions - 1)
             from rows in Enumerable.Range(1, GridCalculator.MaxDivisions - columns)
-            let finalWidth = DivideCeiling(DivideCeiling(width, columns), stage2Columns)
-            let finalHeight = DivideCeiling(DivideCeiling(height, rows), stage2Rows)
+            let cellWidth = DivideCeiling(width, columns)
+            let cellHeight = DivideCeiling(height, rows)
+            let devWidth = Math.Abs(cellWidth - targetCellPx)
+            let devHeight = Math.Abs(cellHeight - targetCellPx)
             select new
             {
                 Columns = columns,
                 Rows = rows,
-                WorstFinalSize = Math.Max(finalWidth, finalHeight),
-                CellCount = (long)columns * rows,
-                KeyCount = columns + rows
+                MaxDeviation = Math.Max(devWidth, devHeight),
+                TotalDeviation = devWidth + devHeight,
+                KeyCount = columns + rows,
+                CellCount = (long)columns * rows
             };
 
         var best = candidates
-            .OrderBy(candidate => candidate.WorstFinalSize)
-            .ThenByDescending(candidate => candidate.CellCount)
+            .OrderBy(candidate => candidate.MaxDeviation)
+            .ThenBy(candidate => candidate.TotalDeviation)
             .ThenBy(candidate => candidate.KeyCount)
+            .ThenByDescending(candidate => candidate.CellCount)
             .ThenBy(candidate => candidate.Columns)
             .First();
 

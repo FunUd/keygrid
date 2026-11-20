@@ -9,15 +9,11 @@ namespace KeyGrid.Core.Selection;
 /// </summary>
 public class SelectionManager
 {
-    // Stage 2 keeps the Stage 1 cell divided into a central 5x5 focus area and
-    // surrounds it with ten context cells on each side. The context cells reuse
-    // the same pixel size, so the window spans five Stage 1 cells.
-    public const int Stage2FocusColumnCount = 5;
-    public const int Stage2FocusRowCount = 5;
-    public const int Stage2ColumnCount = 25;
-    public const int Stage2RowCount = 25;
-    public const int Stage2MarginColumns = (Stage2ColumnCount - Stage2FocusColumnCount) / 2;
-    public const int Stage2MarginRows = (Stage2RowCount - Stage2FocusRowCount) / 2;
+    public const double Stage1CellTargetDip = GridCalculator.Stage1CellTargetDip;
+    public const double Stage2CellDip = GridCalculator.Stage2CellDip;
+    public const int Stage2ColumnCount = GridCalculator.Stage2ColumnCount;
+    public const int Stage2RowCount = GridCalculator.Stage2RowCount;
+    public const double Stage2WindowDip = GridCalculator.Stage2WindowDip;
 
     private readonly List<PixelRect> _initialMonitors = new();
     private readonly List<char> _history = new();
@@ -51,6 +47,8 @@ public class SelectionManager
 
     public PixelRect VirtualScreenBoundingBox { get; private set; } = PixelRect.Empty;
 
+    public double DpiReferenceScale { get; private set; } = 1.0;
+
     public int ColumnCount { get; private set; } = 1;
 
     public int RowCount { get; private set; } = 1;
@@ -81,10 +79,11 @@ public class SelectionManager
     public int CurrentStage => State == SelectionState.Standby ? 0 : (_history.Count < 2 ? 1 : 2);
 
     /// <summary>
-    /// Initiates selection mode with the provided monitor display bounds.
+    /// Initiates selection mode with the provided monitor display bounds and DPI scale.
     /// </summary>
     /// <param name="monitorRects">Active monitor bounds in physical pixels.</param>
-    public bool StartSelection(IReadOnlyList<PixelRect> monitorRects)
+    /// <param name="dpiScale">Effective DPI scale of the active monitor.</param>
+    public bool StartSelection(IReadOnlyList<PixelRect> monitorRects, double dpiScale)
     {
         var validRects = monitorRects.Where(r => !r.IsEmpty).ToList();
         if (validRects.Count == 0)
@@ -95,6 +94,7 @@ public class SelectionManager
         _initialMonitors.Clear();
         _initialMonitors.AddRange(validRects);
         _history.Clear();
+        DpiReferenceScale = dpiScale > 0 ? dpiScale : 1.0;
         VirtualScreenBoundingBox = PixelRect.BoundingBox(_initialMonitors);
         CurrentSelection = _initialMonitors.ToList();
         CurrentBoundingBox = VirtualScreenBoundingBox;
@@ -109,15 +109,23 @@ public class SelectionManager
         return true;
     }
 
+    /// <summary>
+    /// Initiates selection mode with the provided monitor display bounds.
+    /// This overload is deprecated; use the overload that accepts dpiScale.
+    /// </summary>
+    [Obsolete("Use the overload that accepts dpiScale parameter.")]
+    public bool StartSelection(IReadOnlyList<PixelRect> monitorRects)
+    {
+        return StartSelection(monitorRects, 1.0);
+    }
+
     private void SetupStage1Divisions()
     {
-        // The Stage 1 optimizer must use the central focus size, not the full
-        // context window, so the Stage 2 cell pixel size stays unchanged.
+        int targetPx = Math.Max(1, (int)Math.Round(Stage1CellTargetDip * DpiReferenceScale));
         var (cols, rows) = GridCalculator.CalculateFirstStageDivisions(
             CurrentBoundingBox.Width,
             CurrentBoundingBox.Height,
-            Stage2FocusColumnCount,
-            Stage2FocusRowCount);
+            targetPx);
 
         ColumnCount = cols;
         RowCount = rows;
@@ -128,9 +136,8 @@ public class SelectionManager
     }
 
     /// <summary>
-    /// Stage 2 centers a fixed 25x25 context window on the Stage 1 selection.
-    /// The central 5x5 cells exactly match the Stage 1 cell, and the cursor
-    /// starts on the valid cell nearest the center.
+    /// Stage 2 centers a fixed 25x25 window of 24 DIP cells on the Stage 1 selection.
+    /// The cursor starts on the center cell (12, 12), or the valid cell nearest the center.
     /// </summary>
     private void SetupStage2Divisions()
     {
@@ -138,12 +145,12 @@ public class SelectionManager
         var focusBox = CurrentBoundingBox;
 
         FocusSelection = focusSelection;
-        Stage2Window = GridCalculator.CalculateCenteredContextWindow(
+        int cellSizePx = Math.Max(1, (int)Math.Round(Stage2CellDip * DpiReferenceScale));
+        Stage2Window = GridCalculator.CalculateCenteredStage2Window(
             focusBox,
+            cellSizePx,
             Stage2ColumnCount,
-            Stage2RowCount,
-            Stage2FocusColumnCount,
-            Stage2FocusRowCount);
+            Stage2RowCount);
 
         ColumnCount = Stage2ColumnCount;
         RowCount = Stage2RowCount;
@@ -160,20 +167,21 @@ public class SelectionManager
     {
         int centerColumn = ColumnCount / 2;
         int centerRow = RowCount / 2;
-        int focusLeft = Stage2MarginColumns;
-        int focusTop = Stage2MarginRows;
-        int focusRight = focusLeft + Stage2FocusColumnCount;
-        int focusBottom = focusTop + Stage2FocusRowCount;
+
+        if (GridCalculator.IsCellValid(centerColumn, centerRow, XBoundaries, YBoundaries, CurrentSelection))
+        {
+            SelectedColumnIndex = centerColumn;
+            SelectedRowIndex = centerRow;
+            return;
+        }
+
         int bestDistance = int.MaxValue;
         int bestColumn = -1;
         int bestRow = -1;
 
-        // Keep the initial cursor inside the central focus so an immediate Enter
-        // still clicks the Stage 1 selection. The context margin is for movement
-        // and correction after Stage 2 appears.
-        for (int row = focusTop; row < focusBottom; row++)
+        for (int row = 0; row < RowCount; row++)
         {
-            for (int column = focusLeft; column < focusRight; column++)
+            for (int column = 0; column < ColumnCount; column++)
             {
                 if (!GridCalculator.IsCellValid(column, row, XBoundaries, YBoundaries, CurrentSelection))
                 {
@@ -192,7 +200,7 @@ public class SelectionManager
 
         if (bestColumn < 0 || bestRow < 0)
         {
-            throw new InvalidOperationException("Stage 2 focus grid has no valid cell.");
+            throw new InvalidOperationException("Stage 2 window has no valid cell.");
         }
 
         SelectedColumnIndex = bestColumn;

@@ -27,11 +27,13 @@ public class OverlayManagerTests
             Assert.True(factory.Windows[1].IsPrimary);
             Assert.Equal(1.0, factory.Windows[0].DpiScale);
             Assert.Equal(1.5, factory.Windows[1].DpiScale);
+
             Assert.All(factory.Windows, window =>
             {
                 Assert.Equal(1, window.ShowCount);
                 Assert.Equal(1, window.RenderUpdateCount);
             });
+
             Assert.Equal(1, factory.Windows[1].TryReactivateCount);
             Assert.Equal(0, factory.Windows[0].TryReactivateCount);
             UiTestThread.DrainDispatcher();
@@ -41,6 +43,7 @@ public class OverlayManagerTests
                 Assert.Equal(1, window.RefreshExpectedDpiCount);
                 Assert.True(window.DpiNotificationsEnabled);
             });
+
             Assert.Equal(SelectionState.Selecting, manager.SelectionManager.State);
 
             manager.CloseOverlays();
@@ -90,6 +93,88 @@ public class OverlayManagerTests
             Assert.Equal("No active displays found.", error);
             Assert.False(manager.IsActive);
             Assert.Empty(factory.Windows);
+        });
+    }
+
+    [Fact]
+    public void Click_UsesVirtualDesktopBounds_NotActiveMonitorBounds()
+    {
+        UiTestThread.Run(() =>
+        {
+            var primaryMonitor = new MonitorInfo(new PixelRect(0, 0, 1920, 1080), 1.0, true);
+            var secondaryMonitor = new MonitorInfo(new PixelRect(-800, 0, 800, 600), 1.5, false);
+            var monitorProvider = new FakeMonitorProvider(primaryMonitor, secondaryMonitor);
+            var focusService = new FakeWindowFocusService { ForegroundWindow = nint.Zero };
+            var factory = new FakeOverlayFactory { FocusService = focusService };
+            var clickSender = new FakeClickSender();
+            clickSender.WasClickTargetActivated = () => focusService.ForegroundWindow == new nint(0x500);
+            clickSender.AreAllOverlaysClosed = () =>
+                factory.Windows.Count > 0 && factory.Windows.All(window => window.CloseCount > 0);
+
+            var manager = CreateManager(monitorProvider, factory, focusService, clickSender);
+            manager.ShowOverlays();
+            UiTestThread.DrainDispatcher();
+
+            // Select a cell (Stage 1: column A, row A -> Stage 2: move once)
+            Assert.Equal(2, factory.Windows.Count);
+            var primaryOverlay = factory.Windows.Single(w => w.IsPrimary);
+            primaryOverlay.RaiseKey(manager.SelectionManager.ColumnKeys[0]);
+            primaryOverlay.RaiseKey(manager.SelectionManager.RowKeys[0]);
+            Assert.Equal(2, manager.SelectionManager.CurrentStage);
+            primaryOverlay.RaiseMove(1, 0);
+
+            // Request click
+            primaryOverlay.RaiseConfirm(ClickKind.Left);
+
+            // Verify that the virtual screen used for normalization includes both monitors
+            Assert.True(clickSender.Called);
+            Assert.NotNull(clickSender.LastVirtualScreen);
+            var expectedVirtualScreen = new PixelRect(-800, 0, 2720, 1080);
+            Assert.Equal(expectedVirtualScreen, clickSender.LastVirtualScreen.Value);
+        });
+    }
+
+    [Fact]
+    public void ShowOverlays_ResolvesDpiReferenceMonitorFromForegroundWindow_WithFallbacks()
+    {
+        UiTestThread.Run(() =>
+        {
+            var primaryMonitor = new MonitorInfo(new PixelRect(0, 0, 1920, 1080), 1.0, true);
+            var secondaryMonitor = new MonitorInfo(new PixelRect(1920, 0, 3840, 2160), 1.5, false);
+            var monitorProvider = new FakeMonitorProvider(primaryMonitor, secondaryMonitor);
+            var foregroundHwnd = new nint(0x1234);
+            monitorProvider.SetMonitorForWindow(foregroundHwnd, secondaryMonitor);
+
+            var focusService = new FakeWindowFocusService { ForegroundWindow = foregroundHwnd };
+            var factory = new FakeOverlayFactory { FocusService = focusService };
+            var clickSender = new FakeClickSender();
+
+            var manager = CreateManager(monitorProvider, factory, focusService, clickSender);
+            manager.ShowOverlays();
+            UiTestThread.DrainDispatcher();
+
+            // When foreground window is on secondary monitor (1.5x DPI), selection manager receives 1.5
+            Assert.Equal(1.5, manager.SelectionManager.DpiReferenceScale);
+            manager.CloseOverlays();
+
+            // Now test fallback to primary when foreground window is null/unresolved
+            focusService.ForegroundWindow = nint.Zero;
+            manager.ShowOverlays();
+            UiTestThread.DrainDispatcher();
+
+            Assert.Equal(1.0, manager.SelectionManager.DpiReferenceScale);
+            manager.CloseOverlays();
+
+            // Now test fallback to first monitor when no primary monitor exists
+            var nonPrimary1 = new MonitorInfo(new PixelRect(0, 0, 1920, 1080), 1.25, false);
+            var nonPrimary2 = new MonitorInfo(new PixelRect(1920, 0, 1920, 1080), 2.0, false);
+            var noPrimaryProvider = new FakeMonitorProvider(nonPrimary1, nonPrimary2);
+            var managerNoPrimary = CreateManager(noPrimaryProvider, factory, focusService, clickSender);
+            managerNoPrimary.ShowOverlays();
+            UiTestThread.DrainDispatcher();
+
+            Assert.Equal(1.25, managerNoPrimary.SelectionManager.DpiReferenceScale);
+            managerNoPrimary.CloseOverlays();
         });
     }
 
@@ -1228,9 +1313,26 @@ public class OverlayManagerTests
 
     private sealed class FakeMonitorProvider(params MonitorInfo[] monitors) : IMonitorProvider
     {
+        private readonly Dictionary<nint, MonitorInfo> _windowToMonitor = new();
+
         public event Action? Changed;
 
         public IReadOnlyList<MonitorInfo> GetMonitors() => monitors;
+
+        public MonitorInfo? GetMonitorForWindow(nint windowHandle)
+        {
+            if (windowHandle == nint.Zero)
+            {
+                return null;
+            }
+
+            return _windowToMonitor.TryGetValue(windowHandle, out var monitor) ? monitor : null;
+        }
+
+        public void SetMonitorForWindow(nint windowHandle, MonitorInfo monitor)
+        {
+            _windowToMonitor[windowHandle] = monitor;
+        }
 
         public void RaiseChanged() => Changed?.Invoke();
     }
@@ -1276,6 +1378,7 @@ public class OverlayManagerTests
         public event Action? FocusLost;
         public event Action? DisplayConfigurationChanged;
 
+        public PixelRect MonitorRect { get; } = monitorRect;
         public bool IsPrimary { get; } = isPrimary;
         public double DpiScale { get; } = dpiScale;
         public nint Handle { get; } = handle;
@@ -1354,6 +1457,10 @@ public class OverlayManagerTests
         public void RaiseFocusLost() => FocusLost?.Invoke();
 
         public void RaiseDisplayConfigurationChanged() => DisplayConfigurationChanged?.Invoke();
+
+        public void SimulateKeyPress(char key) => RaiseKey(key);
+
+        public void SimulateConfirm(ClickKind clickKind) => RaiseConfirm(clickKind);
     }
 
     private sealed class FakeWindowFocusService : IWindowFocusService

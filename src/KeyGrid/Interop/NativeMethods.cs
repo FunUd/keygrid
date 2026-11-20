@@ -167,6 +167,10 @@ internal static class NativeMethods
     public const uint MONITORINFOF_PRIMARY = 0x00000001;
     public const int MDT_EFFECTIVE_DPI = 0;
 
+    public const uint MONITOR_DEFAULTTONULL = 0;
+    public const uint MONITOR_DEFAULTTOPRIMARY = 1;
+    public const uint MONITOR_DEFAULTTONEAREST = 2;
+
     [StructLayout(LayoutKind.Sequential)]
     public struct RECT
     {
@@ -192,6 +196,9 @@ internal static class NativeMethods
 
     [DllImport("user32.dll", CharSet = CharSet.Auto)]
     public static extern bool GetMonitorInfo(nint hMonitor, ref MONITORINFO lpmi);
+
+    [DllImport("user32.dll")]
+    public static extern nint MonitorFromWindow(nint hWnd, uint dwFlags);
 
     [DllImport("user32.dll")]
     public static extern int GetSystemMetrics(int nIndex);

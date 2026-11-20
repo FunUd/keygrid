@@ -228,18 +228,16 @@ public class OverlayRenderElement : FrameworkElement
                 }
             }
 
-            // The middle 5x5 cells match the Stage 1 selection exactly.
+            // Outline the selected Stage 1 cell in Stage 2
             if (_selectionManager.CurrentStage >= 2)
             {
-                var focusBox = PixelRect.FromEdges(
-                    _selectionManager.XBoundaries[SelectionManager.Stage2MarginColumns],
-                    _selectionManager.YBoundaries[SelectionManager.Stage2MarginRows],
-                    _selectionManager.XBoundaries[SelectionManager.Stage2MarginColumns + SelectionManager.Stage2FocusColumnCount],
-                    _selectionManager.YBoundaries[SelectionManager.Stage2MarginRows + SelectionManager.Stage2FocusRowCount]);
-                var focusIntersection = focusBox.Intersect(_monitorRect);
-                if (!focusIntersection.IsEmpty)
+                foreach (var focusRect in _selectionManager.FocusSelection)
                 {
-                    dc.DrawRectangle(null, _bboxPen, ToDipRect(focusIntersection, dpiX, dpiY));
+                    var focusIntersection = focusRect.Intersect(_monitorRect);
+                    if (!focusIntersection.IsEmpty)
+                    {
+                        dc.DrawRectangle(null, _bboxPen, ToDipRect(focusIntersection, dpiX, dpiY));
+                    }
                 }
             }
         }

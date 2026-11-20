@@ -29,6 +29,7 @@ public class OverlayManager
     private readonly List<IOverlayWindowSurface> _overlays = new();
     private readonly FocusLossPolicy _focusLossPolicy = new();
     private IReadOnlyList<PixelRect> _activeMonitorRects = Array.Empty<PixelRect>();
+    private PixelRect _virtualScreenBounds = PixelRect.Empty;
     private IOverlayWindowSurface? _primaryOverlay;
     private nint _originatingForegroundWindow;
     private int _isClosing;
@@ -133,16 +134,27 @@ public class OverlayManager
             return;
         }
 
-        int primaryIndex = monitors.FindIndex(m => m.IsPrimary);
-        if (primaryIndex < 0)
+        // Calculate virtual desktop bounds from all monitors for SendInput normalization
+        _virtualScreenBounds = PixelRect.BoundingBox(monitors.Select(m => m.Bounds));
+
+        MonitorInfo dpiReferenceMonitor;
+        var fromWindow = _originatingForegroundWindow != nint.Zero
+            ? _monitorProvider.GetMonitorForWindow(_originatingForegroundWindow)
+            : null;
+        if (fromWindow.HasValue)
         {
-            primaryIndex = 0;
-            FileLogger.LogWarning("No monitor reported as primary; using the first enumerated monitor.");
+            dpiReferenceMonitor = fromWindow.Value;
         }
+        else
+        {
+            int primaryIdx = monitors.FindIndex(m => m.IsPrimary);
+            dpiReferenceMonitor = primaryIdx >= 0 ? monitors[primaryIdx] : monitors[0];
+        }
+        double dpiReferenceScale = dpiReferenceMonitor.DpiScale;
 
         var monitorRects = monitors.Select(m => m.Bounds).ToList();
         _activeMonitorRects = monitorRects;
-        if (!_selectionManager.StartSelection(monitorRects))
+        if (!_selectionManager.StartSelection(monitorRects, dpiReferenceScale))
         {
             _continuousMode = false;
             ErrorOccurred?.Invoke("Failed to initialize selection area.");
@@ -151,13 +163,31 @@ public class OverlayManager
             return;
         }
 
-        FileLogger.LogInfo(
-            $"Selection started on {monitors.Count} monitor(s) with " +
-            $"Stage 1 grid {_selectionManager.ColumnCount}x{_selectionManager.RowCount}, " +
-            $"Stage 2 grid {SelectionManager.Stage2ColumnCount}x{SelectionManager.Stage2RowCount} " +
-            $"(focus {SelectionManager.Stage2FocusColumnCount}x{SelectionManager.Stage2FocusRowCount}), " +
-            $"continuousMode={_continuousMode}.");
+        int primaryIndex = monitors.FindIndex(m => m.IsPrimary);
+        if (primaryIndex < 0)
+        {
+            primaryIndex = 0;
+            FileLogger.LogWarning("No monitor reported as primary; using the first enumerated monitor.");
+        }
 
+        int targetPx = (int)Math.Round(GridCalculator.Stage1CellTargetDip * dpiReferenceScale);
+        int cellWidthPx = (_selectionManager.CurrentBoundingBox.Width + _selectionManager.ColumnCount - 1) / _selectionManager.ColumnCount;
+        int cellHeightPx = (_selectionManager.CurrentBoundingBox.Height + _selectionManager.RowCount - 1) / _selectionManager.RowCount;
+        int maxDev = Math.Max(Math.Abs(cellWidthPx - targetPx), Math.Abs(cellHeightPx - targetPx));
+        if (targetPx > 0 && (double)maxDev / targetPx > 0.25)
+        {
+            FileLogger.LogWarning(
+                $"Stage 1 cell deviation ({(double)maxDev / targetPx:P1}) exceeds 25% of target ({targetPx} px). Coarse grid selected.");
+        }
+
+        FileLogger.LogInfo(
+            $"Selection started across {monitors.Count} monitor(s) with virtual desktop {_virtualScreenBounds}, " +
+            $"DPI reference monitor at {dpiReferenceMonitor.Bounds} ({dpiReferenceScale:P0}), " +
+            $"Stage 1 grid {_selectionManager.ColumnCount}x{_selectionManager.RowCount} " +
+            $"(cell ~{cellWidthPx / dpiReferenceScale:F0}x{cellHeightPx / dpiReferenceScale:F0} DIP), " +
+            $"Stage 2 window {SelectionManager.Stage2WindowDip} DIP, continuousMode={_continuousMode}.");
+
+        // Create an overlay for each monitor; wire input only on the primary overlay
         for (int i = 0; i < monitors.Count; i++)
         {
             var monitor = monitors[i];
@@ -678,7 +708,7 @@ public class OverlayManager
 
         bool continueSelection = _continuousMode;
         var target = _selectionManager.TargetCoordinate.Value;
-        var virtualScreen = _selectionManager.VirtualScreenBoundingBox;
+        var virtualScreen = _virtualScreenBounds;
 
         bool success;
         bool clickTargetReady = false;
@@ -802,7 +832,7 @@ public class OverlayManager
         }
 
         var start = _rangeStartPoint!.Value;
-        var virtualScreen = _selectionManager.VirtualScreenBoundingBox;
+        var virtualScreen = _virtualScreenBounds;
         bool continueSelection = _continuousMode;
         string? preparationFailure = null;
         bool success;
@@ -951,7 +981,7 @@ public class OverlayManager
             return;
         }
 
-        var virtualScreen = _selectionManager.VirtualScreenBoundingBox;
+        var virtualScreen = _virtualScreenBounds;
         string? preparationFailure = null;
         bool success;
 

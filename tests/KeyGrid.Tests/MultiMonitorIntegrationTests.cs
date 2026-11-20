@@ -16,7 +16,7 @@ public class MultiMonitorIntegrationTests
         var monitors = new[] { monitor1, monitor2 };
 
         var mgr = new SelectionManager();
-        mgr.StartSelection(monitors);
+        mgr.StartSelection(monitors, 1.0);
 
         Assert.Equal(new PixelRect(0, 0, 3840, 1080), mgr.VirtualScreenBoundingBox);
         Assert.Equal(20, mgr.ColumnCount);
@@ -34,11 +34,11 @@ public class MultiMonitorIntegrationTests
         var monitors = new[] { d1, d2 };
 
         var mgr = new SelectionManager();
-        mgr.StartSelection(monitors);
+        mgr.StartSelection(monitors, 1.0);
 
         // Select a valid Stage 1 cell and confirm the default Stage 2 cursor.
-        Assert.True(mgr.ProcessKey('Q'));
-        Assert.True(mgr.ProcessKey('H'));
+        Assert.True(mgr.ProcessKey(mgr.ColumnKeys[0]));
+        Assert.True(mgr.ProcessKey(mgr.RowKeys[0]));
         Assert.True(mgr.ProcessEnter());
 
         Assert.Equal(SelectionState.ExecutingClick, mgr.State);
@@ -60,7 +60,7 @@ public class MultiMonitorIntegrationTests
         var monitors = new[] { left, primary };
 
         var mgr = new SelectionManager();
-        mgr.StartSelection(monitors);
+        mgr.StartSelection(monitors, 1.0);
 
         Assert.Equal(-1920, mgr.VirtualScreenBoundingBox.Left);
         Assert.Equal(3840, mgr.VirtualScreenBoundingBox.Width);
@@ -68,14 +68,14 @@ public class MultiMonitorIntegrationTests
         // First key 'Q' selects column 0 (which is on the left monitor at [-1920...]).
         Assert.True(mgr.ProcessKey('Q'));
         Assert.False(mgr.ProcessKey('Q')); // Q is not a row key.
-        Assert.True(mgr.ProcessKey('H'));
+        Assert.True(mgr.ProcessKey(mgr.RowKeys[0]));
 
         // Backspace replays the same allocation before confirming the selection.
         Assert.True(mgr.ProcessBackspace());
         Assert.Single(mgr.History);
         Assert.Equal("QWERTASDFGZXCVBYUIOP", new string(mgr.ColumnKeys.ToArray()));
         Assert.False(mgr.ProcessKey('Q')); // After Backspace, the next key is a row key.
-        Assert.True(mgr.ProcessKey('H'));
+        Assert.True(mgr.ProcessKey(mgr.RowKeys[0]));
 
         Assert.True(mgr.ProcessEnter());
         Assert.NotNull(mgr.TargetCoordinate);
@@ -95,7 +95,7 @@ public class MultiMonitorIntegrationTests
         var m2 = new PixelRect(1900, 0, 100, 100);
 
         var mgr = new SelectionManager();
-        mgr.StartSelection(new[] { m1, m2 });
+        mgr.StartSelection(new[] { m1, m2 }, 1.0);
 
         // Columns covering the empty gap [100, 1900) should be invalid and rejected
         // Middle columns should be invalid
@@ -109,19 +109,25 @@ public class MultiMonitorIntegrationTests
     [Fact]
     public void Stage2ArrowNavigation_SkipsRowsInsideMonitorGap()
     {
-        var top = new PixelRect(0, 0, 1920, 490);
-        var bottom = new PixelRect(0, 535, 1920, 545);
+        var top = new PixelRect(0, 0, 1920, 480);
+        var bottom = new PixelRect(0, 540, 1920, 540);
         var mgr = new SelectionManager();
-        mgr.StartSelection(new[] { top, bottom });
+        mgr.StartSelection(new[] { top, bottom }, 1.0);
 
         Assert.True(mgr.ProcessKey('Q'));
-        Assert.True(mgr.ProcessKey('H')); // Stage 1 row 4 spans the 45px monitor gap.
+        Assert.True(mgr.ProcessKey('U')); // Stage 1 row 1 spans the monitor gap.
         Assert.Equal(2, mgr.CurrentStage);
-        Assert.Equal(SelectionManager.Stage2RowCount / 2, mgr.SelectedRowIndex);
+        Assert.Equal(SelectionManager.Stage2RowCount / 2, mgr.SelectedRowIndex); // Row 12
 
+        // Move to row 16 (last valid row in top monitor)
+        Assert.True(mgr.MoveStage2Cursor(0, 1)); // 13
+        Assert.True(mgr.MoveStage2Cursor(0, 1)); // 14
+        Assert.True(mgr.MoveStage2Cursor(0, 1)); // 15
+        Assert.True(mgr.MoveStage2Cursor(0, 1)); // 16
+        Assert.Equal(16, mgr.SelectedRowIndex);
+
+        // The Stage 2 rows in the monitor gap are skipped.
         Assert.True(mgr.MoveStage2Cursor(0, 1));
-
-        // Stage 2 row 13 is entirely in the gap; movement skips it to row 14.
-        Assert.Equal(14, mgr.SelectedRowIndex);
+        Assert.Equal(17, mgr.SelectedRowIndex);
     }
 }

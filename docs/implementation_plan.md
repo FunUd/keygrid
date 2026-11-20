@@ -11,14 +11,14 @@ KeyGrid is designed around strict separation of concerns to maximize testability
 1. **Pure Domain Core (`KeyGrid.Core`)**:
    - Zero dependencies on Win32, WPF, or UI frameworks.
    - Contains all geometric, algorithmic, and state-machine logic:
-     - Division count calculation (20 DIP target converted with the primary monitor DPI, $C + R \le 26$).
+     - Division count calculation (128 DIP target converted with the DPI reference monitor DPI, $C + R \le 26$).
      - Cell boundary partitioning without gaps or overlaps.
      - Multidimensional region intersection & bounding box tracking.
      - Euclidean nearest-point selection when the center falls into non-monitor space.
      - Disjoint column/row key allocation from physical keyboard blocks (max 26 keys).
      - Keystroke history, undo/recalculation, and state transitions.
      - Focus-loss recovery policy for hidden IME/TSF helper windows.
-     - Stage-2 focus-plus-context window calculation with centered expansion.
+     - Fixed Stage-2 window calculation centered on the Stage-1 reference point.
      - Absolute virtual desktop coordinate normalization ($0 \dots 65535$).
    - Can be unit-tested completely in headless environments without UI threads.
 
@@ -51,9 +51,9 @@ KeyGrid is designed around strict separation of concerns to maximize testability
 ### 2.2 Key Test Scenarios & Test Matrix
 
 1. **`GridCalculatorTests`**:
-   - **Division formula**: Verify the 20 DIP target converted by the primary monitor DPI ($T \times C^2 \ge W$, $T \times R^2 \ge H$) with $C + R \le 26$; check 1920x1080 (10, 8), 2560x1440 (12, 9), 3840x2160 (14, 11), and the relaxed 7680x2160 (17, 9) and 7680x4320 (15, 11) cases.
+   - **Division formula**: Verify the 128 DIP target converted by the DPI reference monitor DPI with $C + R \le 26$; check 1920x1080 (15, 8), 2560x1440 (16, 10), 3840x2160 (16, 10), and the coarsened 7680x2160 (20, 6) and 7680x4320 (16, 10) cases.
    - **Boundary partitioning theorem**: For all $L \in [1, 10000]$ and $N \in [1, 26]$, verify cell widths are strictly $\lfloor L/N \rfloor$ or $\lceil L/N \rceil$, sum of widths equals $L$, no overlapping or gaps.
-   - **Two-stage convergence**: Verify the Stage 1 optimizer uses the central 5x5 focus size so the Stage 2 cell pixel size stays unchanged, while Stage 2 draws a centered 25x25 context window that spans five Stage 1 cells. The key-budget relaxation still chooses the minimax pair on ultra-wide displays (for example 20x6 for 7680x2160).
+   - **Two-stage convergence**: Verify the Stage 1 optimizer targets 128 DIP cells, while Stage 2 centers a fixed 600 DIP window (25x25 cells of 24 DIP each) around the Stage 1 cell's reference point. The deterministic target search chooses the minimax pair under the 26-key budget on ultra-wide displays (for example 20x6 for 7680x2160).
    - **Center point & Euclidean distance**:
      - Bounding box center: `left + (W - 1) / 2` (integer division).
      - When center falls in monitor gap: nearest coordinate in valid monitor rects; tie-breaker test (smaller Y first, then smaller X).
@@ -72,11 +72,10 @@ KeyGrid is designed around strict separation of concerns to maximize testability
    - Hidden/own-process focus loss reactivates the overlay; repeated recovery failures cancel.
    - `FocusLossPolicyTests`: transient recovery, visible foreign cancellation, recovery limit, reset.
 4. **`Stage2ContextGridTests`**:
-   - The 25x25 window centers the Stage 1 cell with ten cells of context on each side.
-   - The central 5x5 boundaries and cell size match the previous fixed Stage 2 grid exactly.
+   - The 25x25 window centers around the Stage 1 cell's reference point with exact 24 DIP cell sizes.
    - Context cells on any monitor remain selectable, while cells outside monitor areas are skipped.
    - Holding an arrow key repeats cursor movement; repeats stay ignored in Stage 1 and Scroll Mode.
-   - The central 5x5 focus is highlighted while the outer context window uses a lighter border and dimmed mask.
+   - The selected Stage 1 cell remains the dim-mask focus and is outlined; the fixed Stage 2 window uses a lighter border.
 5. **`CoordinateConverterTests`**:
    - Normalization formula $X = (x - x_{min}) \times 65535 / (W - 1)$.
    - Negative origin configurations (secondary monitor placed left or top of primary).
@@ -144,8 +143,8 @@ KeyGrid is designed around strict separation of concerns to maximize testability
   - [x] Immediate click dispatch when stage 2 completes (no confirmation screen).
   - [x] Keyboard input binding for the allocated column/row sets (Backspace, Enter, Esc).
 - [x] Implement Stage 2 context rendering:
-  - [x] Center the 25x25 window on the selected Stage 1 cell while preserving cell size.
-  - [x] Keep the central 5x5 bright and emphasize its border; dim the outer margin.
+  - [x] Center the fixed 25x25 window on the Stage 1 reference point using exact 24 DIP cells.
+  - [x] Keep the selected Stage 1 cell bright and outline it; dim context outside it.
   - [x] Clip context cells and grid lines at monitor edges and skip invalid cells.
   - [x] Allow held-arrow repeat only while the Stage 2 cursor is active.
 - [x] Implement `ClickExecutor`:
@@ -157,7 +156,7 @@ KeyGrid is designed around strict separation of concerns to maximize testability
 - [x] Implement `Win32MonitorProvider`:
   - [x] Enumerate all active displays and query physical pixel coordinates.
   - [x] Query effective DPI and the `MONITORINFOF_PRIMARY` flag per monitor.
-  - [x] Derive the 20 DIP target from the primary monitor's DPI scale.
+  - [x] Derive the Stage 1 128 DIP target and fixed Stage 2 24 DIP cell from the foreground monitor's effective DPI, falling back to the primary and then first monitor.
   - [x] Compute virtual desktop bounding box.
   - [x] Expose monitor change events (`WM_DISPLAYCHANGE`, `WM_DPICHANGED`), including overlay-window notifications.
 - [x] Multi-Monitor Selection Support in `GridCalculator`:
@@ -167,7 +166,7 @@ KeyGrid is designed around strict separation of concerns to maximize testability
 - [x] Multi-Monitor Overlay Architecture:
   - [x] Primary overlay window on primary display (handles keyboard focus & input).
   - [x] Display-only secondary overlay windows on remaining displays.
-  - [x] Label dispatching: draw Stage 1 labels only on the overlay containing the selected cell.
+  - [x] Label dispatching: draw each Stage 1 label on exactly one owning monitor overlay.
   - [x] Window positioning via Win32 `SetWindowPos` in physical pixels.
 
 ### Phase 4: System Tray, Lifecycle, and Resilience
@@ -210,3 +209,12 @@ KeyGrid is designed around strict separation of concerns to maximize testability
 - [x] Reset continuous mode on `Esc`, hotkey restart, focus loss, or display change.
 - [x] Reopen the grid after a failed click dispatch and report the error.
 - [x] Add key-handler, overlay-manager, and render tests for the new behavior.
+
+### Phase 7: Fixed-Size Stage 2 Grid
+- [x] Add target-based Stage 1 sizing and deterministic tie-breaking under the 26-key budget.
+- [x] Resolve the DPI reference monitor from the foreground window, with primary and first-monitor fallbacks.
+- [x] Use virtual desktop bounds for click, range, and scroll coordinate normalization.
+- [x] Use a fixed 25x25 Stage 2 window with exact 24 DIP cells and preserve the Stage 1 cell as the visual focus.
+- [x] Update the specification, README, changelog, and implementation plan to the implemented geometry.
+- [x] Run the complete automated test suite (`dotnet test --nologo`).
+- [ ] Run the physical multi-monitor and DPI manual matrix; not run in this environment.

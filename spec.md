@@ -1,6 +1,6 @@
-# KeyGrid Specification v1.14
+# KeyGrid Specification v1.15
 
-**Version:** 1.14
+**Version:** 1.15
 **対象OS:** Windows 11（x64）
 **アプリケーション名:** KeyGrid
 **実装言語:** C#
@@ -14,20 +14,20 @@
 
 | 用語 | 定義 |
 |---|---|
-| 仮想画面 | 全モニターの表示領域を包含する外接矩形（物理ピクセル） |
-| モニター表示領域 | 各モニターの表示領域（物理ピクセル） |
+| 仮想画面 | 全モニターの表示領域を包含する外接矩形（物理ピクセル）。SendInputの正規化および第1段階のグリッド外枠に用いる |
+| モニター表示領域 | 各モニターの表示領域（物理ピクセル）。オーバーレイの配置および有効領域判定・描画クリッピングに用いる |
+| DPI参照モニター | 選択開始時にフォアグラウンドウィンドウが存在するモニター（フォールバック：プライマリモニター、第1モニター）。第1段階の目標セル（128 DIP）および第2段階の固定セル（24 DIP）を物理ピクセルへ変換する基準として使用する |
 | 選択領域 | 現在の選択範囲。モニター表示領域との交差部分の集合で、非矩形になりうる |
 | 外接矩形 | 選択領域を包含する最小の矩形。分割・基準点の算出に用いる |
 | 段階 | 1回の絞り込み。第1段階は列キーと行キーでセルを選び、第2段階は矢印キーでカーソルを移動する |
-| 列数・行数 | 第1段階では4.1で算出し、第2段階では固定の25×25を使う。中央の5×5が第1段階の選択セルに対応する |
+| 列数・行数 | 第1段階では128 DIP目標に基づき4.1で算出し、第2段階では固定の25×25（セル24 DIP、ウィンドウ600 DIP）を使う |
 | セル | 外接矩形を列数×行数に分割した1つの矩形 |
 | 有効セル | セルと選択領域の交差が存在するセル |
 | 打鍵履歴 | 第1段階で押したキーの列。Backspaceで末尾から1つずつ取り消す。選択領域は履歴から再計算する |
 | プライマリモニター | Windowsが主ディスプレイとして指定したモニター（MONITORINFOF_PRIMARY） |
 | 実効DPI | モニターごとの現在のDPI設定。100%を1.0とする倍率で扱う |
 | DIP | 96 DPIを1.0とするdevice-independent pixel。WPF描画の座標単位 |
-| 有効セル | セルと選択領域の交差が存在するセル |
-| 選択カーソル | 第2段階で選択中の有効セル |
+| 選択カーソル | 第2段階で選択中の有効セル（24 DIP固定）。初期位置は中央セル(12, 12)またはそれに最も近い有効セル |
 | 基準点 | 外接矩形の中心（4.4の規則で有効座標に補正する） |
 | 確定座標 | 最終的にクリックする座標 |
 | 確定キー | `Enter`（左クリック）、`Shift+Enter`（右クリック）、`Ctrl+Enter`（中クリック）の総称 |
@@ -36,7 +36,7 @@
 | Range anchor | The physical-pixel screen coordinate captured when range selection starts. It remains fixed while the Stage 2 cursor or Stage 1 region changes |
 | Scroll Mode | A Stage 2 sub-mode entered with `PageUp` or `PageDown`. Arrow and Page keys send mouse wheel input to the current target; `Esc` returns to Stage 2 |
 | Scroll target | The current Stage 2 target coordinate, recalculated from the selection when each scroll input is dispatched |
-| 主オーバーレイ | キーボード入力を受け取るオーバーレイウィンドウ（1つ） |
+| 主オーバーレイ | キーボード入力を受け取るオーバーレイウィンドウ（1つ）。プライマリモニター上に配置される |
 | 表示専用オーバーレイ | 主オーバーレイ以外。マウス入力を遮断し、描画のみ行う |
 
 ---
@@ -45,7 +45,7 @@
 
 KeyGrid is a resident utility for left-, right-, and middle-clicking accessible screen locations using only the keyboard.
 
-It displays column and row labels across the virtual screen. The user narrows the target area with one column key and one row key, then moves a cursor through a 25×25 focus-plus-context grid with the arrow keys. The central 5×5 cells match the selected Stage 1 cell, and the surrounding margin provides nearby context for correction. `Enter` performs a left click; `Shift+Enter` performs a right click; `Ctrl+Enter` performs a middle (wheel) click. In Stage 2, `R` starts a two-point range selection so the user can extend a browser text selection from an anchor to a second point.
+It displays column and row labels across the virtual screen on every monitor. The user narrows the target area with one column key and one row key, then moves a cursor through a 25×25 focus-plus-context grid with the arrow keys. Stage 1 targets approximately 128 DIP cells across the virtual desktop. Stage 2 centers a fixed 600 DIP window (25×25 cells of 24 DIP each) around the Stage 1 cell's reference point, outlining the selected Stage 1 cell while the context margin provides nearby correction. `Enter` performs a left click; `Shift+Enter` performs a right click; `Ctrl+Enter` performs a middle (wheel) click. In Stage 2, `R` starts a two-point range selection so the user can extend a browser text selection from an anchor to a second point.
 
 ### 基本方針
 
@@ -93,7 +93,7 @@ It displays column and row labels across the virtual screen. The user narrows th
 1. ホットキーで全モニターにオーバーレイを表示する。
 2. 第1段階の有効セルに列キー＋行キーの2文字ラベルを表示する。
 3. 列キー、行キーの順で入力し、第1段階の領域を選択する。
-4. 第2段階では、第1段階で選んだセルを中心とする25×25のコンテキストグリッドを表示する。中央の5×5は第1段階のセルと一致し、外周の10セルずつは周辺確認と補正に使う。中央の5×5の有効セルのうち中央に最も近いセルを初期カーソル位置として赤く表示する。
+4. 第2段階では、第1段階で選んだセルの基準点を中心とする固定600 DIP（25×25セル、各セル24 DIP）のコンテキストグリッドを表示する。第1段階の選択セルは枠線と明るい表示で強調し、外周のコンテキスト領域は暗く表示する。中央セル(12, 12)の有効セル（またはそれに最も近い有効セル）を初期カーソル位置として赤く表示する。
 5. Move the cursor with the arrow keys. Holding an arrow key repeats cursor movement at the OS key-repeat rate. Use `Enter` to left-click, `Shift+Enter` to right-click, or `Ctrl+Enter` to middle-click the resolved coordinate. Invalid cells, including gaps between monitors, are skipped. The Stage 2 cursor may move into the context margin on any monitor, so a nearby target outside the Stage 1 cell can still be corrected.
 6. In Stage 2, press `R` without modifiers to set the range anchor at the current target. Move the cursor to the endpoint and press `Enter` to perform a normal left click at the anchor followed by a Shift+left click at the endpoint. `Shift+Enter` and `Ctrl+Enter` are ignored while a range anchor is active.
 7. In Stage 2, press `PageUp` or `PageDown` without modifiers to enter Scroll Mode. `Up`/`Down` scroll vertically by one wheel notch, `Left`/`Right` scroll horizontally, and `PageUp`/`PageDown` scroll vertically by five notches. The Stage 2 cursor does not move. `Esc` exits Scroll Mode and returns to Stage 2.
@@ -120,7 +120,7 @@ Scroll Mode uses the same current Stage 2 target that a click would use. Range s
 - 列が右ブロックを借用している場合、行には右ブロックの残りを元の順で使う。
 - C + R ≤ 26を満たすため、必要なキーは必ず確保できる。列と行のキー集合は重複しない。
 - Key allocation is used only in Stage 1. Stage 2 uses arrow keys, `Enter`, `Shift+Enter`, and `Ctrl+Enter`. Repeating an arrow key in Stage 2 continues cursor movement; repeats of other keys are ignored.
-- 例：1920×1080では第1段階は16×10。列・行キーは上記のブロックから重複なく割り当てる。
+- 例：1920×1080（100% DPI）では第1段階は8×4。列・行キーは上記のブロックから重複なく割り当てる。
 - キーの並びは画面上の位置と対応しない。その代わり、列ラベルと行ラベルを画面に表示して、押すキーを示す。
 - ブロックはQWERTY/JIS配列の物理的な段を前提とする。AZERTYなど文字配置が異なる配列では、ラベルの文字と物理キー位置が一致しない場合がある。
 - Unassigned keys are ignored in Stage 1. In Stage 2, only the arrow keys and the supported confirmation keys are used; other keys are ignored.
@@ -128,7 +128,7 @@ Scroll Mode uses the same current Stage 2 target that a click would use. Range s
 ### 3.4 確定と終了条件
 
 - In Stage 2, arrow keys move the cursor through the 25×25 context grid, and holding an arrow key moves it continuously. `Enter` confirms the cell with a left click; `Shift+Enter` confirms it with a right click; `Ctrl+Enter` confirms it with a middle (wheel) click.
-- After Stage 1 is complete, any confirmation key can click the selection region's reference point.
+- Immediately after Stage 1 is complete, any confirmation key confirms the initial Stage 2 cursor nearest the center.
 - Before Stage 1 is complete (keystroke history length 0 or 1), all confirmation keys are ignored.
 - `Enter` is accepted only with no modifiers. `Shift+Enter` is accepted with Shift alone; `Ctrl+Enter` is accepted with Ctrl alone. Combinations with other modifiers, including Ctrl+Shift, Alt, or the Windows key, are ignored.
 - The click kind is captured when `Enter` is pressed. Releasing the modifier before `Enter` does not change the selected click kind; this lets the user release the modifier before the click is dispatched.
@@ -172,41 +172,62 @@ Backspace undoes one Stage 1 keystroke. In Stage 2 it removes the Stage 1 row ke
 
 ### 4.1 分割数の算出
 
-第2段階は、第1段階で選んだセルを中心とする固定25×25のコンテキストグリッドとする。中央の5×5は第1段階のセルに対応し、外周の10セルずつは周辺確認と補正に使う。セルの物理ピクセル寸法は、第1段階のセルを5×5に分割した従来の寸法から変えない。仮想画面の幅W・高さH（物理ピクセル）について、第1段階の列数C・行数Rは、C + R ≤ 26の範囲でこのセル寸法を最小化する組とする。
+第1段階は、仮想画面を目標セルサイズ **128 DIP** に近づけるよう分割する。DPI参照モニターの実効DPI倍率 `activeDpiScale` を用いて、物理ピクセルの目標サイズ `targetPx = round(128.0 × activeDpiScale)` を算出する。仮想画面の幅W・高さH（物理ピクセル）について、列数C・行数Rは `C ≥ 1`, `R ≥ 1`, `C + R ≤ 26` の範囲で次の順序により決定する。
 
 ```text
-最終幅 = ceil(ceil(W / C) / 5)
-最終高さ = ceil(ceil(H / R) / 5)
-最小化する値 = max(最終幅, 最終高さ)
-第2段階ウィンドウ幅 = 5 × 第1段階セル幅
-第2段階ウィンドウ高さ = 5 × 第1段階セル高さ
+cellWidthPx = ceil(W / C)
+cellHeightPx = ceil(H / R)
+maxDeviation = max(|cellWidthPx - targetPx|, |cellHeightPx - targetPx|)
+totalDeviation = |cellWidthPx - targetPx| + |cellHeightPx - targetPx|
 ```
 
-同じ最大寸法になる場合は、C × Rが大きい組、C + Rが小さい組、Cが小さい組の順に選ぶ。DPIは分割数の計算に使わない。幅や高さが非常に大きくても、合計キー数の上限を超えない。
+候補選択の優先順序（決定論的順序）：
+1. 物理目標からの最大偏差 `maxDeviation` が最小の組
+2. 合計偏差 `totalDeviation` が最小の組
+3. 合計キー数 `C + R` が最小の組
+4. セル総数 `C × R` が最大の組
+5. 列数 `C` が最小の組
 
-代表例（サイズは物理ピクセル）：
+最大偏差が物理目標の25%を超える構成（8Kや超広幅環境など）では、キー予算の制約により自動的に粗い分割が選択され、警告ログが出力される。
 
-| 仮想画面 | 第1段階列×行 | ラベル数 | 第2段階セル寸法 | 第2段階ウィンドウ |
-|---|---:|---:|---:|---:|
-| 1920×1080 | 16×10 | 160 | 24×22 | 600×540 |
-| 3840×2160 | 16×10 | 160 | 48×44 | 1200×1080 |
-| 7680×2160 | 20×6 | 120 | 77×72 | 1920×1800 |
-| 7680×4320 | 16×10 | 160 | 96×87 | 2400×2160 |
+代表例（サイズはDPI換算DIP）：
+
+| 仮想画面 | DPI | 第1段階列×行 | キー数 | 第1段階セル (DIP) | 最大偏差 |
+|---|---:|---:|---:|---:|---:|
+| 1920×1080 | 100% | 15×8 | 23 | 128×135 | 5.5% |
+| 1920×1080 | 125% | 12×7 | 19 | 128×124 | 3.1% |
+| 1920×1080 | 150% | 10×6 | 16 | 128×120 | 6.2% |
+| 1920×1080 | 175% | 9×5 | 14 | 122×123 | 4.5% |
+| 1920×1080 | 200% | 8×4 | 12 | 120×135 | 6.2% |
+| 2560×1440 | 100% | 16×10 | 26 | 160×144 | 25.0% |
+| 2560×1440 | 150% | 13×8 | 21 | 131×120 | 6.2% |
+| 3840×2160 | 100% | 16×10 | 26 | 240×216 | 87.5% |
+| 3840×2160 | 150% | 16×10 | 26 | 160×144 | 25.0% |
+| 3840×2160 | 200% | 15×8 | 23 | 128×135 | 5.5% |
+| 5120×1440 | 100% | 20×6 | 26 | 256×240 | 100.0% |
+| 5120×2880 | 100% | 16×10 | 26 | 320×288 | 150.0% |
+| 7680×2160 | 100% | 20×6 | 26 | 384×360 | 200.0% |
+| 7680×4320 | 100% | 16×10 | 26 | 480×432 | 275.0% |
+| 1080×1920 | 100% | 8×15 | 23 | 135×128 | 5.5% |
+| 2160×3840 | 100% | 10×16 | 26 | 216×240 | 87.5% |
 
 ### 4.2 分割規則
 
 - 第1段階の分割対象は仮想画面とする。
-- 第2段階の分割対象は、第1段階で選択したセルと選択領域との交差の外接矩形を中心とする固定25列×25行のウィンドウとする。中央の5列×5行の境界はその外接矩形の境界と一致し、残りは上下左右に10セルずつ拡張する。
-- ウィンドウの幅（高さ）は第1段階セルの幅（高さ）の5倍とし、中央の5×5のセル寸法が従来の第2段階と同じになるよう整数境界を求める。
+- 第2段階の分割対象は、第1段階で選択したセル（focusBox）の基準点（refX, refY）を中心とする固定25列×25行のウィンドウとする。
+  - セルサイズ：`stage2CellPx = max(1, round(24.0 × activeDpiScale))`（24 DIP固定）
+  - ウィンドウサイズ：`stage2WindowPx = 25 × stage2CellPx`（600 DIP固定）
+  - ウィンドウ位置：`window.Left = refX - stage2WindowPx / 2`, `window.Top = refY - stage2WindowPx / 2`
+  - 第2段階の境界線は各セルの幅・高さが厳密に `stage2CellPx` となる整数境界で配置される。
 - 第1段階は4.1で算出した列数・行数で分割し、第2段階は固定の25×25で分割する。
 - 整数の境界は、分割対象の左端（上端）を原点とし、長さLを分割数Nで分けて求める（整数除算）。
   - 境界(k) = 原点 + (k × L + N − 1) ÷ N（k = 1, …, N−1）
   - 境界(0) = 原点、境界(N) = 原点 + L
 - 各セルの幅（高さ）は⌊L ÷ N⌋または⌈L ÷ N⌉のいずれかになる。隙間と重なりは生じない。
 - 幅または高さが0のセルは無効セルとする。
-- 第2段階の有効セルは、25×25ウィンドウとモニター表示領域との交差で判定する。中央の5×5に限らず、モニター上にある外周セルも選択できる。
+- 第2段階の有効セルは、25×25ウィンドウと全モニター表示領域との交差で判定する。モニター間の空白領域にあるセルは無効とする。
+- 初期カーソルは中央セル(12, 12)とする。無効の場合は、25×25ウィンドウ内の有効セルのうちマンハッタン距離が最小のものを選択する。
 - 新しい選択領域は、各セルと直前の選択領域との交差とする。交差が空のセルは無効セルとする。
-- 第2段階のセル幅は⌈⌈W ÷ C⌉ ÷ 5⌉、高さは⌈⌈H ÷ R⌉ ÷ 5⌉以下になる。
 - 例：幅1000px・分割数7の場合、境界は原点＋143、＋286、＋429、＋572、＋715、＋858となり、143pxが6セル、142pxが1セルに分かれる。
 
 ### 4.3 多重モニター
@@ -233,9 +254,11 @@ Backspace undoes one Stage 1 keystroke. In Stage 2 it removes the Stage 1 row ke
 - app.manifestでPer-Monitor DPI Awareness V2を指定する。
 - オーバーレイの位置・サイズはWin32（SetWindowPos）で物理ピクセル指定する。
 - WPFのDIPは、オーバーレイ内の描画にのみ使用する。
+- DPI参照モニターは、フォアグラウンドウィンドウからWin32のMonitorFromWindow(handle, MONITOR_DEFAULTTONEAREST)で取得する。取得できない場合はプライマリモニター、さらに第1モニターへフォールバックする。
+- 第1段階の目標128 DIPおよび第2段階の固定24 DIP・600 DIPは、このDPI参照モニターの実効DPI倍率により物理ピクセルへ変換される。
 - GetDpiForMonitorが失敗した場合は96 DPI（倍率1.0）へフォールバックし、警告をログに記録する。推測値は使わない。
 - WPF描画のDIP変換には、各オーバーレイが属するモニターの実効DPIを使う。
-- SendInputの仮想画面座標の正規化はCoordinateConverterに集約する。
+- SendInputの仮想画面座標の正規化はCoordinateConverterに集約し、全モニターを包含する仮想画面の外接矩形を正規化基準とする。
 
 ---
 
@@ -253,10 +276,10 @@ Backspace undoes one Stage 1 keystroke. In Stage 2 it removes the Stage 1 row ke
 ### 5.2 表示デザイン
 
 - 第1段階のセルラベル：各有効セルの中央に、列キーと行キーを組み合わせた2文字ラベル（例：QY, WU）を直接表示する。これにより画面端への視線移動を行わずに、クリック目標位置の直上で必要な打鍵キーを即座に確認できる。
-- 第2段階では文字ラベルを表示せず、第1段階のセルを中心とする25×25のコンテキストグリッドを表示する。中央の5×5を第1段階の選択セルとして明るく残し、外周のコンテキスト領域は暗く表示する。中央の5×5の有効セルのうち中央に最も近いセルを初期選択する。選択セルは半透明の赤でハイライトし、矢印キーで移動する。矢印キーを押し続けるとキーリピート間隔で連続移動する。
+- 第2段階では文字ラベルを表示せず、第1段階のセル（focusBox）の基準点を中心とする固定25×25のコンテキストグリッド（セル24 DIP、ウィンドウ600 DIP）を表示する。第1段階の選択セルは明るく残し、外周のコンテキスト領域は暗く表示する。中央セル(12, 12)の有効セル（またはそれに最も近い有効セル）を初期選択する。選択セルは半透明の赤でハイライトし、矢印キーで移動する。矢印キーを押し続けるとキーリピート間隔で連続移動する。
 - セルが複数モニターにまたがる場合、ラベルは所有するモニターのオーバーレイだけに描画する。
 - 選択領域のないセルのラベルは表示しない。そのキーは無視する。
-- 選択領域の外側は暗くし、選択領域を明るく表示する。外接矩形の枠線も表示する。第2段階では中央の5×5の枠線を強調し、25×25ウィンドウの外周枠は控えめに表示する。
+- 選択領域の外側は暗くし、選択領域を明るく表示する。外接矩形の枠線も表示する。第2段階では選択された第1段階セル（FocusSelection）の枠線を強調表示し、25×25ウィンドウの外周枠は控えめに表示する。
 - グリッド線は細く、視認性を損なわない色にする。
 - 第2段階で確定キーを押すと、選択カーソルのセルを確定し、`Enter`は左、`Shift+Enter`は右、`Ctrl+Enter`は中（ホイール）クリックする。
 - 連続モードがONの間は、プライマリモニターのオーバーレイに「Continuous Mode」と表示する。表示は簡易的なテキストバッジとし、選択操作を妨げない。
@@ -455,7 +478,7 @@ For Scroll Mode input, steps 2-4 of the normal click flow are applied to the scr
 |---|---|
 | 起動ホットキー | Ctrl + Shift + Space |
 | 段階数 | 2（固定） |
-| 列数・行数 | 第1段階は画面寸法から自動算出、第2段階は固定25×25（中央5×5が第1段階セル、4.1） |
+| 列数・行数 | 第1段階は128 DIP目標で自動算出、第2段階は固定25×25（セル24 DIP、ウィンドウ600 DIP、4.1） |
 | 選択キー | 3.3の割り当て規則に従い、列キーと行キーを重複なく割り当てる（最大26キー） |
 | Confirmation keys | `Enter` for left click; `Shift+Enter` for right click; `Ctrl+Enter` for middle (wheel) click |
 | カーソル移動 | 第2段階で矢印キー。有効セルを順に移動 |
@@ -487,7 +510,7 @@ For Scroll Mode input, steps 2-4 of the normal click flow are applied to the scr
 以下は目標値とする。Phase 1で実測し、必要に応じて改訂する。
 
 - ホットキー押下からオーバーレイ表示完了まで200ms以内（単一モニター）
-- キー押下から表示更新まで100ms以内（4Kの第1段階160セルを代表ケースとする）
+- キー押下から表示更新まで100ms以内（4K 100%の第1段階15×8セルを代表ケースとする）
 - 待機時のCPU使用率は平均0.1%未満
 - 待機時のワーキングセットは100MB以下
 - 選択モード以外では画面更新を行わない
@@ -579,8 +602,8 @@ Visual Studio Codeをメインのエディタとして使用する。使用す�
 
 - SelectionManagerは打鍵履歴を保持し、GridCalculatorを使って選択領域を計算する。Backspaceでは履歴を1つ減らし、領域を再計算する。
 - SelectionManagerは、開始時にKeyLayout.Allocateで列キー・行キーを決定し、セッション中は同じ割り当てを使う。列キーは行キーとして受け付けず、その逆も同様とする。
-- SelectionManagerは、第1段階の選択領域を第2段階の25×25コンテキストグリッドへ進める。中央5×5は第1段階セルを維持し、外周セルはモニター領域との交差で有効判定する。矢印移動では無効セルをスキップする。
-- GridCalculatorは、幅・高さと固定の第2段階分割数を使って第1段階の最適分割数を計算し、Win32には依存しない。
+- SelectionManagerは、第1段階の選択領域を第2段階の固定600 DIP（25×25セル、各セル24 DIP）のコンテキストグリッドへ進める。第1段階の選択セルは枠線と明るい表示で維持し、外周セルは全モニター領域との交差で有効判定する。矢印移動では無効セルをスキップする。
+- GridCalculatorは、幅・高さと目標セルサイズ（物理ピクセル換算値）を使って第1段階の最適分割数を計算し、また第1段階の基準点を中心とする第2段階ウィンドウを計算する。Win32には依存しない。
 - OverlayManager displays SelectionManager state (the selected region and history) and asks ClickExecutor to send the selected click kind on confirmation.
 - OverlayManagerは連続モードをセッション単位で保持する。連続モードの確定後はSelectionManagerをリセットし、オーバーレイを再表示して第1段階から再開する。
 - OverlayManager owns the range anchor and validates both endpoints after temporarily hiding the overlays. It asks ClickExecutor to dispatch the two-point range through IClickSender.
@@ -592,7 +615,7 @@ Visual Studio Codeをメインのエディタとして使用する。使用す�
 
 ### 13.3 主なインターフェース
 
-- **IMonitorProvider**：モニター情報の取得（GetMonitors）、構成変更の通知（Changed）
+- **IMonitorProvider**：モニター情報の取得（GetMonitors）、ウィンドウからのモニター判定（GetMonitorForWindow）、構成変更の通知（Changed）
 - **MonitorInfo**：モニターの物理表示領域、実効DPI倍率、プライマリ判定を保持する
 - **IClickSender**: Sends a left, right, or middle click at a specified virtual-screen coordinate and returns whether dispatch succeeded. It also sends the two-point range sequence (left click at the anchor, Shift+left click at the endpoint) and vertical/horizontal wheel input.
 - **IHotkeyRegistrar**：ホットキーの登録・解除（Register、Unregister）
@@ -609,11 +632,13 @@ Visual Studio Codeをメインのエディタとして使用する。使用す�
 
 Win32に依存しない部分を対象とする。
 
-- 第2段階の中央5×5セル寸法を考慮した第1段階分割数の算出（例：1920×1080→16×10、3840×2160→16×10）
-- すべての第1段階列数・行数の組で C + R ≤ 26 を満たすこと
-- 第2段階後の最悪セル寸法を最小化すること、および同値時のタイブレークの決定性
-- 第2段階が常に25×25で、中央5×5の境界とセル寸法が従来の5×5分割と一致すること
-- 25×25ウィンドウが第1段階セルを中心に上下左右10セルずつ拡張されること
+- Target-based Stage 1 division counts using the effective DPI of the reference monitor, including the representative cases, 26-key limit, and deterministic tie-breaks.
+- Every Stage 1 column/row pair satisfies C + R ≤ 26.
+- The Stage 1 search selects the candidate nearest the physical cell target with deterministic tie-breaking.
+- Stage 2 always has a 25×25 window with exact cells of `round(24 DIP × DPI scale)` physical pixels.
+- The Stage 2 center cell contains the Stage 1 reference point, and the window dimensions are `25 × cellPx`.
+- The initial cursor is at center cell (12, 12), or the nearest valid cell.
+- Stage 2 keeps the selected Stage 1 cell as its visual focus and has no central-5×5 semantics.
 - 境界式の性質テスト：Lと分割数N（1〜26）の任意の組み合わせで、各セルの幅が⌊L÷N⌋または⌈L÷N⌉に収まる
 - 左・右ブロックの内容と、C > 15・R > 11の借用を含む列キー・行キーの割り当て
 - 列キーと行キーが重複せず、C + R ≤ 26のすべての組で必要数を確保できること
@@ -657,8 +682,8 @@ Win32に依存しない部分を対象とする。
 - 単一モニター（1920×1080、2560×1440、3840×2160）
 - 複数モニター、解像度の異なるモニター
 - 拡大率100・125・150・175・200%、およびDPIが異なるモニターでの4.1表との一致
-- 異なるDPI構成での物理ピクセル分割と、25×25カーソル（中央5×5と外周コンテキスト）の操作性
-- 4K 100%（第1段階160セル）の視認性と描画時間
+- Physical-pixel division and 25×25 cursor behavior with fixed 24 DIP cells across different DPI configurations.
+- 4K 100% (15×8 Stage 1 cells) label visibility and rendering time.
 - モニターの上下左右がずれた配置、モニター間に空白がある配置
 - 仮想画面の原点が負になる配置（左・上に配置したモニター）
 - タスクバー（通常時・自動非表示時）、タイトルバー、ウィンドウ枠のクリック
@@ -686,7 +711,7 @@ Win32に依存しない部分を対象とする。
 - Visualization of the range anchor across monitors and with continuous mode enabled
 - Browser and document scrolling with Scroll Mode, including vertical pages, horizontal arrows, and repeated scrolling without losing Stage 2
 - Scroll Mode target-window changes, UIPI failures, and recovery to Stage 2
-- 分割数と第2段階後のセル寸法・25×25ウィンドウ寸法の実測（4.1の表と比較）
+- Measure Stage 1 divisions and Stage 2 24 DIP cell / 600 DIP window dimensions and compare them with the Section 4.1 table.
 - クリック精度：クリック座標を記録する検証用ウィンドウを使い、確定座標と実際のクリック位置を自動比較する
 
 ---
@@ -749,7 +774,8 @@ Win32に依存しない部分を対象とする。
 - ホットキーで選択モードを開始できる。
 - 全モニターに列・行ラベルを表示できる。
 - 第1段階を列・行の2打鍵で選び、第2段階を矢印キーと確定キーで確定できる。
-- 列数と行数の合計が26以下で、第2段階が25×25（中央5×5が第1段階セル）である。
+- 列数と行数の合計が26以下で、第1段階が128 DIP目標を用い、第2段階が25×25の24 DIP固定セルである。
+- 仮想画面の外接矩形を第1段階のグリッド範囲とSendInputの正規化基準に用い、各モニター表示領域で有効性と描画をクリップする。
 - 第2段階の選択セルを確定キーで正しくクリックできる（左・右・中）。
 - 第1段階の後であれば、確定キーで選択領域を確定してクリックできる（左・右・中）。
 - Backspaceで第1段階の打鍵履歴を1つずつ取り消せる。
