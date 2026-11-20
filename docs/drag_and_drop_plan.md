@@ -8,8 +8,9 @@
 
 Add a cross-window and cross-monitor drag operation to KeyGrid's existing Stage 2
 grid. The grid remains displayed across the full virtual desktop. A plain `D`
-press in Stage 2 captures th　e resolved cursor as a drag anchor. `Enter` executes
-the drag from the anchor to the current Stage 2 target. The implementation will
+press in Stage 2 captures the resolved cursor as a drag anchor and returns to
+Stage 1 to select the drop-target region. `Enter` executes the drag from the
+anchor to the current Stage 2 target. The implementation will
 reuse the existing range-anchor lifecycle, status-badge, monitor-aware rendering,
 overlay hiding, and partial-send recovery patterns.
 
@@ -65,11 +66,11 @@ The existing specification has no `REQ-XXX` identifiers. This plan assigns draft
 feature requirement IDs for traceability; the implementation should add matching
 IDs or equivalent section references when updating `spec.md`.
 
-- **REQ-DND-001**: D is accepted only in Stage 2 and sets a drag anchor.
+- **REQ-DND-001**: D is accepted only in Stage 2, sets a drag anchor, and returns selection to Stage 1.
 - **REQ-DND-002**: The drag grid remains all-monitor and uses the existing Stage 2 cursor.
 - **REQ-DND-003**: Cross-window and cross-monitor drag targets are allowed.
 - **REQ-DND-004**: Enter executes only plain unmodified Enter while drag mode is active.
-- **REQ-DND-005**: The drag anchor remains visible across cursor movement and Backspace.
+- **REQ-DND-005**: The drag anchor remains visible while selecting or revising the drop-target region in Stage 1/2.
 - **REQ-DND-006**: SendInput performs move, left-down, movement to the drop target,
   and left-up.
 - **REQ-DND-007**: Partial SendInput failure releases the synthetic left button.
@@ -83,18 +84,19 @@ IDs or equivalent section references when updating `spec.md`.
 
 - Stage 1 keeps D as a normal column key and routes it through `ProcessKey('D')`.
   D never starts drag mode before the Stage 1 history reaches stage 2.
-- In Stage 2, plain, non-repeat D starts or changes `_dragStartPoint` only once.
+- In Stage 2, plain, non-repeat D sets `_dragStartPoint` only once, then resets Stage 1 history so the drop-target region can be selected from the full grid.
   Modified D combinations are consumed and ignored. Repeated D is ignored.
-- Plain Enter executes drag while `_dragStartPoint` is active. Shift/Ctrl Enter,
-  range start, scroll start, continuous-mode toggle, and confirmation keys are
+- Plain Enter executes drag only after the endpoint reaches Stage 2. Modified
+  confirmation keys, Stage 2 range/scroll starts, and continuous-mode toggle are
   rejected or ignored according to existing sub-mode rules.
-- Backspace continues to undo the most recent Stage 1 key only after returning
-  from Stage 2. An active drag anchor is preserved. There is no Backspace movement
-  history inside the Stage 2 cursor.
-- Esc clears `_dragStartPoint` first and keeps Stage 2 active. A second Esc exits
+- Backspace continues to undo the most recent Stage 1 key after anchor placement.
+  An active drag anchor is preserved. There is no Backspace movement history inside
+  the Stage 2 cursor.
+- Esc clears `_dragStartPoint` first and keeps the selection active. A second Esc exits
   selection mode normally. Drag never changes continuous mode.
-- Tab, R, and Page keys are ignored while drag mode is active. Range and Scroll
-  mode cannot start until the drag anchor is cleared or the drag is completed.
+- Tab and Page keys are ignored while drag mode is active. In Stage 1, R and D
+  remain ordinary selection keys for choosing the drop-target region; Range and
+  Scroll mode cannot start until the drag anchor is cleared or the drag is completed.
 - A successful drag follows normal or continuous-mode completion. A target,
   activation, or SendInput failure clears the drag anchor and restores Stage 2;
   it does not call `CompleteClick` or advance continuous mode to a new Stage 1
@@ -159,19 +161,22 @@ IDs or equivalent section references when updating `spec.md`.
   existing range and Scroll Mode state
 - **Description**:
   - Add `DragStartRequested` to `OverlayKeyHandler` and `IOverlayWindowSurface`.
-  - Map plain `D` to the drag-start event and reject Shift/Ctrl/Alt/Windows,
-    repeat presses, and D presses in Stage 1.
+  - Map plain `D` to the drag-start event and reject Shift/Ctrl/Alt/Windows
+    and repeat presses. In Stage 1, treat D as a selection key.
   - In Stage 1, retain D as the existing disjoint column key because D is not a
     drag command until Stage 2.
   - Add `_dragStartPoint` to `OverlayManager`, matching `_rangeStartPoint`.
-  - Pressing D in Stage 2 captures `TryGetStage2Target`; repeated D is ignored.
+  - Pressing D in Stage 2 captures `TryGetStage2Target`, then resets history to
+    return to the full Stage 1 grid; repeated D in Stage 2 is ignored.
   - Plain Enter executes drag, while Shift/Ctrl Enter and other confirmation
     modifiers are ignored while drag is active.
-  - Preserve the drag anchor through Stage 2 cursor movement and Backspace.
-  - Esc first clears drag, then Esc exits selection. Do not use drag anchor state
-    for Stage 1 selection state.
+  - Preserve the drag anchor while selecting or revising the drop-target region
+    through Stage 1 keys, arrow movement, and Backspace.
+  - Esc first clears drag, then Esc exits selection. The anchor must not prevent
+    normal Stage 1 selection keys from selecting the drop-target region.
   - Reject drag start while range or Scroll Mode is active. Reject range/scroll/
-    continuous toggle while drag is active consistently with existing sub-modes.
+    continuous toggle while drag is active consistently with existing sub-modes;
+    in Stage 1, D/R remain ordinary selection keys for choosing the endpoint.
 
 ### Step 4: Monitor-aware drag rendering
 
@@ -290,7 +295,8 @@ docs/
 - **Test data strategy**: Use disposable temporary files and browser text/tabs;
   do not require repository changes to serve as test fixtures.
 - **Acceptance criteria**:
-  - Plain D works only in Stage 2.
+  - Plain D starts drag only in Stage 2; D remains a Stage 1 selection key.
+  - Setting the drag anchor returns selection to the full Stage 1 grid.
   - The green anchor is exact and monitor-owned.
   - Enter sends move/down/intermediate moves/up.
   - Cross-window and cross-monitor targets succeed in the manual matrix.
@@ -343,11 +349,11 @@ docs/
 
 | REQ ID | Description | Plan Items | Implementation Evidence |
 |--------|-------------|------------|-------------------------|
-| REQ-DND-001 | Stage 2 plain D sets a drag anchor | 3.1 | OverlayKeyHandler, OverlayManager |
+| REQ-DND-001 | Stage 2 plain D sets a drag anchor and returns to Stage 1 | 3.1 | OverlayKeyHandler, OverlayManager |
 | REQ-DND-002 | Drag remains in the all-monitor Stage 2 grid | 3.1, 4.1 | OverlayManager, OverlayRenderElement |
 | REQ-DND-003 | Cross-window/cross-monitor targets are allowed | 1.1, 2.1 | IClickSender, Win32ClickSender, OverlayManager |
 | REQ-DND-004 | Plain Enter executes drag and modified Enter is ignored | 3.1 | OverlayKeyHandler, OverlayManager |
-| REQ-DND-005 | Anchor persists across cursor movement and Backspace | 3.1, 4.1 | OverlayManager, OverlayRenderElement |
+| REQ-DND-005 | Anchor persists while selecting or revising the drop-target region | 3.1, 4.1 | OverlayManager, OverlayRenderElement |
 | REQ-DND-006 | SendInput down/move/up sequence is generated | 1.1, 2.1, 5.1 | Win32ClickSender, ClickExecutor |
 | REQ-DND-007 | Partial SendInput releases left button | 1.1 | Win32ClickSender cleanup |
 | REQ-DND-008 | Drag follows normal/continuous completion | 2.1, 3.1 | OverlayManager |

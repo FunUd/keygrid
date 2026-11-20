@@ -221,8 +221,8 @@ KeyGrid is designed around strict separation of concerns to maximize testability
 
 ### Phase 8: Drag-and-Drop
 - [ ] Implement `SendDrag` with virtual-screen normalization and left-button cleanup.
-- [ ] Implement Stage 2 plain-D drag anchor and Enter dispatch.
-- [ ] Preserve drag anchor across cursor movement and Backspace; Esc clears it first.
+- [ ] Implement Stage 2 plain-D drag anchor, return to Stage 1 for drop-target selection, and Enter dispatch.
+- [ ] Preserve the drag anchor while selecting or revising the drop-target region; Esc clears it first.
 - [ ] Allow cross-window and cross-monitor drag; reject monitor-gap endpoints.
 - [ ] Keep drag mutually exclusive with Range and Scroll modes.
 - [ ] Add native, key-handler, overlay-manager, and render tests.

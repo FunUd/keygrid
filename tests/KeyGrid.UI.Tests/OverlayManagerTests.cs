@@ -858,10 +858,23 @@ public class OverlayManagerTests
 
             Assert.True(manager.HasDragSelection);
             Assert.Equal(expectedStart, primary.LastDragStartPoint);
+            Assert.Equal(1, manager.SelectionManager.CurrentStage);
+            Assert.Empty(manager.SelectionManager.History);
+
+            primary.RaiseDragStart();
+            primary.RaiseKey(manager.SelectionManager.RowKeys[0]);
+            primary.RaiseBackspace();
+            primary.RaiseBackspace();
+
+            Assert.True(manager.HasDragSelection);
+            Assert.Equal(expectedStart, primary.LastDragStartPoint);
+            Assert.Equal(1, manager.SelectionManager.CurrentStage);
+            Assert.Empty(manager.SelectionManager.History);
 
             primary.RaiseCancel();
             Assert.False(manager.HasDragSelection);
             Assert.True(manager.IsActive);
+            Assert.Equal(1, manager.SelectionManager.CurrentStage);
 
             primary.RaiseCancel();
             Assert.False(manager.IsActive);
@@ -885,6 +898,9 @@ public class OverlayManagerTests
             primary.RaiseKey(manager.SelectionManager.RowKeys[0]);
             Assert.True(manager.SelectionManager.TryGetStage2Target(out var expectedStart));
             primary.RaiseDragStart();
+            primary.RaiseDragStart();
+            primary.RaiseKey(manager.SelectionManager.RowKeys[0]);
+            Assert.Equal(2, manager.SelectionManager.CurrentStage);
             primary.RaiseMove(1, 0);
             Assert.True(manager.SelectionManager.TryGetStage2Target(out var expectedEnd));
 
@@ -922,6 +938,8 @@ public class OverlayManagerTests
             primary.RaiseKey(manager.SelectionManager.ColumnKeys[0]);
             primary.RaiseKey(manager.SelectionManager.RowKeys[0]);
             primary.RaiseDragStart();
+            primary.RaiseKey(manager.SelectionManager.ColumnKeys[0]);
+            primary.RaiseKey(manager.SelectionManager.RowKeys[0]);
 
             focus.WindowAtPointResults.Enqueue(new nint(0x500));
             focus.WindowAtPointResults.Enqueue(new nint(0x600));
@@ -955,6 +973,8 @@ public class OverlayManagerTests
             primary.RaiseKey(manager.SelectionManager.ColumnKeys[0]);
             primary.RaiseKey(manager.SelectionManager.RowKeys[0]);
             primary.RaiseDragStart();
+            primary.RaiseKey(manager.SelectionManager.ColumnKeys[0]);
+            primary.RaiseKey(manager.SelectionManager.RowKeys[0]);
             primary.RaiseMove(1, 0);
 
             focus.WindowAtPointResults.Enqueue(new nint(0x500));
@@ -999,13 +1019,16 @@ public class OverlayManagerTests
             Assert.True(manager.HasRangeSelection);
             Assert.Equal(expectedStart, primary.LastRangeStartPoint);
             Assert.True(manager.IsActive);
+            Assert.Equal(1, manager.SelectionManager.CurrentStage);
+            Assert.Empty(manager.SelectionManager.History);
 
             primary.RaiseCancel();
 
             Assert.False(manager.HasRangeSelection);
             Assert.True(manager.IsActive);
             Assert.Equal(SelectionState.Selecting, manager.SelectionManager.State);
-            Assert.Equal(2, manager.SelectionManager.CurrentStage);
+            Assert.Equal(1, manager.SelectionManager.CurrentStage);
+            Assert.Empty(manager.SelectionManager.History);
             Assert.Null(primary.LastRangeStartPoint);
             Assert.Equal(0, primary.CloseCount);
 
@@ -1035,6 +1058,9 @@ public class OverlayManagerTests
             primary.RaiseKey(manager.SelectionManager.RowKeys[0]);
             Assert.True(manager.SelectionManager.TryGetStage2Target(out var expectedStart));
             primary.RaiseRangeStart();
+            primary.RaiseRangeStart();
+            primary.RaiseKey(manager.SelectionManager.RowKeys[0]);
+            Assert.Equal(2, manager.SelectionManager.CurrentStage);
             primary.RaiseMove(1, 0);
             Assert.True(manager.SelectionManager.TryGetStage2Target(out var expectedEnd));
             string? error = null;
@@ -1075,6 +1101,8 @@ public class OverlayManagerTests
             primary.RaiseKey(manager.SelectionManager.ColumnKeys[0]);
             primary.RaiseKey(manager.SelectionManager.RowKeys[0]);
             primary.RaiseRangeStart();
+            primary.RaiseKey(manager.SelectionManager.ColumnKeys[0]);
+            primary.RaiseKey(manager.SelectionManager.RowKeys[0]);
             primary.RaiseMove(1, 0);
             string? error = null;
             manager.ErrorOccurred += message => error = message;
@@ -1097,7 +1125,7 @@ public class OverlayManagerTests
     }
 
     [Fact]
-    public void RangeSelection_BackspaceIntoStage1KeepsTheStartMarker()
+    public void RangeSelection_BackspaceInEndpointStage1KeepsTheStartMarker()
     {
         UiTestThread.Run(() =>
         {
@@ -1114,15 +1142,19 @@ public class OverlayManagerTests
             primary.RaiseKey(manager.SelectionManager.ColumnKeys[0]);
             primary.RaiseKey(manager.SelectionManager.RowKeys[0]);
             primary.RaiseRangeStart();
-            Assert.True(manager.SelectionManager.TryGetStage2Target(out var expectedStart));
-            Assert.Equal(expectedStart, primary.LastRangeStartPoint);
+            Assert.True(manager.HasRangeSelection);
+            var expectedStart = primary.LastRangeStartPoint;
 
+            primary.RaiseKey(manager.SelectionManager.ColumnKeys[0]);
+            primary.RaiseKey(manager.SelectionManager.RowKeys[0]);
+            primary.RaiseBackspace();
             primary.RaiseBackspace();
 
             Assert.Equal(SelectionState.Selecting, manager.SelectionManager.State);
             Assert.Equal(1, manager.SelectionManager.CurrentStage);
             Assert.True(manager.HasRangeSelection);
             Assert.Equal(expectedStart, primary.LastRangeStartPoint);
+            Assert.Empty(manager.SelectionManager.History);
 
             manager.CloseOverlays();
         });
@@ -1154,7 +1186,7 @@ public class OverlayManagerTests
             Assert.Equal(0, clickSender.CallCount);
             Assert.True(manager.IsActive);
             Assert.True(manager.HasRangeSelection);
-            Assert.Equal(2, manager.SelectionManager.CurrentStage);
+            Assert.Equal(1, manager.SelectionManager.CurrentStage);
 
             manager.CloseOverlays();
         });
@@ -1177,6 +1209,8 @@ public class OverlayManagerTests
             firstPrimary.RaiseKey(manager.SelectionManager.ColumnKeys[0]);
             firstPrimary.RaiseKey(manager.SelectionManager.RowKeys[0]);
             firstPrimary.RaiseRangeStart();
+            firstPrimary.RaiseKey(manager.SelectionManager.ColumnKeys[0]);
+            firstPrimary.RaiseKey(manager.SelectionManager.RowKeys[0]);
             firstPrimary.RaiseMove(1, 0);
             firstPrimary.RaiseConfirm(ClickKind.Left);
 

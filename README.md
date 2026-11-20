@@ -12,10 +12,10 @@ KeyGrid is a lightweight, resident Windows 11 utility that enables mouse-free le
 - **IME & Repeat Protection**: Automatically suppresses IME during grid selection. Key repeats are ignored except while holding an arrow key to move the Stage 2 cursor continuously.
 - **Safe Fallback**: Excludes gaps between disjoint monitors, snapping center reference points to the closest valid display pixel.
 - **Continuous Mode**: Press `Tab` while the grid is visible to keep it open after each click and return to Stage 1 for the next selection. Press `Tab` again for normal mode, or `Esc` to exit.
-- **Two-Point Range Selection**: In Stage 2, press `R` to set an anchor, move to the endpoint, and press `Enter`. KeyGrid left-clicks the anchor and Shift+left-clicks the endpoint, which extends a browser text selection without using the mouse.
-- **Cross-Window Drag**: In Stage 2, press `D` to set a drag anchor, move to the drop target, and press `Enter`. KeyGrid moves to the anchor, holds the left button, moves to the drop target, and releases it. Drag can cross windows and monitors.
+- **Two-Point Range Selection**: In Stage 2, press `R` to set an anchor. KeyGrid returns to Stage 1; select the endpoint region, refine it with arrow keys, and press `Enter` to extend a browser text selection.
+- **Cross-Window Drag**: In Stage 2, press `D` to set a drag anchor. KeyGrid returns to Stage 1; select the drop-target region, refine it with arrow keys, and press `Enter`. Drag can cross windows and monitors.
 - **Scroll Mode**: Press `PageUp` or `PageDown` in Stage 2 to scroll the window under the current target. Arrow keys scroll by one wheel notch and Page keys by five; `Esc` returns to Stage 2 without leaving the grid.
-- **Undo & Cancellation**: Step back through Stage 1 with `Backspace` or cancel immediately with `Esc`. With a range anchor or Scroll Mode active, `Esc` cancels that sub-mode first.
+- **Undo & Cancellation**: Step back through Stage 1 with `Backspace` or cancel immediately with `Esc`. With a range/drag anchor or Scroll Mode active, `Esc` cancels that sub-mode first.
 
 ---
 
@@ -134,8 +134,9 @@ The blocks assume the physical rows of a QWERTY or JIS keyboard. On layouts such
 2. Press the row letter shown in that cell. The grid zooms into the selected region.
 3. Use the arrow keys to move the red cursor through the 25×25 context grid. The selected Stage 1 cell is outlined; the outer margin lets you correct to a nearby target on any monitor. Holding an arrow key moves continuously. Cells outside monitor areas are skipped.
 4. Press **`Enter`** to left-click, **`Shift+Enter`** to right-click, or **`Ctrl+Enter`** to middle-click the highlighted cell.
-5. To extend a browser text selection, press **`R`** in Stage 2 to set the range start, move the cursor to the end point, and press **`Enter`**. The anchor stays marked in green while the end point moves.
-6. To scroll the target window without clicking, press **`PageUp`** or **`PageDown`** in Stage 2. While Scroll Mode is active, arrow keys scroll by one notch, Page keys scroll by five, and **`Esc`** returns to Stage 2.
+5. To extend a browser text selection, press **`R`** in Stage 2 to set the range start. The grid returns to Stage 1; select the endpoint region, refine the endpoint with arrow keys, and press **`Enter`**. The anchor stays marked in green.
+6. To drag between windows, press **`D`** in Stage 2 to set the drag start. Select the drop-target region in Stage 1, refine the target with arrow keys, and press **`Enter`**. The drag anchor stays marked in green.
+7. To scroll the target window without clicking, press **`PageUp`** or **`PageDown`** in Stage 2. While Scroll Mode is active, arrow keys scroll by one notch, Page keys scroll by five, and **`Esc`** returns to Stage 2.
 
 ### 3. Automatic Clicking
 
@@ -145,7 +146,8 @@ The blocks assume the physical rows of a QWERTY or JIS keyboard. On layouts such
 - **Confirm Without Moving**: Use `Enter`, `Shift+Enter`, or `Ctrl+Enter` as soon as Stage 2 appears to click its initially highlighted, center-most valid cell.
 - The same confirmation keys work immediately after the two Stage 1 keys. Other modifier combinations with `Enter` are ignored.
 - The click kind is captured when `Enter` is pressed. If the target should not see the modifier held during the click (for example `Ctrl`+middle-click), release the modifier before releasing `Enter`; the selected click kind does not change.
-- **Two-Point Range**: In Stage 2, press `R` to use the current target as the anchor. The primary overlay shows `Range: Enter to select`, and a green ring marks the anchor. Move to the endpoint, then press `Enter`. KeyGrid left-clicks the anchor and Shift+left-clicks the endpoint. Both endpoints must be in the same top-level window; otherwise the range is cancelled with an error and Stage 2 remains available.
+- **Two-Point Range**: In Stage 2, press `R` to use the current target as the anchor. The primary overlay shows `Range: Enter to select`, and a green ring marks the anchor. KeyGrid returns to Stage 1; select the endpoint region, refine its position, then press `Enter`. KeyGrid left-clicks the anchor and Shift+left-clicks the endpoint. Both endpoints must be in the same top-level window; otherwise the range is cancelled with an error and Stage 2 remains available.
+- **Cross-Window Drag**: In Stage 2, press `D` to use the current target as the anchor. The primary overlay shows `Drag: Enter to drop`, and a green ring marks the anchor. KeyGrid returns to Stage 1; select the drop-target region, refine its position, then press `Enter` to drag. The target may be in a different top-level window or monitor.
 - **Scroll Mode**: In Stage 2, press `PageUp` or `PageDown` to enter Scroll Mode. A `Scroll Mode` badge appears on the primary overlay. `Up`/`Down` scroll vertically by one wheel notch, `Left`/`Right` scroll horizontally, and `PageUp`/`PageDown` scroll vertically by five notches. The current Stage 2 target is scrolled without moving the selection cursor. `Esc` exits Scroll Mode and returns to Stage 2; press `Esc` again to leave selection. Scroll Mode is ignored while a range anchor is active, and `R` is ignored while Scroll Mode is active.
 - **Continuous Mode**: Press `Tab` while the grid is visible. After each click, the grid returns to Stage 1 for the next selection. A `Continuous Mode` badge appears on the primary monitor while the mode is on. Press `Tab` again for normal mode, or `Esc` to exit.
 
@@ -153,11 +155,12 @@ The blocks assume the physical rows of a QWERTY or JIS keyboard. On layouts such
 
 | Key | Action |
 |---|---|
-| **`Backspace`** | Returns to the previous Stage 1 selection step and recalculates the active selection area. Arrow movement is not part of the undo history. A range anchor stays fixed when the region changes. |
-| **`R`** (Stage 2) | Sets the range anchor at the current target. Pressing `R` again while an anchor is active is ignored. |
+| **`Backspace`** | Returns to the previous Stage 1 selection step and recalculates the active selection area. Arrow movement is not part of the undo history. A range or drag anchor stays fixed when the region changes. |
+| **`R`** (Stage 2) | Sets the range anchor at the current target and returns to Stage 1. |
+| **`D`** (Stage 2) | Sets the drag anchor at the current target and returns to Stage 1. |
 | **`PageUp` / `PageDown`** (Stage 2) | Enters Scroll Mode and scrolls the current target vertically. Page keys scroll by five wheel notches; arrow keys scroll by one and also handle horizontal scrolling. |
 | **`Tab`** | Toggles continuous mode while the grid is visible. In continuous mode, each click returns to Stage 1 instead of exiting. |
-| **`Esc`** | Exits Scroll Mode first, then clears an active range anchor. When neither sub-mode is active, cancels the selection mode (including continuous mode) and returns to standby. |
+| **`Esc`** | Exits Scroll Mode first, then clears an active range or drag anchor. When neither sub-mode is active, cancels the selection mode (including continuous mode) and returns to standby. |
 | **Focus Loss** | Switching to a visible application cancels selection. Transient focus loss to hidden Windows/IME helper windows is recovered automatically. |
 
 If the grid remains visible but no longer receives keyboard input, press **`Ctrl + Shift + Space`** again to restart the selection from the beginning and restore focus to the grid.

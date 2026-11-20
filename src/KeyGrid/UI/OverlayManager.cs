@@ -296,7 +296,6 @@ public class OverlayManager
             || !IsActive
             || _isInputInProgress
             || _scrollMode
-            || _dragStartPoint.HasValue
             || _selectionManager.State != SelectionState.Selecting)
         {
             return;
@@ -307,12 +306,14 @@ public class OverlayManager
             // R is unused in Stage 2. Set the anchor once; Esc clears it. Repeating
             // R must not silently move an anchor that the user may already be relying on.
             if (_rangeStartPoint.HasValue
+                || _dragStartPoint.HasValue
                 || !_selectionManager.TryGetStage2Target(out var startPoint))
             {
                 return;
             }
 
             _rangeStartPoint = startPoint;
+            ReturnToStage1();
             FileLogger.LogDebug($"Range start set at ({startPoint.X}, {startPoint.Y}).");
             UpdateAllOverlays();
             return;
@@ -332,7 +333,6 @@ public class OverlayManager
             || !IsActive
             || _isInputInProgress
             || _scrollMode
-            || _rangeStartPoint.HasValue
             || _selectionManager.State != SelectionState.Selecting)
         {
             return;
@@ -341,12 +341,14 @@ public class OverlayManager
         if (_selectionManager.CurrentStage == 2)
         {
             if (_dragStartPoint.HasValue
+                || _rangeStartPoint.HasValue
                 || !_selectionManager.TryGetStage2Target(out var startPoint))
             {
                 return;
             }
 
             _dragStartPoint = startPoint;
+            ReturnToStage1();
             FileLogger.LogDebug($"Drag start set at ({startPoint.X}, {startPoint.Y}).");
             UpdateAllOverlays();
             return;
@@ -355,6 +357,17 @@ public class OverlayManager
         if (_selectionManager.ProcessKey('D'))
         {
             UpdateAllOverlays();
+        }
+    }
+
+    private void ReturnToStage1()
+    {
+        while (_selectionManager.History.Count > 0)
+        {
+            if (!_selectionManager.ProcessBackspace())
+            {
+                throw new InvalidOperationException("The selection could not return to Stage 1.");
+            }
         }
     }
 

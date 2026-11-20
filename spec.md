@@ -32,7 +32,7 @@
 | 確定座標 | 最終的にクリックする座標 |
 | 確定キー | `Enter`（左クリック）、`Shift+Enter`（右クリック）、`Ctrl+Enter`（中クリック）の総称 |
 | 連続モード | 確定後も選択を終了せず、第1段階から選択をやり直すモード。グリッド表示中にTabで切り替える |
-| Range selection | A two-point selection started with `R` in Stage 2. The first point becomes the anchor and the current Stage 2 target becomes the endpoint. `Enter` performs a left click at the anchor and a Shift+left click at the endpoint |
+| Range selection | A two-point selection started with `R` in Stage 2. The first point becomes the anchor, then selection returns to Stage 1 to choose the endpoint region. In Stage 2, `Enter` performs a left click at the anchor and a Shift+left click at the endpoint |
 | Range anchor | The physical-pixel screen coordinate captured when range selection starts. It remains fixed while the Stage 2 cursor or Stage 1 region changes |
 | Scroll Mode | A Stage 2 sub-mode entered with `PageUp` or `PageDown`. Arrow and Page keys send mouse wheel input to the current target; `Esc` returns to Stage 2 |
 | Scroll target | The current Stage 2 target coordinate, recalculated from the selection when each scroll input is dispatched |
@@ -45,7 +45,7 @@
 
 KeyGrid is a resident utility for left-, right-, and middle-clicking accessible screen locations using only the keyboard.
 
-It displays column and row labels across the virtual screen on every monitor. The user narrows the target area with one column key and one row key, then moves a cursor through a 25×25 focus-plus-context grid with the arrow keys. Stage 1 targets approximately 128 DIP cells across the virtual desktop. Stage 2 centers a fixed 600 DIP window (25×25 cells of 24 DIP each) around the Stage 1 cell's reference point, outlining the selected Stage 1 cell while the context margin provides nearby correction. `Enter` performs a left click; `Shift+Enter` performs a right click; `Ctrl+Enter` performs a middle (wheel) click. In Stage 2, `R` starts a two-point range selection so the user can extend a browser text selection from an anchor to a second point.
+It displays column and row labels across the virtual screen on every monitor. The user narrows the target area with one column key and one row key, then moves a cursor through a 25×25 focus-plus-context grid with the arrow keys. Stage 1 targets approximately 128 DIP cells across the virtual desktop. Stage 2 centers a fixed 600 DIP window (25×25 cells of 24 DIP each) around the Stage 1 cell's reference point, outlining the selected Stage 1 cell while the context margin provides nearby correction. `Enter` performs a left click; `Shift+Enter` performs a right click; `Ctrl+Enter` performs a middle (wheel) click. In Stage 2, `R` starts a two-point range selection and `D` starts a drag; each captures the first point and returns to Stage 1 so the user can select the second point's region.
 
 ### 基本方針
 
@@ -95,21 +95,22 @@ It displays column and row labels across the virtual screen on every monitor. Th
 3. 列キー、行キーの順で入力し、第1段階の領域を選択する。
 4. 第2段階では、第1段階で選んだセルの基準点を中心とする固定600 DIP（25×25セル、各セル24 DIP）のコンテキストグリッドを表示する。第1段階の選択セルは枠線と明るい表示で強調し、外周のコンテキスト領域は暗く表示する。中央セル(12, 12)の有効セル（またはそれに最も近い有効セル）を初期カーソル位置として赤く表示する。
 5. Move the cursor with the arrow keys. Holding an arrow key repeats cursor movement at the OS key-repeat rate. Use `Enter` to left-click, `Shift+Enter` to right-click, or `Ctrl+Enter` to middle-click the resolved coordinate. Invalid cells, including gaps between monitors, are skipped. The Stage 2 cursor may move into the context margin on any monitor, so a nearby target outside the Stage 1 cell can still be corrected.
-6. In Stage 2, press `R` without modifiers to set the range anchor at the current target. Move the cursor to the endpoint and press `Enter` to perform a normal left click at the anchor followed by a Shift+left click at the endpoint. `Shift+Enter` and `Ctrl+Enter` are ignored while a range anchor is active.
-6. In Stage 2, press `D` without modifiers to set the drag anchor at the current target. Move the cursor to the drop target and press plain `Enter` to move to the anchor, hold the left button, move to the target, and release the left button. Modified confirmation keys are ignored while drag is active.
-7. In Stage 2, press `PageUp` or `PageDown` without modifiers to enter Scroll Mode. `Up`/`Down` scroll vertically by one wheel notch, `Left`/`Right` scroll horizontally, and `PageUp`/`PageDown` scroll vertically by five notches. The Stage 2 cursor does not move. `Esc` exits Scroll Mode and returns to Stage 2.
-8. 通常モードではオーバーレイを終了し、通常状態に戻る。連続モードではクリック送信後にオーバーレイを再表示し、第1段階（打鍵履歴0個）から選択をやり直す。
+6. In Stage 2, press `R` without modifiers to set the range anchor at the current target. KeyGrid returns to Stage 1; select the endpoint region with its column and row keys, refine the endpoint with the arrow keys, and press `Enter` to perform a normal left click at the anchor followed by a Shift+left click at the endpoint. `Shift+Enter` and `Ctrl+Enter` are ignored while a range anchor is active.
+7. In Stage 2, press `D` without modifiers to set the drag anchor at the current target. KeyGrid returns to Stage 1; select the drop-target region with its column and row keys, refine the target with the arrow keys, and press plain `Enter` to move to the anchor, hold the left button, move to the target, and release the left button. Modified confirmation keys are ignored while drag is active.
+8. In Stage 2, press `PageUp` or `PageDown` without modifiers to enter Scroll Mode. `Up`/`Down` scroll vertically by one wheel notch, `Left`/`Right` scroll horizontally, and `PageUp`/`PageDown` scroll vertically by five notches. The Stage 2 cursor does not move. `Esc` exits Scroll Mode and returns to Stage 2.
+9. 通常モードではオーバーレイを終了し、通常状態に戻る。連続モードではクリック送信後にオーバーレイを再表示し、第1段階（打鍵履歴0個）から選択をやり直す。
 
 Immediately after Stage 1, any confirmation key uses the initially selected valid Stage 2 cell nearest the center.
 
-The range anchor is captured at the exact resolved target coordinate and does not move when the Stage 2 cursor moves. It survives `Backspace` into Stage 1 so the user can change the endpoint region; the anchor remains visible until `Enter` executes the range or `Esc` clears it.
+Range and drag anchors are captured at the exact resolved target coordinate. Setting either anchor resets the Stage 1 key history and returns to the full Stage 1 grid. The anchor stays fixed and visible while the user selects or revises the second-point region; `Backspace` undoes only those Stage 1 keys, and `Esc` clears the anchor.
 
 Scroll Mode uses the same current Stage 2 target that a click would use. Range selection and Scroll Mode are mutually exclusive: Page keys are ignored while an anchor is active, and `R` is ignored while Scroll Mode is active.
 Range, drag, and Scroll modes are mutually exclusive. `R`, `D`, `PageUp`, `PageDown`, and continuous-mode toggle are ignored or rejected according to the active sub-mode.
 
-While drag is active, plain Enter executes the drag, Shift+Enter and Ctrl+Enter are ignored,
-Backspace preserves the drag anchor while undoing Stage 1 history, and Esc clears the drag
-anchor before a second Esc exits selection. Drag endpoints may belong to different top-level
+While drag is active, plain Enter executes the drag after the endpoint has been selected in
+Stage 2, and Shift+Enter and Ctrl+Enter are ignored. Backspace preserves the drag anchor while
+undoing the endpoint's Stage 1 history, and Esc clears the drag anchor before a second Esc exits
+selection. Drag endpoints may belong to different top-level
 windows or monitors. The drag start window is activated independently and verified at the
 anchor coordinate; the drop target is not required to belong to the same window.
 
@@ -147,9 +148,9 @@ anchor coordinate; the drop target is not required to belong to the same window.
 - 連続モードでクリックを送信できなかった場合も第1段階から再開し、エラーを通知する。
 - Range selection uses plain `Enter` only. The start and end points must resolve to the same top-level window after the overlays are hidden; otherwise no synthetic input is sent, the range is cleared, Stage 2 is restored, and an error is reported.
 - A completed range click follows the same normal/continuous-mode completion rules as a normal click. The range anchor is cleared before the next Stage 1 session starts.
-- `R` in Stage 1 keeps its normal column/row key behavior. It starts a range only in Stage 2 when no anchor is already active.
-- After range selection starts, pressing `Esc` clears the anchor and keeps the selection session open. A second `Esc` exits selection mode.
-- Pressing `R` again while an anchor is active is ignored; the anchor changes only after `Esc` clears it.
+- `R` and `D` in Stage 1 keep their normal column/row key behavior, including while choosing the second-point region. They start range or drag only in Stage 2 when no anchor is already active.
+- After range or drag starts, pressing `Esc` clears the anchor and keeps the selection session open. A second `Esc` exits selection mode.
+- Pressing `R` or `D` again in Stage 2 while an anchor is active is ignored; the anchor changes only after `Esc` clears it.
 - Scroll Mode delivers wheel input to the current Stage 2 target. The overlays are hidden only while the synthetic input is sent, then the same Stage 2 selection is restored.
 - Scroll Mode uses one notch for arrow keys and five notches for Page keys. Positive vertical notches scroll up and positive horizontal notches scroll right; the key mapping follows the arrow direction.
 - `Esc` exits Scroll Mode and returns to Stage 2. A second `Esc` exits selection mode. Scroll Mode does not complete the click or change continuous mode.
@@ -165,16 +166,16 @@ anchor coordinate; the drop target is not required to belong to the same window.
 | `Enter` | Confirm with a left click; accepted without modifiers |
 | `Shift+Enter` | Confirm with a right click; accepted with Shift alone |
 | `Ctrl+Enter` | Confirm with a middle (wheel) click; accepted with Ctrl alone |
-| `Backspace` | Undo the last Stage 1 key. Arrow movement is not part of the undo history; an active range anchor is preserved. Ignored in Scroll Mode |
+| `Backspace` | Undo the last Stage 1 key. Arrow movement is not part of the undo history; an active range or drag anchor is preserved. Ignored in Scroll Mode |
 | `Tab` | Toggle continuous mode while the grid is visible. Only an unmodified Tab press is accepted; ignored in Scroll Mode |
-| `R` (Stage 2) | Set the range anchor at the current target. Only an unmodified press is accepted; ignored while an anchor is already active or Scroll Mode is active |
-| `D` (Stage 2) | Set the drag anchor at the current target. Only an unmodified, non-repeat press is accepted; D remains a Stage 1 column key |
+| `R` (Stage 2) | Set the range anchor at the current target and return to Stage 1. Only an unmodified press is accepted; ignored while an anchor is already active or Scroll Mode is active |
+| `D` (Stage 2) | Set the drag anchor at the current target and return to Stage 1. Only an unmodified, non-repeat press is accepted; D remains a Stage 1 column key |
 | `Enter` while a range anchor is active | Execute the range: left click at the anchor, then Shift+left click at the current target |
 | `Enter` while a drag anchor is active | Execute drag: left-button down at the anchor, move to the current target, then left-button up |
 | `PageUp` / `PageDown` (Stage 2) | Enter Scroll Mode and scroll vertically by five wheel notches. In Scroll Mode, scroll vertically by five wheel notches; key repeats are ignored |
-| `Esc` | Exit Scroll Mode first; then clear an active range anchor; when neither sub-mode is active, discard the selection and exit, including continuous mode |
+| `Esc` | Exit Scroll Mode first; then clear an active range or drag anchor; when neither sub-mode is active, discard the selection and exit, including continuous mode |
 
-Backspace undoes one Stage 1 keystroke. In Stage 2 it removes the Stage 1 row key and returns to Stage 1. Arrow movement is not recorded in the history. Range anchors are independent of the history and remain at their captured screen coordinate. Scroll Mode never moves the Stage 2 cursor.
+Backspace undoes one Stage 1 keystroke. In Stage 2 it removes the Stage 1 row key and returns to Stage 1. After setting a range or drag anchor, the Stage 1 history is reset so the second-point region can be selected from the full grid. Arrow movement is not recorded in the history. Anchors are independent of the history and remain at their captured screen coordinate. Scroll Mode never moves the Stage 2 cursor.
 
 ---
 
@@ -421,21 +422,25 @@ For Scroll Mode input, steps 2-4 of the normal click flow are applied to the scr
 | Selecting (history length 2) | `Enter` | Executing click | Confirm the cursor cell with a left click |
 | Selecting (history length 2) | `Shift+Enter` | Executing click | Confirm the cursor cell with a right click |
 | Selecting (history length 2) | `Ctrl+Enter` | Executing click | Confirm the cursor cell with a middle (wheel) click |
-| Selecting (history length 2, no range anchor) | `R` (no modifiers) | Selecting (range active) | Capture the current target as the range anchor |
-| Selecting (range active) | Arrow keys | Selecting (range active) | Move the endpoint cursor; the anchor stays fixed |
+| Selecting (history length 2, no range anchor) | `R` (no modifiers) | Selecting (range active, history length 0) | Capture the current target as the range anchor and return to Stage 1 |
+| Selecting (history length 2, no drag anchor) | `D` (no modifiers) | Selecting (drag active, history length 0) | Capture the current target as the drag anchor and return to Stage 1 |
+| Selecting (range/drag active, history length 0 or 1) | Stage 1 key | Selecting (range/drag active) | Select the endpoint region; keep the anchor fixed |
+| Selecting (range/drag active, history length 2) | Arrow keys | Selecting (range/drag active) | Move the endpoint cursor; the anchor stays fixed |
 | Selecting (range active, history length 2) | `Enter` | Executing range | Validate both endpoints, then send left click + Shift+left click |
 | Selecting (range active) | `Shift+Enter`, `Ctrl+Enter` | No change | Ignore; range execution uses unmodified Enter |
 | Selecting (range active, history length 0 or 1) | `Enter` | No change | Ignore until Stage 2 is active |
-| Selecting (range active) | `R` | No change | Ignore; the anchor is already set |
+| Selecting (range active, history length 2) | `R` | No change | Ignore; the anchor is already set |
+| Selecting (range/drag active, history length 0 or 1) | `R` / `D` | Selecting (range/drag active) | Process as normal Stage 1 selection keys |
+| Selecting (drag active, history length 2) | `D` | No change | Ignore; the anchor is already set |
 | Selecting (range active) | `Esc` | Selecting (no range) | Clear the anchor and keep the session open |
 | Selecting (range active) | Backspace | Selecting | Undo one Stage 1 key when possible; keep the anchor while recalculating the region |
 | Selecting (history length 2, no range) | `PageUp` / `PageDown` (no modifiers) | Selecting (scroll active) | Enter Scroll Mode and send a five-notch page scroll |
 | Selecting (scroll active) | Arrow keys | Selecting (scroll active) | Send one vertical or horizontal wheel notch; do not move the cursor |
 | Selecting (scroll active) | `PageUp` / `PageDown` | Selecting (scroll active) | Send a five-notch vertical wheel scroll |
-| Selecting (scroll active) | `R`, `Tab`, `Backspace`, `Enter` | Selecting (scroll active) | Ignore without changing the mode or cursor |
+| Selecting (scroll active) | `R`, `D`, `Tab`, `Backspace`, `Enter` | Selecting (scroll active) | Ignore without changing the mode or cursor |
 | Selecting (scroll active) | `Esc` | Selecting (Stage 2, no scroll) | Exit Scroll Mode and keep the selection session open |
 | Selecting (scroll active) | Scroll target failure | Selecting (Stage 2, no scroll) | Send no input when the target is invalid; restore Stage 2 and report the error |
-| Selecting (range active) | `PageUp` / `PageDown` | Selecting (range active) | Ignore; Scroll Mode is unavailable while a range anchor is active |
+| Selecting (range/drag active) | `PageUp` / `PageDown` | Selecting (range/drag active) | Ignore; Scroll Mode is unavailable while an anchor is active |
 | Selecting (history length 2) | Backspace | 選択中（履歴1個） | 第1段階へ戻り、領域を再計算 |
 | 選択中（履歴0・1個） | Backspace | 選択中 | 履歴の末尾を取り消す。履歴が空なら変更なし |
 | Selecting (history length 0 or 1) | Any confirmation key | No change | Ignore |
@@ -668,8 +673,9 @@ Win32に依存しない部分を対象とする。
 - 連続モードをOFFに戻した場合、確定後に待機へ戻ること
 - 連続モードのEsc、ホットキー再開始、フォーカス喪失、モニター変更でモードが解除されること
 - 連続モードでクリック失敗時も第1段階へ戻ること
-- `R` in Stage 2 captures the current target as a range anchor without changing selection state, and an unmodified `R` in Stage 1 remains a selection key
-- Range anchors persist across Stage 2 cursor movement and `Backspace` into Stage 1, and `Esc` clears the anchor before exiting
+- `R` in Stage 2 captures the current target as a range anchor and resets the selection to the full Stage 1 grid; an unmodified `R` in Stage 1 remains a selection key
+- `D` in Stage 2 captures the current target as a drag anchor and resets the selection to the full Stage 1 grid; an unmodified `D` in Stage 1 remains a selection key
+- Range and drag anchors persist while selecting or revising the second-point region with Stage 1 keys, and `Esc` clears the anchor before exiting
 - Range confirmation uses only unmodified `Enter`; modified confirmation keys are ignored while a range anchor is active
 - Drag confirmation uses only unmodified `Enter`; modified confirmation keys are ignored while a drag anchor is active
 - A successful drag follows normal/continuous completion rules. Target validation or SendInput failure clears the drag anchor and restores Stage 2 without completing the selection or advancing continuous mode.
