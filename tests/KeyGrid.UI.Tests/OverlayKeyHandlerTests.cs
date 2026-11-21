@@ -256,6 +256,29 @@ public class OverlayKeyHandlerTests
     }
 
     [Fact]
+    public void PrimaryOverlay_PageRepeatsDispatchOnlyWhenRepeatIsEnabled()
+    {
+        UiTestThread.Run(() =>
+        {
+            var handler = new OverlayKeyHandler(isPrimary: true);
+            var directions = new List<int>();
+            handler.PageScrollRequested += direction => directions.Add(direction);
+
+            // Repeats stay ignored until Scroll Mode enables them.
+            Assert.True(handler.HandleKeyDown(Key.PageDown, ModifierKeys.None, isRepeat: true));
+            Assert.Empty(directions);
+
+            handler.AllowPageScrollRepeat = true;
+            Assert.True(handler.HandleKeyDown(Key.PageDown, ModifierKeys.None, isRepeat: true));
+            Assert.True(handler.HandleKeyDown(Key.PageUp, ModifierKeys.None, isRepeat: true));
+            // Other repeated keys are still consumed without dispatching.
+            Assert.True(handler.HandleKeyDown(Key.Q, ModifierKeys.None, isRepeat: true));
+
+            Assert.Equal(new[] { 1, -1 }, directions);
+        });
+    }
+
+    [Fact]
     public void PrimaryOverlay_TabTogglesContinuousModeAndIgnoresModifiedOrRepeatedTabs()
     {
         UiTestThread.Run(() =>

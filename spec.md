@@ -188,7 +188,7 @@ selection keys and do not participate.
 | `R`+`D` chord (Stage 2) | Press and hold `R` and `D` so their key-down events overlap to start the range-then-drag workflow. Accepted only with no modifiers, no repeats, and no active range, drag, or Scroll Mode; a lone `R` or `D` still performs its existing action on key-up |
 | `Enter` while a range anchor is active | Execute the range: left click at the anchor, then Shift+left click at the current target. In the range-then-drag workflow, the endpoint then becomes the drag anchor |
 | `Enter` while a drag anchor is active | Execute drag: left-button down at the anchor, move to the current target, then left-button up |
-| `PageUp` / `PageDown` (Stage 2) | Enter Scroll Mode and scroll vertically by five wheel notches. In Scroll Mode, scroll vertically by five wheel notches; key repeats are ignored |
+| `PageUp` / `PageDown` (Stage 2) | Enter Scroll Mode and scroll vertically by five wheel notches. In Scroll Mode, scroll vertically by five wheel notches; holding a key repeats the scroll |
 | `Esc` | Exit Scroll Mode first; then clear an active range or drag anchor; when neither sub-mode is active, discard the selection and exit, including continuous mode |
 
 Backspace undoes one Stage 1 keystroke. In Stage 2 it removes the Stage 1 row key and returns to Stage 1. After setting a range or drag anchor, the Stage 1 history is reset so the second-point region can be selected from the full grid. Arrow movement is not recorded in the history. Anchors are independent of the history and remain at their captured screen coordinate. Scroll Mode never moves the Stage 2 cursor.
@@ -392,7 +392,7 @@ For Scroll Mode input, steps 2-4 of the normal click flow are applied to the scr
 - 通常の選択操作のためにグローバルキーボードフックは使用しない。
 - 表示中は主オーバーレイのIMEを無効化し（ImmAssociateContext(hwnd, IntPtr.Zero)）、表示終了時に元の状態に戻す。
 - キーの判定は文字ではなくキーコードで行う。第1段階の列・行キーは3.3の対応表で番号に変換し、第2段階は矢印キーと確定キーで操作する。IMEが処理したキーは元のキーコードで判定する。
-- キーリピート（IsRepeat）は原則無視する。ただし第2段階では、カーソル移動中は矢印キー、Scroll Mode中は矢印キーのリピートを連続した移動・スクロールとして受け付ける。第1段階、Pageキー、その他のキーのリピートは無視する。
+- キーリピート（IsRepeat）は原則無視する。ただし第2段階では矢印キー、Scroll Mode中は矢印キーとPageキーのリピートを連続した移動・スクロールとして受け付ける。第1段階、Scroll Mode突入前のPageキー、その他のキーのリピートは無視する。
 - Tabは修飾キーなしの場合のみ連続モードの切り替えに使う。キーリピートは無視する。修飾キー付きのTabは連続モードを切り替えない。
 - `R` activates range selection only in Stage 2 with no modifiers. Unmodified `R` in Stage 1 remains an ordinary selection key, and modified `R` is treated as an ordinary letter key.
 - The `R`+`D` chord is recognized only while the primary overlay is in eligible Stage 2 state. The first of the pair is deferred to key-up; if the other key's key-down arrives first, the chord fires and neither single-key action is dispatched. Repeats and modified presses do not participate, and pending chord state is cleared on `Esc`, focus loss, and overlay teardown.
@@ -459,7 +459,7 @@ For Scroll Mode input, steps 2-4 of the normal click flow are applied to the scr
 | Selecting (range active) | Backspace | Selecting | Undo one Stage 1 key when possible; keep the anchor while recalculating the region |
 | Selecting (history length 2, no range) | `PageUp` / `PageDown` (no modifiers) | Selecting (scroll active) | Enter Scroll Mode and send a five-notch page scroll |
 | Selecting (scroll active) | Arrow keys | Selecting (scroll active) | Send one vertical or horizontal wheel notch per press or repeat; do not move the cursor |
-| Selecting (scroll active) | `PageUp` / `PageDown` | Selecting (scroll active) | Send a five-notch vertical wheel scroll; key repeats are ignored |
+| Selecting (scroll active) | `PageUp` / `PageDown` | Selecting (scroll active) | Send a five-notch vertical wheel scroll per press or repeat |
 | Selecting (scroll active) | `R`, `D`, `Tab`, `Backspace`, `Enter` and other keys | Selecting (scroll active) | Ignore without changing the mode or cursor; while the overlays are hidden the keys are consumed by the keyboard hook |
 | Selecting (scroll active, overlays hidden) | Scroll input pauses | Selecting (scroll active) | Restore the Stage 2 overlays and reclaim focus; Scroll Mode stays active |
 | Selecting (scroll active) | `Esc` | Selecting (Stage 2, no scroll) | Exit Scroll Mode and keep the selection session open |
@@ -693,7 +693,7 @@ Win32に依存しない部分を対象とする。
 - 第2段階で矢印キーを押すと、25×25コンテキストグリッドの有効セル間でカーソルが移動し、無効セルは飛び越すこと
 - 第1段階のセル外でも、モニター上のコンテキストセルを選択・確定できること
 - 第2段階で矢印キーを押し続けると、キーリピートでカーソルが連続移動すること
-- 第1段階、Pageキー、その他のキーのリピートが無視されること（第2段階とScroll Modeでは矢印キーのリピートを連続入力として受け付ける）
+- 第1段階、その他のキーのリピートが無視されること（第2段階では矢印キー、Scroll Mode中は矢印キーとPageキーのリピートを連続入力として受け付ける）
 - 第2段階の `Enter` / `Shift+Enter` / `Ctrl+Enter` でカーソル位置が確定され、それぞれ左・右・中クリックのクリック実行状態へ移ること
 - Tabで連続モードが切り替わり、修飾キー付き・リピートのTabが無視されること
 - 連続モードの確定後にクリックが送信され、第1段階へ戻ること
@@ -711,7 +711,7 @@ Win32に依存しない部分を対象とする。
 - A partial range input sequence releases the synthetic left button and Shift
 - Range start marker and `Range: Enter to select` badge are drawn only on the appropriate overlay(s)
 - `PageUp` / `PageDown` enter Scroll Mode only in Stage 2 and dispatch a five-notch wheel scroll at the current target
-- Scroll Mode arrows dispatch one vertical or horizontal notch per press or repeat without moving the Stage 2 cursor
+- Scroll Mode arrows dispatch one vertical or horizontal notch and Page keys five notches per press or repeat without moving the Stage 2 cursor
 - A scroll burst hides the overlays once, keeps them hidden while the keyboard hook feeds scroll keys, and restores Stage 2 when input pauses while keeping Scroll Mode active
 - `Esc` exits Scroll Mode and keeps the Stage 2 selection active; a second `Esc` exits selection
 - Scroll Mode ignores range start, continuous-mode toggle, Backspace, and confirmation keys

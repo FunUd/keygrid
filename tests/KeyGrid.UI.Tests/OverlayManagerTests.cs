@@ -1647,7 +1647,7 @@ public class OverlayManagerTests
     }
 
     [Fact]
-    public void ScrollHook_IgnoresRepeatsModifiedAndNonScrollKeys()
+    public void ScrollHook_PageRepeatsScrollAndOtherKeysAreConsumed()
     {
         UiTestThread.Run(() =>
         {
@@ -1664,24 +1664,25 @@ public class OverlayManagerTests
             primary.RaisePageScroll(1);
             Assert.Equal(1, clickSender.ScrollCallCount);
 
-            // A repeated PageDown key-down while the key is still held is
-            // ignored, matching the overlay repeat policy.
+            // Holding PageDown keeps dispatching five-notch scrolls so the
+            // burst stays alive for continuous scrolling.
             Assert.True(manager.ScrollKeyHook.RaiseKey(NativeMethods.VK_NEXT));
             Assert.Equal(2, clickSender.ScrollCallCount);
             Assert.Equal(-5, clickSender.LastScrollNotches);
             Assert.True(manager.ScrollKeyHook.RaiseKey(NativeMethods.VK_NEXT));
-            Assert.Equal(2, clickSender.ScrollCallCount);
+            Assert.Equal(3, clickSender.ScrollCallCount);
+            Assert.Equal(-5, clickSender.LastScrollNotches);
             Assert.True(manager.ScrollKeyHook.RaiseKey(NativeMethods.VK_NEXT, isKeyUp: true));
 
             // Modified Page keys are consumed without scrolling.
             Assert.True(manager.ScrollKeyHook.RaiseKey(
                 NativeMethods.VK_PRIOR,
                 modifierMask: KeyboardHookModifiers.Shift));
-            Assert.Equal(2, clickSender.ScrollCallCount);
+            Assert.Equal(3, clickSender.ScrollCallCount);
 
             // Letters are consumed but ignored in Scroll Mode.
             Assert.True(manager.ScrollKeyHook.RaiseKey(0x41));
-            Assert.Equal(2, clickSender.ScrollCallCount);
+            Assert.Equal(3, clickSender.ScrollCallCount);
 
             // Ctrl-modified keys pass through so the target app still receives
             // system combinations, and the matching key-up passes too.
@@ -1689,7 +1690,7 @@ public class OverlayManagerTests
                 0x43,
                 modifierMask: KeyboardHookModifiers.Control));
             Assert.False(manager.ScrollKeyHook.RaiseKey(0x43, isKeyUp: true));
-            Assert.Equal(2, clickSender.ScrollCallCount);
+            Assert.Equal(3, clickSender.ScrollCallCount);
 
             manager.CloseOverlays();
         });

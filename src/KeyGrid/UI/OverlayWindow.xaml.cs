@@ -110,6 +110,10 @@ public partial class OverlayWindow : Window, IOverlayWindowSurface
         // input in Scroll Mode. Repeats stay ignored in Stage 1.
         _keyHandler.AllowArrowKeyRepeat = selectionManager.CurrentStage == 2;
 
+        // Holding a Page key repeats the five-notch scroll only inside Scroll
+        // Mode; Page repeats are still ignored when entering it.
+        _keyHandler.AllowPageScrollRepeat = isScrollMode;
+
         // The R+D chord is eligible only for a plain Stage 2 target with no
         // anchor or Scroll Mode active. Stage 1 letters stay immediate keys.
         _keyHandler.AllowRangeDragChord = IsPrimary

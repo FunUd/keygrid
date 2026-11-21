@@ -12,9 +12,16 @@ internal sealed class OverlayKeyHandler
     /// <summary>
     /// Whether repeated arrow keys should dispatch movement. Enabled only while
     /// the Stage 2 cursor is active, so holding an arrow key moves continuously
-    /// without changing the repeat policy in Stage 1 or Scroll Mode.
+    /// without changing the repeat policy in Stage 1.
     /// </summary>
     public bool AllowArrowKeyRepeat { get; set; }
+
+    /// <summary>
+    /// Whether repeated Page keys should dispatch page scrolls. Enabled only
+    /// while Scroll Mode is active, so holding a Page key keeps scrolling
+    /// without changing the repeat policy elsewhere.
+    /// </summary>
+    public bool AllowPageScrollRepeat { get; set; }
 
     /// <summary>
     /// Whether an overlapping R+D key-down pair requests the range-then-drag
@@ -54,7 +61,9 @@ internal sealed class OverlayKeyHandler
             return false;
         }
 
-        if (isRepeat && !(AllowArrowKeyRepeat && IsArrowKey(key)))
+        if (isRepeat
+            && !(AllowArrowKeyRepeat && IsArrowKey(key))
+            && !(AllowPageScrollRepeat && IsPageKey(key)))
         {
             return true;
         }
@@ -187,6 +196,11 @@ internal sealed class OverlayKeyHandler
     private static bool IsArrowKey(Key key)
     {
         return key is Key.Left or Key.Right or Key.Up or Key.Down;
+    }
+
+    private static bool IsPageKey(Key key)
+    {
+        return key is Key.PageUp or Key.PageDown;
     }
 
     private static bool IsModifierKey(Key key)

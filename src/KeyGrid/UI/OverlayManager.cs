@@ -64,7 +64,6 @@ public class OverlayManager
     private DispatcherTimer? _scrollIdleTimer;
     private bool _scrollBurstActive;
     private nint _scrollTargetRoot;
-    private readonly HashSet<uint> _scrollHookHeldKeys = new();
     private readonly HashSet<uint> _scrollHookPassedKeys = new();
 
     public event Action<string>? ErrorOccurred;
@@ -1488,7 +1487,6 @@ public class OverlayManager
                 return false;
             }
 
-            _scrollHookHeldKeys.Remove(vk);
             return true;
         }
 
@@ -1500,9 +1498,6 @@ public class OverlayManager
             _scrollHookPassedKeys.Add(vk);
             return false;
         }
-
-        bool alreadyHeld = _scrollHookHeldKeys.Contains(vk);
-        _scrollHookHeldKeys.Add(vk);
 
         switch (vk)
         {
@@ -1519,11 +1514,12 @@ public class OverlayManager
                 ScrollCurrentTarget(-1, horizontal: false);
                 break;
             // Modified Page keys are consumed without scrolling, matching the
-            // overlay key handler. Page repeats are ignored as well.
-            case NativeMethods.VK_PRIOR when keyEvent.ModifierMask == 0 && !alreadyHeld:
+            // overlay key handler. Repeats scroll again so holding the key
+            // keeps the burst alive.
+            case NativeMethods.VK_PRIOR when keyEvent.ModifierMask == 0:
                 ScrollCurrentTarget(ScrollNotchesPerPage, horizontal: false);
                 break;
-            case NativeMethods.VK_NEXT when keyEvent.ModifierMask == 0 && !alreadyHeld:
+            case NativeMethods.VK_NEXT when keyEvent.ModifierMask == 0:
                 ScrollCurrentTarget(-ScrollNotchesPerPage, horizontal: false);
                 break;
             case NativeMethods.VK_ESCAPE:
@@ -1565,7 +1561,6 @@ public class OverlayManager
         _scrollTargetRoot = nint.Zero;
         _scrollIdleTimer?.Stop();
         _scrollKeyHook.Uninstall();
-        _scrollHookHeldKeys.Clear();
         _scrollHookPassedKeys.Clear();
     }
 
@@ -1595,7 +1590,6 @@ public class OverlayManager
 
         _scrollBurstActive = false;
         _scrollTargetRoot = nint.Zero;
-        _scrollHookHeldKeys.Clear();
         _scrollHookPassedKeys.Clear();
         if (!ShowOverlaysAfterInput())
         {
