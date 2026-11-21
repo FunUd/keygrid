@@ -1,10 +1,19 @@
 # Changelog
 
-## [Unreleased]
+## [0.3.0] - 2026-11-21
 
 ### Added
 
-- Add a range-then-drag workflow: press and hold `R` and `D` together in Stage 2 to capture a range anchor, select the range endpoint, and automatically reuse that endpoint as the drag anchor for the drop-target selection. Single `R`/`D` presses and Stage 1 letter keys are unchanged.
+- Add a range-then-drag workflow: press and hold `R` and `D` together in Stage 2 to capture a range anchor, select the range endpoint, and automatically reuse that endpoint as the drag anchor for the drop-target selection. `F` in Stage 2 starts the same workflow directly. Single `R`/`D` presses and Stage 1 letter keys are unchanged.
+- Keep the overlays hidden during a scroll burst: the first scroll input hides the grid and activates the target once, a low-level keyboard hook keeps feeding scroll keys while the target owns the foreground, and the Stage 2 grid returns when input pauses. This removes the per-notch hide/show flicker.
+
+### Changed
+
+- Arrow and Page key repeats now scroll continuously in Scroll Mode, so holding a key keeps scrolling without losing the Stage 2 selection.
+
+### Fixed
+
+- Keep a pending `R`+`D` chord alive when a modifier key is pressed between the chord keys.
 
 ## [0.2.0] - 2026-11-20
 
