@@ -59,9 +59,11 @@ internal sealed class OverlayKeyHandler
             return true;
         }
 
-        // Any key other than the chord pair breaks the overlap, so a later
-        // key-up must not complete a chord across unrelated input.
-        if (key is not (Key.R or Key.D))
+        // Any non-chord, non-modifier key breaks the overlap, so a later key-up
+        // must not complete a chord across unrelated input. Modifier key-downs
+        // are tolerated because users can brush Alt/Shift while pressing the
+        // chord keys; modified R/D presses still cannot form the chord.
+        if (key is not (Key.R or Key.D) && !IsModifierKey(key))
         {
             _pendingChordKey = null;
         }
@@ -178,6 +180,14 @@ internal sealed class OverlayKeyHandler
     private static bool IsArrowKey(Key key)
     {
         return key is Key.Left or Key.Right or Key.Up or Key.Down;
+    }
+
+    private static bool IsModifierKey(Key key)
+    {
+        return key is Key.LeftShift or Key.RightShift
+            or Key.LeftCtrl or Key.RightCtrl
+            or Key.LeftAlt or Key.RightAlt
+            or Key.LWin or Key.RWin;
     }
 
     /// <summary>

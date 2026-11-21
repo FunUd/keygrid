@@ -246,7 +246,7 @@ public partial class OverlayWindow : Window, IOverlayWindowSurface
         {
             Key key = e.Key == Key.System ? e.SystemKey : e.Key;
             FileLogger.LogDebug(
-                $"Primary overlay WPF keydown (category={GetKeyCategory(key)}, modifiers={modifiers}, " +
+                $"Primary overlay WPF keydown (key={key}, category={GetKeyCategory(key)}, modifiers={modifiers}, " +
                 $"repeat={e.IsRepeat}, handled={handled}).");
         }
     }
@@ -262,7 +262,7 @@ public partial class OverlayWindow : Window, IOverlayWindowSurface
         if (IsPrimary && handled)
         {
             FileLogger.LogDebug(
-                $"Primary overlay WPF keyup (category={GetKeyCategory(key)}, modifiers={modifiers}, handled={handled}).");
+                $"Primary overlay WPF keyup (key={key}, category={GetKeyCategory(key)}, modifiers={modifiers}, handled={handled}).");
         }
     }
 

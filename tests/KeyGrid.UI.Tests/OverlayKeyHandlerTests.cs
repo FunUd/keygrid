@@ -167,6 +167,27 @@ public class OverlayKeyHandlerTests
     }
 
     [Fact]
+    public void PrimaryOverlay_ModifierKeyBetweenChordKeysDoesNotBreakOverlap()
+    {
+        UiTestThread.Run(() =>
+        {
+            var handler = new OverlayKeyHandler(isPrimary: true)
+            {
+                AllowRangeDragChord = true
+            };
+            int workflowCount = 0;
+            handler.RangeDragWorkflowRequested += () => workflowCount++;
+
+            Assert.True(handler.HandleKeyDown(Key.R, ModifierKeys.None, isRepeat: false));
+            // A brushed Alt key-down must not cancel the pending chord key.
+            Assert.True(handler.HandleKeyDown(Key.LeftAlt, ModifierKeys.Alt, isRepeat: false));
+            Assert.True(handler.HandleKeyDown(Key.D, ModifierKeys.None, isRepeat: false));
+
+            Assert.Equal(1, workflowCount);
+        });
+    }
+
+    [Fact]
     public void PrimaryOverlay_CancelClearsPendingRangeDragKey()
     {
         UiTestThread.Run(() =>
