@@ -132,25 +132,30 @@ public class OverlayRenderElement : FrameworkElement
 
         // 1. Draw Dimmed Mask outside selection. In Stage 2 the Stage 1 cell stays
         // bright as the focus while the surrounding context margin is dimmed.
-        var focusSelection = _selectionManager.CurrentStage >= 2
-            ? _selectionManager.FocusSelection
-            : _selectionManager.CurrentSelection;
-        var selectionGeometries = new GeometryGroup();
-        foreach (var rect in focusSelection)
+        // Scroll Mode skips the mask so the window being scrolled stays fully
+        // visible; the dual-tone grid lines remain legible without dimming.
+        if (!_isScrollMode)
         {
-            var intersection = rect.Intersect(_monitorRect);
-            if (!intersection.IsEmpty)
+            var focusSelection = _selectionManager.CurrentStage >= 2
+                ? _selectionManager.FocusSelection
+                : _selectionManager.CurrentSelection;
+            var selectionGeometries = new GeometryGroup();
+            foreach (var rect in focusSelection)
             {
-                var dipRect = ToDipRect(intersection, dpiX, dpiY);
-                selectionGeometries.Children.Add(new RectangleGeometry(dipRect));
+                var intersection = rect.Intersect(_monitorRect);
+                if (!intersection.IsEmpty)
+                {
+                    var dipRect = ToDipRect(intersection, dpiX, dpiY);
+                    selectionGeometries.Children.Add(new RectangleGeometry(dipRect));
+                }
             }
-        }
 
-        var maskGeometry = new CombinedGeometry(
-            GeometryCombineMode.Exclude,
-            new RectangleGeometry(fullMonitorDipRect),
-            selectionGeometries);
-        dc.DrawGeometry(_dimBrush, null, maskGeometry);
+            var maskGeometry = new CombinedGeometry(
+                GeometryCombineMode.Exclude,
+                new RectangleGeometry(fullMonitorDipRect),
+                selectionGeometries);
+            dc.DrawGeometry(_dimBrush, null, maskGeometry);
+        }
 
         // 2. Draw Column Highlight (if 1st keystroke of stage completed)
         if (_selectionManager.CurrentStage == 1

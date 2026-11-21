@@ -205,6 +205,24 @@ public class OverlayRenderElementTests
         Assert.DoesNotContain("Scroll Mode", normalText);
     }
 
+    [Fact]
+    public void ScrollMode_SkipsTheDimMaskSoScrolledContentStaysVisible()
+    {
+        var selection = CreateSelection();
+        SelectFirstStageCell(selection);
+
+        static bool IsDimMask(GeometryDrawing drawing) =>
+            drawing.Brush is SolidColorBrush brush
+                && brush.Color == Color.FromArgb(145, 10, 15, 25);
+
+        Assert.Contains(
+            GetGeometryDrawings(RenderDrawings(LeftMonitor, selection)),
+            IsDimMask);
+        Assert.DoesNotContain(
+            GetGeometryDrawings(RenderDrawings(LeftMonitor, selection, isScrollMode: true)),
+            IsDimMask);
+    }
+
     private static SelectionManager CreateSelection()
     {
         var selection = new SelectionManager();

@@ -306,13 +306,14 @@ totalDeviation = |cellWidthPx - targetPx| + |cellHeightPx - targetPx|
 - 第2段階では文字ラベルを表示せず、第1段階のセル（focusBox）の基準点を中心とする固定25×25のコンテキストグリッド（セル24 DIP、ウィンドウ600 DIP）を表示する。第1段階の選択セルは明るく残し、外周のコンテキスト領域は暗く表示する。中央セル(12, 12)の有効セル（またはそれに最も近い有効セル）を初期選択する。選択セルは半透明の赤でハイライトし、矢印キーで移動する。矢印キーを押し続けるとキーリピート間隔で連続移動する。
 - セルが複数モニターにまたがる場合、ラベルは所有するモニターのオーバーレイだけに描画する。
 - 選択領域のないセルのラベルは表示しない。そのキーは無視する。
-- 選択領域の外側は暗くし、選択領域を明るく表示する。外接矩形の枠線も表示する。第2段階では選択された第1段階セル（FocusSelection）の枠線を強調表示し、25×25ウィンドウの外周枠は控えめに表示する。
+- 選択領域の外側は暗くし、選択領域を明るく表示する（Scroll Mode中は暗くしない。後述）。外接矩形の枠線も表示する。第2段階では選択された第1段階セル（FocusSelection）の枠線を強調表示し、25×25ウィンドウの外周枠は控えめに表示する。
 - グリッド線は細く、視認性を損なわない色にする。
 - 第2段階で確定キーを押すと、選択カーソルのセルを確定し、`Enter`は左、`Shift+Enter`は右、`Ctrl+Enter`は中（ホイール）クリックする。
 - 連続モードがONの間は、プライマリモニターのオーバーレイに「Continuous Mode」と表示する。表示は簡易的なテキストバッジとし、選択操作を妨げない。
 - While a range anchor is active, a high-contrast green ring and crosshair are drawn at the anchor's exact physical-pixel coordinate. The marker is drawn by the monitor that contains the point, including when it is not the primary monitor.
 - While a range anchor is active, the primary overlay shows the status badge `Range: Enter to select`. During the range phase of the range-then-drag workflow the badge reads `Range-to-Drag: Enter to select` instead. Status badges stack without overlapping, and an active continuous mode is shown below the range badge.
 - While Scroll Mode is active, the primary overlay shows the status badge `Scroll Mode`. Continuous mode remains visible below it when enabled.
+- While Scroll Mode is active, the full-screen dim mask is not drawn, so the window being scrolled stays fully visible. The Stage 2 context window border, the cursor cell highlight, and the status badges remain.
 - 色・透明度は初期バージョンでは固定値とする。背景色に応じた自動色変更は行わない。
 
 ### 5.3 表示終了
