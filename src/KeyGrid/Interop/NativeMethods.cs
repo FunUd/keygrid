@@ -155,6 +155,17 @@ internal static class NativeMethods
     public const int WHEEL_DELTA = 120;
     public const uint KEYEVENTF_KEYUP = 0x0002;
     public const ushort VK_SHIFT = 0x10;
+    public const uint VK_PRIOR = 0x21;   // PageUp
+    public const uint VK_NEXT = 0x22;    // PageDown
+    public const uint VK_LEFT = 0x25;
+    public const uint VK_UP = 0x26;
+    public const uint VK_RIGHT = 0x27;
+    public const uint VK_DOWN = 0x28;
+    public const uint VK_ESCAPE = 0x1B;
+    public const uint VK_CONTROL = 0x11;
+    public const uint VK_MENU = 0x12;    // Alt
+    public const uint VK_LWIN = 0x5B;
+    public const uint VK_RWIN = 0x5C;
 
     // System Metrics
     public const int SM_XVIRTUALSCREEN = 76;
@@ -399,4 +410,37 @@ internal static class NativeMethods
 
     [DllImport("user32.dll")]
     public static extern bool AllowSetForegroundWindow(uint dwProcessId);
+
+    // Low-level keyboard hook (WH_KEYBOARD_LL)
+    public const int WH_KEYBOARD_LL = 13;
+    public const uint LLKHF_INJECTED = 0x00000010;
+
+    public const int WM_KEYDOWN_MSG = 0x0100;
+    public const int WM_KEYUP_MSG = 0x0101;
+    public const int WM_SYSKEYDOWN_MSG = 0x0104;
+    public const int WM_SYSKEYUP_MSG = 0x0105;
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct KBDLLHOOKSTRUCT
+    {
+        public uint vkCode;
+        public uint scanCode;
+        public uint flags;
+        public uint time;
+        public nuint dwExtraInfo;
+    }
+
+    public delegate nint LowLevelKeyboardProc(int nCode, nuint wParam, nint lParam);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    public static extern nint SetWindowsHookEx(int idHook, LowLevelKeyboardProc lpfn, nint hMod, uint dwThreadId);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    public static extern bool UnhookWindowsHookEx(nint hhk);
+
+    [DllImport("user32.dll")]
+    public static extern nint CallNextHookEx(nint hhk, int nCode, nuint wParam, nint lParam);
+
+    [DllImport("user32.dll")]
+    public static extern short GetAsyncKeyState(int vKey);
 }

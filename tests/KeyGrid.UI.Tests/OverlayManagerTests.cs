@@ -2,6 +2,7 @@ using KeyGrid.Core.Abstractions;
 using KeyGrid.Core.Geometry;
 using KeyGrid.Core.Selection;
 using KeyGrid.Core.Services;
+using KeyGrid.Interop;
 using KeyGrid.UI;
 
 namespace KeyGrid.UI.Tests;
@@ -1346,9 +1347,12 @@ public class OverlayManagerTests
             Assert.Equal(0, clickSender.CallCount);
             Assert.Equal(0, clickSender.RangeCallCount);
             Assert.Equal(1, primary.HideForInputCount);
-            Assert.Equal(1, primary.ShowForInputCount);
+            // The scroll burst keeps the overlays hidden until input pauses.
+            Assert.Equal(0, primary.ShowForInputCount);
+            Assert.True(manager.ScrollKeyHook.IsInstalled);
             Assert.True(primary.LastScrollMode);
-            Assert.Equal(primary.Handle, focus.ForegroundWindow);
+            // The target window owns the foreground while the burst is active.
+            Assert.Equal(new nint(0x500), focus.ForegroundWindow);
 
             manager.CloseOverlays();
         });
@@ -1389,13 +1393,20 @@ public class OverlayManagerTests
             Assert.True(clickSender.LastScrollHorizontal);
             Assert.Equal(selectedColumn, manager.SelectionManager.SelectedColumnIndex);
             Assert.Equal(selectedRow, manager.SelectionManager.SelectedRowIndex);
+            // The burst keeps the overlays hidden across all three scroll inputs.
+            Assert.Equal(1, primary.HideForInputCount);
+            Assert.Equal(0, primary.ShowForInputCount);
 
-            primary.RaiseCancel();
+            // While the overlays are hidden, Esc arrives through the keyboard
+            // hook and exits Scroll Mode back to Stage 2.
+            Assert.True(manager.ScrollKeyHook.RaiseKey(NativeMethods.VK_ESCAPE));
 
             Assert.False(manager.IsScrollMode);
             Assert.True(manager.IsActive);
             Assert.Equal(SelectionState.Selecting, manager.SelectionManager.State);
             Assert.Equal(2, manager.SelectionManager.CurrentStage);
+            Assert.False(manager.ScrollKeyHook.IsInstalled);
+            Assert.Equal(1, primary.ShowForInputCount);
             Assert.False(primary.LastScrollMode);
             Assert.Equal(0, primary.CloseCount);
 
@@ -1426,6 +1437,7 @@ public class OverlayManagerTests
             primary.RaiseKey(manager.SelectionManager.RowKeys[0]);
             primary.RaisePageScroll(1);
             Assert.True(manager.IsScrollMode);
+            Assert.True(manager.ScrollKeyHook.IsInstalled);
 
             primary.RaiseRangeStart();
             primary.RaiseContinuousModeToggle();
@@ -1545,6 +1557,180 @@ public class OverlayManagerTests
         });
     }
 
+    [Fact]
+    public void ScrollBurst_KeepsOverlaysHiddenAcrossHookInput()
+    {
+        UiTestThread.Run(() =>
+        {
+            var factory = new FakeOverlayFactory();
+            var focus = new FakeWindowFocusService();
+            var clickSender = new FakeClickSender();
+            var manager = CreateManager(SingleMonitorProvider(), factory, focus, clickSender);
+            manager.ShowOverlays();
+            UiTestThread.DrainDispatcher();
+            var primary = Assert.Single(factory.Windows);
+
+            primary.RaiseKey(manager.SelectionManager.ColumnKeys[0]);
+            primary.RaiseKey(manager.SelectionManager.RowKeys[0]);
+            primary.RaisePageScroll(1);
+            Assert.Equal(1, clickSender.ScrollCallCount);
+            Assert.Equal(1, primary.HideForInputCount);
+            Assert.Equal(0, primary.ShowForInputCount);
+
+            // Arrow keys arrive through the hook while the overlays are hidden
+            // and scroll without another hide/show cycle.
+            Assert.True(manager.ScrollKeyHook.RaiseKey(NativeMethods.VK_DOWN));
+            Assert.True(manager.ScrollKeyHook.RaiseKey(NativeMethods.VK_DOWN, isKeyUp: true));
+            Assert.Equal(2, clickSender.ScrollCallCount);
+            Assert.Equal(-1, clickSender.LastScrollNotches);
+            Assert.False(clickSender.LastScrollHorizontal);
+            Assert.Equal(1, primary.HideForInputCount);
+            Assert.Equal(0, primary.ShowForInputCount);
+
+            Assert.True(manager.ScrollKeyHook.RaiseKey(NativeMethods.VK_LEFT));
+            Assert.Equal(3, clickSender.ScrollCallCount);
+            Assert.Equal(-1, clickSender.LastScrollNotches);
+            Assert.True(clickSender.LastScrollHorizontal);
+            Assert.Equal(1, primary.HideForInputCount);
+            Assert.Equal(0, primary.ShowForInputCount);
+
+            // Page keys scroll five notches through the same path.
+            Assert.True(manager.ScrollKeyHook.RaiseKey(NativeMethods.VK_NEXT));
+            Assert.Equal(4, clickSender.ScrollCallCount);
+            Assert.Equal(-5, clickSender.LastScrollNotches);
+            Assert.Equal(1, primary.HideForInputCount);
+            Assert.Equal(0, primary.ShowForInputCount);
+
+            manager.CloseOverlays();
+        });
+    }
+
+    [Fact]
+    public void ScrollBurst_IdleRestoresOverlaysButKeepsScrollMode()
+    {
+        UiTestThread.Run(() =>
+        {
+            var factory = new FakeOverlayFactory();
+            var focus = new FakeWindowFocusService();
+            var clickSender = new FakeClickSender();
+            var manager = CreateManager(SingleMonitorProvider(), factory, focus, clickSender);
+            manager.ShowOverlays();
+            UiTestThread.DrainDispatcher();
+            var primary = Assert.Single(factory.Windows);
+
+            primary.RaiseKey(manager.SelectionManager.ColumnKeys[0]);
+            primary.RaiseKey(manager.SelectionManager.RowKeys[0]);
+            primary.RaisePageScroll(1);
+            Assert.Equal(1, primary.HideForInputCount);
+            Assert.Equal(0, primary.ShowForInputCount);
+
+            // Once scroll input pauses, the Stage 2 grid returns while Scroll
+            // Mode stays active.
+            manager.SimulateScrollBurstIdle();
+
+            Assert.True(manager.IsScrollMode);
+            Assert.True(manager.IsActive);
+            Assert.Equal(1, primary.ShowForInputCount);
+            Assert.True(primary.LastScrollMode);
+            Assert.Equal(primary.Handle, focus.ForegroundWindow);
+
+            // The next scroll key starts a new burst without reinstalling the hook.
+            primary.RaiseMove(0, 1);
+            Assert.Equal(2, clickSender.ScrollCallCount);
+            Assert.Equal(-1, clickSender.LastScrollNotches);
+            Assert.Equal(2, primary.HideForInputCount);
+            Assert.Equal(1, primary.ShowForInputCount);
+            Assert.True(manager.ScrollKeyHook.IsInstalled);
+
+            manager.CloseOverlays();
+        });
+    }
+
+    [Fact]
+    public void ScrollHook_IgnoresRepeatsModifiedAndNonScrollKeys()
+    {
+        UiTestThread.Run(() =>
+        {
+            var factory = new FakeOverlayFactory();
+            var focus = new FakeWindowFocusService();
+            var clickSender = new FakeClickSender();
+            var manager = CreateManager(SingleMonitorProvider(), factory, focus, clickSender);
+            manager.ShowOverlays();
+            UiTestThread.DrainDispatcher();
+            var primary = Assert.Single(factory.Windows);
+
+            primary.RaiseKey(manager.SelectionManager.ColumnKeys[0]);
+            primary.RaiseKey(manager.SelectionManager.RowKeys[0]);
+            primary.RaisePageScroll(1);
+            Assert.Equal(1, clickSender.ScrollCallCount);
+
+            // A repeated PageDown key-down while the key is still held is
+            // ignored, matching the overlay repeat policy.
+            Assert.True(manager.ScrollKeyHook.RaiseKey(NativeMethods.VK_NEXT));
+            Assert.Equal(2, clickSender.ScrollCallCount);
+            Assert.Equal(-5, clickSender.LastScrollNotches);
+            Assert.True(manager.ScrollKeyHook.RaiseKey(NativeMethods.VK_NEXT));
+            Assert.Equal(2, clickSender.ScrollCallCount);
+            Assert.True(manager.ScrollKeyHook.RaiseKey(NativeMethods.VK_NEXT, isKeyUp: true));
+
+            // Modified Page keys are consumed without scrolling.
+            Assert.True(manager.ScrollKeyHook.RaiseKey(
+                NativeMethods.VK_PRIOR,
+                modifierMask: KeyboardHookModifiers.Shift));
+            Assert.Equal(2, clickSender.ScrollCallCount);
+
+            // Letters are consumed but ignored in Scroll Mode.
+            Assert.True(manager.ScrollKeyHook.RaiseKey(0x41));
+            Assert.Equal(2, clickSender.ScrollCallCount);
+
+            // Ctrl-modified keys pass through so the target app still receives
+            // system combinations, and the matching key-up passes too.
+            Assert.False(manager.ScrollKeyHook.RaiseKey(
+                0x43,
+                modifierMask: KeyboardHookModifiers.Control));
+            Assert.False(manager.ScrollKeyHook.RaiseKey(0x43, isKeyUp: true));
+            Assert.Equal(2, clickSender.ScrollCallCount);
+
+            manager.CloseOverlays();
+        });
+    }
+
+    [Fact]
+    public void ScrollBurst_TargetWindowChangeCancelsScrollMode()
+    {
+        UiTestThread.Run(() =>
+        {
+            var factory = new FakeOverlayFactory();
+            var focus = new FakeWindowFocusService();
+            var clickSender = new FakeClickSender();
+            var manager = CreateManager(SingleMonitorProvider(), factory, focus, clickSender);
+            manager.ShowOverlays();
+            UiTestThread.DrainDispatcher();
+            var primary = Assert.Single(factory.Windows);
+            string? error = null;
+            manager.ErrorOccurred += message => error = message;
+
+            primary.RaiseKey(manager.SelectionManager.ColumnKeys[0]);
+            primary.RaiseKey(manager.SelectionManager.RowKeys[0]);
+            primary.RaisePageScroll(1);
+            Assert.Equal(1, clickSender.ScrollCallCount);
+
+            // A different top-level window slides under the scroll target.
+            focus.WindowAtPoint = new nint(0x600);
+            focus.RootByWindow[new nint(0x600)] = new nint(0x700);
+
+            Assert.True(manager.ScrollKeyHook.RaiseKey(NativeMethods.VK_DOWN));
+
+            Assert.Equal(1, clickSender.ScrollCallCount);
+            Assert.False(manager.IsScrollMode);
+            Assert.False(manager.ScrollKeyHook.IsInstalled);
+            Assert.Equal(1, primary.ShowForInputCount);
+            Assert.Contains("window under the scroll target changed", error);
+
+            manager.CloseOverlays();
+        });
+    }
+
     private static FakeMonitorProvider SingleMonitorProvider()
     {
         return new FakeMonitorProvider(
@@ -1559,19 +1745,22 @@ public class OverlayManagerTests
     {
         factory.FocusService = focus;
         var selectionManager = new SelectionManager();
+        var scrollKeyHook = new FakeScrollKeyHook();
         var manager = new OverlayManager(
             monitorProvider,
             selectionManager,
             new ClickExecutor(clickSender),
             factory.Create,
-            focus);
-        return new TestOverlayManager(manager, selectionManager);
+            focus,
+            scrollKeyHook);
+        return new TestOverlayManager(manager, selectionManager, scrollKeyHook);
     }
 
     private sealed class TestOverlayManager
     {
         public OverlayManager Manager { get; }
         public SelectionManager SelectionManager { get; }
+        public FakeScrollKeyHook ScrollKeyHook { get; }
         public bool IsActive => Manager.IsActive;
         public bool IsContinuousMode => Manager.IsContinuousMode;
         public bool HasRangeSelection => Manager.HasRangeSelection;
@@ -1585,15 +1774,21 @@ public class OverlayManagerTests
             remove => Manager.ErrorOccurred -= value;
         }
 
-        public TestOverlayManager(OverlayManager manager, SelectionManager selectionManager)
+        public TestOverlayManager(
+            OverlayManager manager,
+            SelectionManager selectionManager,
+            FakeScrollKeyHook scrollKeyHook)
         {
             Manager = manager;
             SelectionManager = selectionManager;
+            ScrollKeyHook = scrollKeyHook;
         }
 
         public void ShowOverlays() => Manager.ShowOverlays();
 
         public void CloseOverlays() => Manager.CloseOverlays();
+
+        public void SimulateScrollBurstIdle() => Manager.SimulateScrollBurstIdle();
     }
 
     private sealed class FakeMonitorProvider(params MonitorInfo[] monitors) : IMonitorProvider
@@ -1766,6 +1961,32 @@ public class OverlayManagerTests
         public void SimulateKeyPress(char key) => RaiseKey(key);
 
         public void SimulateConfirm(ClickKind clickKind) => RaiseConfirm(clickKind);
+    }
+
+    private sealed class FakeScrollKeyHook : ILowLevelKeyboardHook
+    {
+        public event Func<KeyboardHookEvent, bool>? KeyEvent;
+
+        public bool IsInstalled { get; private set; }
+        public int InstallCount { get; private set; }
+        public int UninstallCount { get; private set; }
+
+        public void Install()
+        {
+            IsInstalled = true;
+            InstallCount++;
+        }
+
+        public void Uninstall()
+        {
+            IsInstalled = false;
+            UninstallCount++;
+        }
+
+        public bool RaiseKey(uint virtualKey, bool isKeyUp = false, uint modifierMask = 0)
+        {
+            return KeyEvent?.Invoke(new KeyboardHookEvent(virtualKey, isKeyUp, modifierMask)) == true;
+        }
     }
 
     private sealed class FakeWindowFocusService : IWindowFocusService

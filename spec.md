@@ -165,7 +165,7 @@ selection keys and do not participate.
 - `R` and `D` in Stage 1 keep their normal column/row key behavior, including while choosing the second-point region. They start range or drag only in Stage 2 when no anchor is already active.
 - After range or drag starts, pressing `Esc` clears the anchor and keeps the selection session open. A second `Esc` exits selection mode.
 - Pressing `R` or `D` again in Stage 2 while an anchor is active is ignored; the anchor changes only after `Esc` clears it.
-- Scroll Mode delivers wheel input to the current Stage 2 target. The overlays are hidden only while the synthetic input is sent, then the same Stage 2 selection is restored.
+- Scroll Mode delivers wheel input to the current Stage 2 target. The first scroll input of a burst hides the overlays and activates the target window once; while the burst is active a low-level keyboard hook keeps receiving scroll keys and each input sends wheel input directly without another hide/show cycle. When scroll input pauses, `Esc` exits, or the target becomes invalid, the same Stage 2 selection is restored.
 - Scroll Mode uses one notch for arrow keys and five notches for Page keys. Positive vertical notches scroll up and positive horizontal notches scroll right; the key mapping follows the arrow direction.
 - `Esc` exits Scroll Mode and returns to Stage 2. A second `Esc` exits selection mode. Scroll Mode does not complete the click or change continuous mode.
 - Scroll Mode is ignored while a range anchor is active. `R`, `Tab`, `Backspace`, and confirmation keys are ignored while Scroll Mode is active.
@@ -176,7 +176,7 @@ selection keys and do not participate.
 | Key | Action |
 |---|---|
 | Column / row keys | Select a Stage 1 column and row in order |
-| Arrow keys | Move the Stage 2 cursor between valid cells in the 25×25 context grid; holding a key repeats the movement. In Scroll Mode, scroll the target vertically or horizontally by one wheel notch |
+| Arrow keys | Move the Stage 2 cursor between valid cells in the 25×25 context grid; holding a key repeats the movement. In Scroll Mode, scroll the target vertically or horizontally by one wheel notch; holding a key repeats the scroll |
 | `Enter` | Confirm with a left click; accepted without modifiers |
 | `Shift+Enter` | Confirm with a right click; accepted with Shift alone |
 | `Ctrl+Enter` | Confirm with a middle (wheel) click; accepted with Ctrl alone |
@@ -370,11 +370,11 @@ For a range confirmation, steps 2-4 are applied to both the anchor and endpoint:
 
 For Scroll Mode input, steps 2-4 of the normal click flow are applied to the scroll target:
 
-1. Hide all overlays without closing the selection session.
+1. On the first input of a burst, hide all overlays without closing the selection session and install the low-level keyboard hook before the target window takes the foreground.
 2. Resolve and activate the root window under the current Stage 2 target, then verify the target still belongs to that root immediately before dispatch.
 3. Move the pointer to the target and send `MOUSEEVENTF_WHEEL` or `MOUSEEVENTF_HWHEEL` through `SendInput`. Arrow keys use one notch; Page keys use five notches. Positive vertical notches scroll up and positive horizontal notches scroll right.
-4. Restore the same Stage 2 overlays and reclaim focus. Do not complete the selection and do not change continuous mode.
-5. If resolution, activation, or dispatch fails, send no wheel input when the target is not valid, exit Scroll Mode, restore Stage 2, and report the reason. A partial wheel input has no modifier state to release.
+4. Keep the overlays hidden for the rest of the burst. Subsequent scroll keys arrive through the keyboard hook, re-verify that the window under the target is unchanged, and send wheel input directly. Do not complete the selection and do not change continuous mode.
+5. When scroll input pauses, restore the same Stage 2 overlays and reclaim focus while Scroll Mode stays active. `Esc` restores the overlays and exits Scroll Mode. If resolution, activation, or dispatch fails, send no wheel input when the target is not valid, exit Scroll Mode, restore Stage 2, and report the reason. A partial wheel input has no modifier state to release.
 
 - 連続モードでは、クリック送信後に主オーバーレイがフォーカスを取得し直す。Escで終了した場合は、直前にクリックしたウィンドウへフォーカスを戻す。
 - Do not restore the pointer to its original position after the click.
@@ -392,7 +392,7 @@ For Scroll Mode input, steps 2-4 of the normal click flow are applied to the scr
 - 通常の選択操作のためにグローバルキーボードフックは使用しない。
 - 表示中は主オーバーレイのIMEを無効化し（ImmAssociateContext(hwnd, IntPtr.Zero)）、表示終了時に元の状態に戻す。
 - キーの判定は文字ではなくキーコードで行う。第1段階の列・行キーは3.3の対応表で番号に変換し、第2段階は矢印キーと確定キーで操作する。IMEが処理したキーは元のキーコードで判定する。
-- キーリピート（IsRepeat）は原則無視する。ただし第2段階のカーソル移動中に限り、矢印キーのリピートを連続移動として受け付ける。第1段階、Scroll Mode、Pageキー、その他のキーのリピートは無視する。
+- キーリピート（IsRepeat）は原則無視する。ただし第2段階では、カーソル移動中は矢印キー、Scroll Mode中は矢印キーのリピートを連続した移動・スクロールとして受け付ける。第1段階、Pageキー、その他のキーのリピートは無視する。
 - Tabは修飾キーなしの場合のみ連続モードの切り替えに使う。キーリピートは無視する。修飾キー付きのTabは連続モードを切り替えない。
 - `R` activates range selection only in Stage 2 with no modifiers. Unmodified `R` in Stage 1 remains an ordinary selection key, and modified `R` is treated as an ordinary letter key.
 - The `R`+`D` chord is recognized only while the primary overlay is in eligible Stage 2 state. The first of the pair is deferred to key-up; if the other key's key-down arrives first, the chord fires and neither single-key action is dispatched. Repeats and modified presses do not participate, and pending chord state is cleared on `Esc`, focus loss, and overlay teardown.
@@ -418,7 +418,7 @@ For Scroll Mode input, steps 2-4 of the normal click flow are applied to the scr
 - **連続モード**：選択中のセッション単位のフラグ。ONの間は確定後も待機に戻らず、第1段階から選択を再開する。Esc、ホットキーによる再開始、フォーカス喪失、モニター変更でOFFに戻る。
 - **範囲選択中**：選択中のセッション単位のフラグ。Stage 2で`R`を押した後にONになり、固定されたアンカー座標を保持する。`Enter`で範囲を実行するか、`Esc`でアンカーを消すまで継続する。
 - **ドラッグ選択中**：選択中のセッション単位のフラグ。Stage 2でDを押した後にONになり、固定された開始座標を保持する。`Enter`でドラッグを実行するか、`Esc`でアンカーを消すまで継続する。
-- **Scroll Mode**：A Stage 2 sub-mode entered with `PageUp` or `PageDown`. Arrow and Page keys send wheel input to the current target. `Esc` exits to Stage 2; continuous mode is retained.
+- **Scroll Mode**：A Stage 2 sub-mode entered with `PageUp` or `PageDown`. Arrow and Page keys send wheel input to the current target. While a scroll burst keeps the overlays hidden, a low-level keyboard hook supplies the keys; the Stage 2 grid returns when input pauses. `Esc` exits to Stage 2; continuous mode is retained.
 - **Range-then-drag workflow**：A session flag started by the overlapping `R`+`D` chord in eligible Stage 2 state. It has a range phase (the range anchor is active) and a drag phase (the range endpoint is reused as the drag anchor). It is cleared by drag completion, `Esc`, failure, focus loss, or display changes.
 - **クリック実行中**：第2段階または第1段階後の確定キーで確定座標を決めた後。オーバーレイ非表示からクリック送信までの間。
 
@@ -458,9 +458,10 @@ For Scroll Mode input, steps 2-4 of the normal click flow are applied to the scr
 | Selecting (range active) | `Esc` | Selecting (no range) | Clear the anchor and keep the session open |
 | Selecting (range active) | Backspace | Selecting | Undo one Stage 1 key when possible; keep the anchor while recalculating the region |
 | Selecting (history length 2, no range) | `PageUp` / `PageDown` (no modifiers) | Selecting (scroll active) | Enter Scroll Mode and send a five-notch page scroll |
-| Selecting (scroll active) | Arrow keys | Selecting (scroll active) | Send one vertical or horizontal wheel notch; do not move the cursor |
-| Selecting (scroll active) | `PageUp` / `PageDown` | Selecting (scroll active) | Send a five-notch vertical wheel scroll |
-| Selecting (scroll active) | `R`, `D`, `Tab`, `Backspace`, `Enter` | Selecting (scroll active) | Ignore without changing the mode or cursor |
+| Selecting (scroll active) | Arrow keys | Selecting (scroll active) | Send one vertical or horizontal wheel notch per press or repeat; do not move the cursor |
+| Selecting (scroll active) | `PageUp` / `PageDown` | Selecting (scroll active) | Send a five-notch vertical wheel scroll; key repeats are ignored |
+| Selecting (scroll active) | `R`, `D`, `Tab`, `Backspace`, `Enter` and other keys | Selecting (scroll active) | Ignore without changing the mode or cursor; while the overlays are hidden the keys are consumed by the keyboard hook |
+| Selecting (scroll active, overlays hidden) | Scroll input pauses | Selecting (scroll active) | Restore the Stage 2 overlays and reclaim focus; Scroll Mode stays active |
 | Selecting (scroll active) | `Esc` | Selecting (Stage 2, no scroll) | Exit Scroll Mode and keep the selection session open |
 | Selecting (scroll active) | Scroll target failure | Selecting (Stage 2, no scroll) | Send no input when the target is invalid; restore Stage 2 and report the error |
 | Selecting (range/drag active) | `PageUp` / `PageDown` | Selecting (range/drag active) | Ignore; Scroll Mode is unavailable while an anchor is active |
@@ -481,8 +482,9 @@ For Scroll Mode input, steps 2-4 of the normal click flow are applied to the scr
 | 範囲実行中 | SendInput success (normal mode) | 待機 | Complete the range and close the overlays |
 | 範囲実行中 | SendInput success (continuous mode) | 選択中（履歴0個） | Reopen Stage 1 and keep continuous mode |
 | 範囲実行中 | SendInput failure | 待機 or 選択中（履歴0個） | Release synthetic input, report an error, and apply the normal/continuous completion rule |
-| Scroll Mode execution | SendInput success | Selecting (scroll active) | Restore the same Stage 2 overlays and keep Scroll Mode active |
-| Scroll Mode execution | SendInput failure or target failure | Selecting (Stage 2, no scroll) | Restore Stage 2, exit Scroll Mode, and report the error |
+| Scroll Mode execution | First input of a burst | Selecting (scroll active, overlays hidden) | Hide the overlays once, activate the target, send the wheel input, and keep Scroll Mode active |
+| Scroll Mode execution | Subsequent input while hidden | Selecting (scroll active, overlays hidden) | Verify the target window is unchanged and send wheel input without hiding the overlays again |
+| Scroll Mode execution | Input pause, `Esc`, or target failure | Selecting (Stage 2, no scroll) | Restore Stage 2; keep Scroll Mode active after an input pause, exit it on `Esc` or failure, and report the error on failure |
 | クリック実行中 | 入力・構成変更のイベント | クリック実行中 | 無視 |
 
 連続モードがONの場合、確定キーによるクリック実行中からは、クリック完了後に待機ではなく選択中（履歴0個）へ戻る。
@@ -560,7 +562,8 @@ For Scroll Mode input, steps 2-4 of the normal click flow are applied to the scr
 - 不正な座標へのクリックを防止する。確定座標は、モニター表示領域内であることを検証してから使用する。
 - Range execution validates both endpoints after the overlays are hidden. If they resolve to different top-level windows, no input is sent and the range is cancelled with an error.
 - A partial range `SendInput` releases the synthetic left button and Shift so the user's keyboard and mouse state are not left modified.
-- Scroll Mode verifies the target window after hiding the overlays and before sending wheel input. If the window cannot be resolved or changes after activation, no wheel input is sent and Stage 2 is restored.
+- Scroll Mode verifies the target window after hiding the overlays and before sending wheel input, and re-verifies it on every input while the overlays stay hidden. If the window cannot be resolved or changes, no wheel input is sent and Stage 2 is restored.
+- While a scroll burst keeps the overlays hidden, a low-level keyboard hook supplies scroll keys to the manager and consumes keys that Scroll Mode ignores. Modifier keys and Ctrl/Alt/Win-modified combinations pass through so system shortcuts keep working; injected input is never consumed.
 - Scroll input uses no modifier keys or mouse buttons, so a partial dispatch cannot leave synthetic input state pressed.
 - 選択中にモニター構成またはDPIが変わった場合は、選択を破棄して待機状態に戻る。変更はWM_DISPLAYCHANGEとWM_DPICHANGEDで検出する。メッセージ専用ウィンドウにWM_DPICHANGEDが届かない場合があるため、各オーバーレイウィンドウでも同じメッセージを監視する。
 - オーバーレイを各モニターへ初期配置する際に発生するWM_DPICHANGEDは、構成変更とみなさない。初期配置の完了後に検出した変更だけを選択の破棄対象とする。
@@ -647,7 +650,7 @@ Visual Studio Codeをメインのエディタとして使用する。使用す�
 - OverlayManager displays SelectionManager state (the selected region and history) and asks ClickExecutor to send the selected click kind on confirmation.
 - OverlayManagerは連続モードをセッション単位で保持する。連続モードの確定後はSelectionManagerをリセットし、オーバーレイを再表示して第1段階から再開する。
 - OverlayManager owns the range anchor and validates both endpoints after temporarily hiding the overlays. It asks ClickExecutor to dispatch the two-point range through IClickSender.
-- OverlayManager owns Scroll Mode. It temporarily hides the overlays so the current target receives wheel input, then restores the same Stage 2 selection without completing it.
+- OverlayManager owns Scroll Mode. It hides the overlays once per scroll burst so the current target receives wheel input, keeps them hidden while a low-level keyboard hook feeds scroll keys, and restores the same Stage 2 selection without completing it when input pauses, `Esc` exits, or the target becomes invalid.
 - ClickExecutor receives the target coordinate and click kind, then dispatches them through IClickSender. It also provides the render-synchronized two-point range and scroll dispatch paths.
 - HotkeyManagerは操作をApplicationへ通知する。
 
@@ -690,7 +693,7 @@ Win32に依存しない部分を対象とする。
 - 第2段階で矢印キーを押すと、25×25コンテキストグリッドの有効セル間でカーソルが移動し、無効セルは飛び越すこと
 - 第1段階のセル外でも、モニター上のコンテキストセルを選択・確定できること
 - 第2段階で矢印キーを押し続けると、キーリピートでカーソルが連続移動すること
-- 第1段階、Scroll Mode、Pageキー、その他のキーのリピートが無視されること
+- 第1段階、Pageキー、その他のキーのリピートが無視されること（第2段階とScroll Modeでは矢印キーのリピートを連続入力として受け付ける）
 - 第2段階の `Enter` / `Shift+Enter` / `Ctrl+Enter` でカーソル位置が確定され、それぞれ左・右・中クリックのクリック実行状態へ移ること
 - Tabで連続モードが切り替わり、修飾キー付き・リピートのTabが無視されること
 - 連続モードの確定後にクリックが送信され、第1段階へ戻ること
@@ -708,7 +711,8 @@ Win32に依存しない部分を対象とする。
 - A partial range input sequence releases the synthetic left button and Shift
 - Range start marker and `Range: Enter to select` badge are drawn only on the appropriate overlay(s)
 - `PageUp` / `PageDown` enter Scroll Mode only in Stage 2 and dispatch a five-notch wheel scroll at the current target
-- Scroll Mode arrows dispatch one vertical or horizontal notch without moving the Stage 2 cursor
+- Scroll Mode arrows dispatch one vertical or horizontal notch per press or repeat without moving the Stage 2 cursor
+- A scroll burst hides the overlays once, keeps them hidden while the keyboard hook feeds scroll keys, and restores Stage 2 when input pauses while keeping Scroll Mode active
 - `Esc` exits Scroll Mode and keeps the Stage 2 selection active; a second `Esc` exits selection
 - Scroll Mode ignores range start, continuous-mode toggle, Backspace, and confirmation keys
 - Page keys are ignored while a range anchor is active, and range start is ignored while Scroll Mode is active

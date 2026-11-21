@@ -110,4 +110,18 @@ public class ClickExecutor
 
         return _clickSender.SendScroll(target, virtualScreen, notches, horizontal);
     }
+
+    /// <summary>
+    /// Sends wheel input without hiding overlays or re-validating the target.
+    /// Used for subsequent inputs inside an active scroll burst, where the
+    /// overlays are already hidden and the target window was verified once.
+    /// </summary>
+    public bool SendScrollNow(
+        PixelPoint target,
+        PixelRect virtualScreen,
+        int notches,
+        bool horizontal)
+    {
+        return _clickSender.SendScroll(target, virtualScreen, notches, horizontal);
+    }
 }

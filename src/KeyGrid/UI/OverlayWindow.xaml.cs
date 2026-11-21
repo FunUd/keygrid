@@ -106,9 +106,9 @@ public partial class OverlayWindow : Window, IOverlayWindowSurface
         bool isRangeDragWorkflow = false,
         PixelPoint? dragStartPoint = null)
     {
-        // Holding an arrow key repeats cursor movement only during Stage 2 cursor
-        // navigation. Repeats stay ignored in Stage 1 and Scroll Mode.
-        _keyHandler.AllowArrowKeyRepeat = selectionManager.CurrentStage == 2 && !isScrollMode;
+        // Holding an arrow key repeats cursor movement in Stage 2 and wheel
+        // input in Scroll Mode. Repeats stay ignored in Stage 1.
+        _keyHandler.AllowArrowKeyRepeat = selectionManager.CurrentStage == 2;
 
         // The R+D chord is eligible only for a plain Stage 2 target with no
         // anchor or Scroll Mode active. Stage 1 letters stay immediate keys.

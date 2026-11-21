@@ -4,6 +4,7 @@ using KeyGrid.Core.Calculation;
 using KeyGrid.Core.Geometry;
 using KeyGrid.Core.Selection;
 using KeyGrid.Core.Services;
+using KeyGrid.Interop;
 using KeyGrid.Services;
 
 namespace KeyGrid.UI;
@@ -20,6 +21,10 @@ public class OverlayManager
 
     // PageUp/PageDown scroll by five wheel notches; arrow keys scroll by one.
     private const int ScrollNotchesPerPage = 5;
+
+    // While a scroll burst keeps the overlays hidden, input pauses restore the
+    // Stage 2 grid once keys stop arriving for this long.
+    private const int ScrollBurstIdleMilliseconds = 250;
 
     /// <summary>
     /// Phase of the composite range-then-drag workflow started by the R+D chord.
@@ -55,6 +60,12 @@ public class OverlayManager
     private bool _isInputInProgress;
     private int _selectionGeneration;
     private int _confirmationAttempt;
+    private readonly ILowLevelKeyboardHook _scrollKeyHook;
+    private DispatcherTimer? _scrollIdleTimer;
+    private bool _scrollBurstActive;
+    private nint _scrollTargetRoot;
+    private readonly HashSet<uint> _scrollHookHeldKeys = new();
+    private readonly HashSet<uint> _scrollHookPassedKeys = new();
 
     public event Action<string>? ErrorOccurred;
 
@@ -107,13 +118,16 @@ public class OverlayManager
         SelectionManager selectionManager,
         ClickExecutor clickExecutor,
         Func<PixelRect, bool, double, IOverlayWindowSurface> overlayFactory,
-        IWindowFocusService windowFocusService)
+        IWindowFocusService windowFocusService,
+        ILowLevelKeyboardHook? scrollKeyHook = null)
     {
         _monitorProvider = monitorProvider;
         _selectionManager = selectionManager;
         _clickExecutor = clickExecutor;
         _overlayFactory = overlayFactory;
         _windowFocusService = windowFocusService;
+        _scrollKeyHook = scrollKeyHook ?? new Win32LowLevelKeyboardHook();
+        _scrollKeyHook.KeyEvent += OnScrollHookKey;
 
         _monitorProvider.Changed += OnMonitorConfigurationChanged;
     }
@@ -138,7 +152,7 @@ public class OverlayManager
             _dragStartPoint = null;
         }
 
-        _scrollMode = false;
+        ExitScrollMode();
         _isInputInProgress = false;
 
         if (!IsActive)
@@ -587,7 +601,7 @@ public class OverlayManager
         // Esc cancels an active sub-mode before it exits the selection session.
         if (_scrollMode)
         {
-            _scrollMode = false;
+            ExitScrollMode();
             FileLogger.LogInfo("Scroll Mode exited by Esc; Stage 2 selection remains active.");
             UpdateAllOverlays();
             return;
@@ -715,7 +729,7 @@ public class OverlayManager
             _continuousMode = false;
             _rangeStartPoint = null;
             _dragStartPoint = null;
-            _scrollMode = false;
+            ExitScrollMode();
             _rangeDragPhase = RangeDragPhase.None;
             _isInputInProgress = false;
             _selectionManager.Cancel();
@@ -822,7 +836,7 @@ public class OverlayManager
             // spec 5.3: Discard selection on monitor / DPI change
             _rangeStartPoint = null;
             _dragStartPoint = null;
-            _scrollMode = false;
+            ExitScrollMode();
             _rangeDragPhase = RangeDragPhase.None;
             _isInputInProgress = false;
             _selectionManager.Cancel();
@@ -1302,11 +1316,54 @@ public class OverlayManager
         }
 
         var virtualScreen = _virtualScreenBounds;
+
+        if (_scrollBurstActive)
+        {
+            // The overlays are already hidden for this burst, so the keyboard
+            // hook keeps feeding scroll keys while the target window owns the
+            // foreground. Verify the window under the target is unchanged, then
+            // send the wheel input directly without another hide/show cycle.
+            nint window = _windowFocusService.GetWindowFromPoint(target);
+            nint root = _windowFocusService.GetRootWindow(window);
+            FileLogger.LogDebug(
+                $"Scroll burst: window={FormatWindowHandle(window)}, " +
+                $"root={FormatWindowHandle(root)}, expectedRoot={FormatWindowHandle(_scrollTargetRoot)}.");
+
+            if (root == nint.Zero)
+            {
+                AbortScrollWithError(
+                    "Could not find a window under the scroll target. Scroll Mode was cancelled.");
+                return;
+            }
+
+            if (root != _scrollTargetRoot)
+            {
+                AbortScrollWithError(
+                    "The window under the scroll target changed. Scroll Mode was cancelled.");
+                return;
+            }
+
+            bool burstSuccess = _clickExecutor.SendScrollNow(target, virtualScreen, notches, horizontal);
+            RestartScrollIdleTimer();
+            if (!burstSuccess)
+            {
+                AbortScrollWithError(
+                    "Failed to dispatch scroll input. The target window may require a higher integrity level (UIPI).");
+            }
+
+            return;
+        }
+
         string? preparationFailure = null;
+        nint scrollTargetRoot = nint.Zero;
         bool success;
 
         FileLogger.LogInfo($"Scroll starting (notches={notches}, horizontal={horizontal}).");
         FileLogger.LogDebug($"Scroll target details (target=({target.X}, {target.Y})).");
+
+        // The hook passes keys through until the burst becomes active, so it can
+        // be installed before the overlays hide without stealing overlay input.
+        _scrollKeyHook.Install();
 
         try
         {
@@ -1351,48 +1408,209 @@ public class OverlayManager
                         return false;
                     }
 
+                    scrollTargetRoot = root;
                     return true;
                 });
         }
         catch
         {
-            _scrollMode = false;
+            ExitScrollMode();
             ShowOverlaysAfterInput();
             throw;
         }
 
         if (preparationFailure != null)
         {
-            _scrollMode = false;
-            FileLogger.LogWarning($"Scroll aborted: {preparationFailure}");
-            if (!ShowOverlaysAfterInput())
-            {
-                return;
-            }
-
-            UpdateAllOverlays();
-            ErrorOccurred?.Invoke(preparationFailure);
+            AbortScrollWithError(preparationFailure);
             return;
         }
 
         if (!success)
         {
-            _scrollMode = false;
-            FileLogger.LogWarning("Scroll input was not dispatched; leaving Scroll Mode.");
+            AbortScrollWithError(
+                "Failed to dispatch scroll input. The target window may require a higher integrity level (UIPI).");
+            return;
         }
 
+        // Keep the overlays hidden and the target window foreground for the
+        // rest of the burst. The keyboard hook feeds further scroll keys, and
+        // the idle timer restores the Stage 2 grid once input pauses.
+        _scrollBurstActive = true;
+        _scrollTargetRoot = scrollTargetRoot;
+        RestartScrollIdleTimer();
+        FileLogger.LogInfo("Scroll burst started; overlays stay hidden until scroll input pauses.");
+    }
+
+    /// <summary>
+    /// Cancels Scroll Mode, restores the Stage 2 overlays, and reports the
+    /// reason. Used for both burst-start failures and mid-burst target changes.
+    /// </summary>
+    private void AbortScrollWithError(string message)
+    {
+        FileLogger.LogWarning($"Scroll aborted: {message}");
+        ExitScrollMode();
         if (!ShowOverlaysAfterInput())
         {
-            _scrollMode = false;
             return;
         }
 
         UpdateAllOverlays();
-        if (!success)
+        ErrorOccurred?.Invoke(message);
+    }
+
+    /// <summary>
+    /// Handles keys observed by the low-level hook while a scroll burst keeps
+    /// the overlays hidden. Returns true when the event was consumed.
+    /// </summary>
+    private bool OnScrollHookKey(KeyboardHookEvent keyEvent)
+    {
+        if (!_scrollBurstActive || IsClosing)
         {
-            ErrorOccurred?.Invoke(
-                "Failed to dispatch scroll input. The target window may require a higher integrity level (UIPI).");
+            return false;
         }
+
+        uint vk = keyEvent.VirtualKey;
+        // Modifier keys always pass in both directions so system combinations
+        // keep working and the target app never sees a stuck modifier.
+        if (vk is NativeMethods.VK_SHIFT or NativeMethods.VK_CONTROL or NativeMethods.VK_MENU
+            or NativeMethods.VK_LWIN or NativeMethods.VK_RWIN)
+        {
+            return false;
+        }
+
+        if (keyEvent.IsKeyUp)
+        {
+            // A key that was let through must see its key-up too, or the target
+            // app keeps it logically pressed. Everything else is consumed
+            // symmetrically with its key-down.
+            if (_scrollHookPassedKeys.Remove(vk))
+            {
+                return false;
+            }
+
+            _scrollHookHeldKeys.Remove(vk);
+            return true;
+        }
+
+        const uint systemModifiers = KeyboardHookModifiers.Control
+            | KeyboardHookModifiers.Alt
+            | KeyboardHookModifiers.Win;
+        if ((keyEvent.ModifierMask & systemModifiers) != 0)
+        {
+            _scrollHookPassedKeys.Add(vk);
+            return false;
+        }
+
+        bool alreadyHeld = _scrollHookHeldKeys.Contains(vk);
+        _scrollHookHeldKeys.Add(vk);
+
+        switch (vk)
+        {
+            case NativeMethods.VK_LEFT:
+                ScrollCurrentTarget(-1, horizontal: true);
+                break;
+            case NativeMethods.VK_RIGHT:
+                ScrollCurrentTarget(1, horizontal: true);
+                break;
+            case NativeMethods.VK_UP:
+                ScrollCurrentTarget(1, horizontal: false);
+                break;
+            case NativeMethods.VK_DOWN:
+                ScrollCurrentTarget(-1, horizontal: false);
+                break;
+            // Modified Page keys are consumed without scrolling, matching the
+            // overlay key handler. Page repeats are ignored as well.
+            case NativeMethods.VK_PRIOR when keyEvent.ModifierMask == 0 && !alreadyHeld:
+                ScrollCurrentTarget(ScrollNotchesPerPage, horizontal: false);
+                break;
+            case NativeMethods.VK_NEXT when keyEvent.ModifierMask == 0 && !alreadyHeld:
+                ScrollCurrentTarget(-ScrollNotchesPerPage, horizontal: false);
+                break;
+            case NativeMethods.VK_ESCAPE:
+                ExitScrollModeAndRestoreOverlays();
+                break;
+            default:
+                break;
+        }
+
+        // Scroll Mode ignores every other key, so consume it to keep the target
+        // application from receiving input the overlay would have swallowed.
+        return true;
+    }
+
+    /// <summary>
+    /// Exits Scroll Mode and returns the Stage 2 overlays. Called by the keyboard
+    /// hook for Esc while the overlays are hidden.
+    /// </summary>
+    private void ExitScrollModeAndRestoreOverlays()
+    {
+        ExitScrollMode();
+        if (!ShowOverlaysAfterInput())
+        {
+            return;
+        }
+
+        UpdateAllOverlays();
+    }
+
+    /// <summary>
+    /// Clears Scroll Mode state, stops the idle timer, and removes the keyboard
+    /// hook. Does not touch the overlay surfaces; callers decide whether to
+    /// restore or close them.
+    /// </summary>
+    private void ExitScrollMode()
+    {
+        _scrollMode = false;
+        _scrollBurstActive = false;
+        _scrollTargetRoot = nint.Zero;
+        _scrollIdleTimer?.Stop();
+        _scrollKeyHook.Uninstall();
+        _scrollHookHeldKeys.Clear();
+        _scrollHookPassedKeys.Clear();
+    }
+
+    private void RestartScrollIdleTimer()
+    {
+        if (_scrollIdleTimer == null)
+        {
+            _scrollIdleTimer = new DispatcherTimer
+            {
+                Interval = TimeSpan.FromMilliseconds(ScrollBurstIdleMilliseconds)
+            };
+            _scrollIdleTimer.Tick += OnScrollIdleTimerTick;
+        }
+
+        _scrollIdleTimer.Stop();
+        _scrollIdleTimer.Start();
+    }
+
+    private void OnScrollIdleTimerTick(object? sender, EventArgs e)
+    {
+        // Input paused: bring the Stage 2 grid back while Scroll Mode stays
+        // active. The next scroll key starts a new burst.
+        if (!_scrollBurstActive)
+        {
+            return;
+        }
+
+        _scrollBurstActive = false;
+        _scrollTargetRoot = nint.Zero;
+        _scrollHookHeldKeys.Clear();
+        _scrollHookPassedKeys.Clear();
+        if (!ShowOverlaysAfterInput())
+        {
+            return;
+        }
+
+        UpdateAllOverlays();
+    }
+
+    /// <summary>
+    /// Test hook that runs the idle-restore path without waiting for the timer.
+    /// </summary>
+    internal void SimulateScrollBurstIdle()
+    {
+        OnScrollIdleTimerTick(null, EventArgs.Empty);
     }
 
     /// <summary>
@@ -1433,7 +1651,7 @@ public class OverlayManager
             _isInputInProgress = false;
             _continuousMode = false;
             _rangeStartPoint = null;
-            _scrollMode = false;
+            ExitScrollMode();
             _rangeDragPhase = RangeDragPhase.None;
             _selectionManager.Cancel();
             CloseOverlaysWithoutRestore();
@@ -1453,7 +1671,7 @@ public class OverlayManager
         _continuousMode = false;
         _rangeStartPoint = null;
         _dragStartPoint = null;
-        _scrollMode = false;
+        ExitScrollMode();
         _rangeDragPhase = RangeDragPhase.None;
         _isInputInProgress = false;
         CloseOverlaysWithoutRestore();
