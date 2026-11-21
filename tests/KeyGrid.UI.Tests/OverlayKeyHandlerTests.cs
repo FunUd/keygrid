@@ -188,6 +188,35 @@ public class OverlayKeyHandlerTests
     }
 
     [Fact]
+    public void PrimaryOverlay_FRequestsWorkflowOnlyWhenChordIsEligible()
+    {
+        UiTestThread.Run(() =>
+        {
+            var handler = new OverlayKeyHandler(isPrimary: true)
+            {
+                AllowRangeDragChord = true
+            };
+            int workflowCount = 0;
+            var pressedKeys = new List<char>();
+            handler.RangeDragWorkflowRequested += () => workflowCount++;
+            handler.KeyPressed += key => pressedKeys.Add(key);
+
+            Assert.True(handler.HandleKeyDown(Key.F, ModifierKeys.None, isRepeat: false));
+            Assert.True(handler.HandleKeyDown(Key.F, ModifierKeys.Shift, isRepeat: false));
+            Assert.True(handler.HandleKeyDown(Key.F, ModifierKeys.None, isRepeat: true));
+
+            Assert.Equal(1, workflowCount);
+            Assert.Equal(new[] { 'F' }, pressedKeys);
+
+            // Outside eligible Stage 2 state F stays an ordinary letter key.
+            handler.AllowRangeDragChord = false;
+            Assert.True(handler.HandleKeyDown(Key.F, ModifierKeys.None, isRepeat: false));
+            Assert.Equal(2, pressedKeys.Count);
+            Assert.Equal('F', pressedKeys[1]);
+        });
+    }
+
+    [Fact]
     public void PrimaryOverlay_CancelClearsPendingRangeDragKey()
     {
         UiTestThread.Run(() =>

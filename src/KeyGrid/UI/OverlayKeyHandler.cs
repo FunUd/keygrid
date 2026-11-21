@@ -167,6 +167,13 @@ internal sealed class OverlayKeyHandler
             case Key.D:
                 // Consume modified D so it cannot become a Stage 1 column key.
                 return true;
+            case Key.F when modifiers == ModifierKeys.None && AllowRangeDragChord:
+                // F is unused in Stage 2. It is a more reliable trigger for the
+                // composite workflow than the R+D chord; Stage 1 keeps it as an
+                // ordinary column key because AllowRangeDragChord is only set
+                // for an eligible Stage 2 target.
+                RangeDragWorkflowRequested?.Invoke();
+                return true;
             default:
                 if (key >= Key.A && key <= Key.Z)
                 {

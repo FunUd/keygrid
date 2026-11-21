@@ -114,16 +114,17 @@ selection. Drag endpoints may belong to different top-level
 windows or monitors. The drag start window is activated independently and verified at the
 anchor coordinate; the drop target is not required to belong to the same window.
 
-The range-then-drag workflow combines both actions. In eligible Stage 2 state, pressing and
-holding `R` and `D` so their key-down events overlap starts the workflow: the current target
-becomes the range anchor and KeyGrid returns to the full Stage 1 grid. After the range is
-confirmed successfully, the exact range endpoint becomes the drag anchor and KeyGrid reopens
-Stage 1 without clearing the workflow. The user then selects the drop-target region and
-confirms with plain `Enter`. The workflow state is cleared after the drag completes,
-is cancelled, or fails. Single `R` and `D` presses keep their existing behavior: when there
-is no overlapping key-down, the pending single-key action is dispatched on key-up. The chord
-is recognized only in eligible Stage 2 state; Stage 1 `R` and `D` remain ordinary selection
-keys and do not participate.
+The range-then-drag workflow combines both actions. Pressing `F` without modifiers in
+eligible Stage 2 state starts it directly; pressing and holding `R` and `D` so their
+key-down events overlap also starts it. The current target becomes the range anchor and
+KeyGrid returns to the full Stage 1 grid. After the range is confirmed successfully, the
+exact range endpoint becomes the drag anchor and KeyGrid reopens Stage 1 without clearing
+the workflow. The user then selects the drop-target region and confirms with plain
+`Enter`. The workflow state is cleared after the drag completes, is cancelled, or fails.
+Single `R` and `D` presses keep their existing behavior: when there is no overlapping
+key-down, the pending single-key action is dispatched on key-up. Both triggers are
+recognized only in eligible Stage 2 state; Stage 1 `R`, `D`, and `F` remain ordinary
+selection keys and do not participate.
 
 ### 3.3 選択キー
 
@@ -183,6 +184,7 @@ keys and do not participate.
 | `Tab` | Toggle continuous mode while the grid is visible. Only an unmodified Tab press is accepted; ignored in Scroll Mode |
 | `R` (Stage 2) | Set the range anchor at the current target and return to Stage 1. Only an unmodified press is accepted; ignored while an anchor is already active or Scroll Mode is active |
 | `D` (Stage 2) | Set the drag anchor at the current target and return to Stage 1. Only an unmodified, non-repeat press is accepted; D remains a Stage 1 column key |
+| `F` (Stage 2) | Start the range-then-drag workflow at the current target. Only an unmodified press in eligible Stage 2 state is accepted; F remains a Stage 1 column key |
 | `R`+`D` chord (Stage 2) | Press and hold `R` and `D` so their key-down events overlap to start the range-then-drag workflow. Accepted only with no modifiers, no repeats, and no active range, drag, or Scroll Mode; a lone `R` or `D` still performs its existing action on key-up |
 | `Enter` while a range anchor is active | Execute the range: left click at the anchor, then Shift+left click at the current target. In the range-then-drag workflow, the endpoint then becomes the drag anchor |
 | `Enter` while a drag anchor is active | Execute drag: left-button down at the anchor, move to the current target, then left-button up |
@@ -524,7 +526,7 @@ For Scroll Mode input, steps 2-4 of the normal click flow are applied to the scr
 | 連続モード | 初期値OFF。グリッド表示中にTabでON/OFF。ONの間は確定後も第1段階へ戻る |
 | Click kinds | Left, right, and middle (wheel) clicks |
 | Range selection | Stage 2で`R`。アンカーは固定し、`Enter`で左クリック＋Shift+左クリック。Escでアンカーを解除 |
-| Range-then-drag | Stage 2で`R`と`D`を同時押し。範囲確定後に範囲終点をドラッグアンカーとしてStage 1を再表示し、ドロップ先を選んで`Enter` |
+| Range-then-drag | Stage 2で`F`(または`R`+`D`同時押し)。範囲確定後に範囲終点をドラッグアンカーとしてStage 1を再表示し、ドロップ先を選んで`Enter` |
 | Scroll Mode | Stage 2でPageUp/PageDown。矢印は1ノッチ、Pageは5ノッチ。EscでStage 2へ戻る |
 | 確定後の動作 | 通常モードはオーバーレイ終了。連続モードは第1段階へ戻る。カーソルは元の位置に戻さない |
 
