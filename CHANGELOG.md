@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.3.1] - 2026-11-21
+
+### Changed
+
+- Skip the full-screen dim mask while Scroll Mode is active so the window being scrolled stays fully visible. The Stage 2 context window border, the cursor cell highlight, and the status badges remain.
+
 ## [0.3.0] - 2026-11-21
 
 ### Added
