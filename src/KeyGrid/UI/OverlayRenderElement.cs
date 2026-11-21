@@ -199,10 +199,12 @@ public class OverlayRenderElement : FrameworkElement
             }
         }
 
-        // 4. Draw Grid Lines & Bounding Box
+        // 4. Draw Grid Lines & Bounding Box. Scroll Mode hides the whole grid
+        // and keeps only the red focus cell, since scrolling targets the window
+        // under the cursor rather than a grid position.
         var gridBox = _selectionManager.GridBoundingBox;
         var bboxIntersection = gridBox.Intersect(_monitorRect);
-        if (!bboxIntersection.IsEmpty)
+        if (!_isScrollMode && !bboxIntersection.IsEmpty)
         {
             // Bounding box border. The Stage 2 context window uses a lighter pen
             // so the central focus remains the visual anchor.

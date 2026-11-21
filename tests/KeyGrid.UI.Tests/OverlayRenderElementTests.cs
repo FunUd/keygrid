@@ -223,6 +223,42 @@ public class OverlayRenderElementTests
             IsDimMask);
     }
 
+    [Fact]
+    public void ScrollMode_DrawsOnlyTheCursorHighlightAndStatusBadges()
+    {
+        var selection = CreateSelection();
+        SelectFirstStageCell(selection);
+
+        var drawings = GetGeometryDrawings(
+            RenderDrawings(LeftMonitor, selection, isPrimary: true, isScrollMode: true))
+            .ToList();
+
+        // The red cursor cell stays visible as the scroll target indicator.
+        Assert.Contains(
+            drawings,
+            drawing => drawing.Brush is SolidColorBrush brush
+                && brush.Color == Color.FromArgb(100, 255, 40, 40));
+
+        // Grid lines, the context window border, and the focus border are hidden.
+        // The status badge keeps its own dark fill and cyan border, so only the
+        // grid-related colors are checked here.
+        static bool IsGridDrawing(GeometryDrawing drawing) =>
+            drawing.Brush is SolidColorBrush brush
+                && (brush.Color == Color.FromArgb(100, 0, 0, 0)
+                    || brush.Color == Color.FromArgb(100, 255, 255, 255)
+                    || brush.Color == Color.FromArgb(145, 10, 15, 25))
+            || drawing.Pen?.Brush is SolidColorBrush penBrush
+                && (penBrush.Color == Color.FromArgb(120, 0, 200, 255)
+                    || penBrush.Color == Color.FromArgb(200, 0, 200, 255));
+        Assert.DoesNotContain(drawings, IsGridDrawing);
+
+        string text = new(
+            RenderGlyphDetails(LeftMonitor, selection, isPrimary: true, isScrollMode: true)
+                .Select(glyph => glyph.Character)
+                .ToArray());
+        Assert.Contains("Scroll Mode", text);
+    }
+
     private static SelectionManager CreateSelection()
     {
         var selection = new SelectionManager();

@@ -313,7 +313,7 @@ totalDeviation = |cellWidthPx - targetPx| + |cellHeightPx - targetPx|
 - While a range anchor is active, a high-contrast green ring and crosshair are drawn at the anchor's exact physical-pixel coordinate. The marker is drawn by the monitor that contains the point, including when it is not the primary monitor.
 - While a range anchor is active, the primary overlay shows the status badge `Range: Enter to select`. During the range phase of the range-then-drag workflow the badge reads `Range-to-Drag: Enter to select` instead. Status badges stack without overlapping, and an active continuous mode is shown below the range badge.
 - While Scroll Mode is active, the primary overlay shows the status badge `Scroll Mode`. Continuous mode remains visible below it when enabled.
-- While Scroll Mode is active, the full-screen dim mask is not drawn, so the window being scrolled stays fully visible. The Stage 2 context window border, the cursor cell highlight, and the status badges remain.
+- While Scroll Mode is active, the full-screen dim mask and the entire 25×25 grid (grid lines, context window border, and focus border) are not drawn, so the window being scrolled stays fully visible and only the red cursor cell highlight and the status badges remain.
 - 色・透明度は初期バージョンでは固定値とする。背景色に応じた自動色変更は行わない。
 
 ### 5.3 表示終了
