@@ -401,6 +401,12 @@ public class OverlayManager
             || _selectionManager.CurrentStage != 2
             || !_selectionManager.TryGetStage2Target(out var startPoint))
         {
+            FileLogger.LogInfo(
+                "Range-drag chord ignored (closing=" + IsClosing
+                + $", active={IsActive}, inputInProgress={_isInputInProgress}, scrollMode={_scrollMode}"
+                + $", phase={_rangeDragPhase}, rangeAnchor={_rangeStartPoint.HasValue}"
+                + $", dragAnchor={_dragStartPoint.HasValue}, state={_selectionManager.State}"
+                + $", stage={_selectionManager.CurrentStage}).");
             return;
         }
 
@@ -410,7 +416,7 @@ public class OverlayManager
         _rangeStartPoint = startPoint;
         _rangeDragPhase = RangeDragPhase.Range;
         ReturnToStage1();
-        FileLogger.LogDebug($"Range-drag workflow started; range anchor at ({startPoint.X}, {startPoint.Y}).");
+        FileLogger.LogInfo($"Range-drag workflow started; range anchor at ({startPoint.X}, {startPoint.Y}).");
         UpdateAllOverlays();
     }
 
