@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.3.2] - 2026-11-23
+
+### Changed
+
+- Show only the red cursor cell highlight and status badges while Scroll Mode is active. The 25×25 grid, window borders, and dim mask are hidden so the window being scrolled stays unobstructed.
+
 ## [0.3.1] - 2026-11-21
 
 ### Changed
