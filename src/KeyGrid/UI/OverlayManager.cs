@@ -259,6 +259,7 @@ public class OverlayManager
                 overlay.KeyPressed += OnKeyPressed;
                 overlay.MoveRequested += OnMoveRequested;
                 overlay.ConfirmRequested += OnConfirmRequested;
+                overlay.ConfirmAndContinueRequested += OnConfirmAndContinueRequested;
                 overlay.BackspacePressed += OnBackspacePressed;
                 overlay.CancelRequested += OnCancelRequested;
                 overlay.ContinuousModeToggleRequested += OnContinuousModeToggleRequested;
@@ -267,6 +268,7 @@ public class OverlayManager
                 overlay.RangeDragWorkflowRequested += OnRangeDragWorkflowRequested;
                 overlay.PageScrollRequested += OnPageScrollRequested;
                 overlay.MonitorSelectRequested += OnMonitorSelectRequested;
+                overlay.MonitorCycleRequested += OnMonitorCycleRequested;
                 overlay.FocusLost += () => OnFocusLost(generation);
             }
 
@@ -535,28 +537,60 @@ public class OverlayManager
             ? $"{monitorIndex + 1}/{_monitors.Count}"
             : null;
 
+    private bool CanSwitchGridMonitor()
+    {
+        return !IsClosing
+            && IsActive
+            && !_isInputInProgress
+            && !_scrollMode
+            && _selectionManager.State == SelectionState.Selecting;
+    }
+
     private void OnMonitorSelectRequested(int monitorNumber)
     {
-        if (IsClosing
-            || !IsActive
-            || _isInputInProgress
-            || _scrollMode
-            || _selectionManager.State != SelectionState.Selecting
+        if (!CanSwitchGridMonitor()
             || monitorNumber < 1
             || monitorNumber > _monitors.Count)
         {
             return;
         }
 
-        var target = _monitors[monitorNumber - 1];
+        SwitchGridMonitor(monitorNumber - 1);
+    }
+
+    private void OnMonitorCycleRequested(int direction)
+    {
+        if (!CanSwitchGridMonitor()
+            || _monitors.Count < 2
+            || direction == 0)
+        {
+            return;
+        }
+
+        // Wrap around the spatial monitor order so Tab/Shift+Tab can reach
+        // every monitor without remembering digit assignments.
+        int step = direction > 0 ? 1 : -1;
+        int index = _activeMonitorIndex;
+        if (index < 0)
+        {
+            index = 0;
+        }
+
+        index = (index + step + _monitors.Count) % _monitors.Count;
+        SwitchGridMonitor(index);
+    }
+
+    private void SwitchGridMonitor(int monitorIndex)
+    {
+        var target = _monitors[monitorIndex];
         if (!_selectionManager.SwitchActiveMonitor(target.Bounds, target.DpiScale))
         {
             return;
         }
 
-        _activeMonitorIndex = monitorNumber - 1;
+        _activeMonitorIndex = monitorIndex;
         FileLogger.LogInfo(
-            $"Stage 1 grid switched to monitor {monitorNumber}/{_monitors.Count} " +
+            $"Stage 1 grid switched to monitor {monitorIndex + 1}/{_monitors.Count} " +
             $"at {target.Bounds} ({target.DpiScale:P0}).");
         UpdateAllOverlays();
     }
@@ -583,10 +617,31 @@ public class OverlayManager
 
     private void OnConfirmRequested(ClickKind clickKind)
     {
+        HandleConfirmRequest(clickKind, continueAfterClick: false);
+    }
+
+    private void OnConfirmAndContinueRequested(ClickKind clickKind)
+    {
+        // C confirms like Enter but enters continuous mode for the next
+        // selection. It never completes range or drag selections, which
+        // require plain Enter, and it is ignored outside eligible Stage 2.
+        if (_scrollMode
+            || _rangeStartPoint.HasValue
+            || _dragStartPoint.HasValue
+            || _selectionManager.CurrentStage != 2)
+        {
+            return;
+        }
+
+        HandleConfirmRequest(clickKind, continueAfterClick: true);
+    }
+
+    private void HandleConfirmRequest(ClickKind clickKind, bool continueAfterClick)
+    {
         int attempt = ++_confirmationAttempt;
         FileLogger.LogInfo(
             $"Confirmation #{attempt} received (kind={clickKind}, state={_selectionManager.State}, " +
-            $"historyLength={_selectionManager.History.Count}).");
+            $"historyLength={_selectionManager.History.Count}, continueAfterClick={continueAfterClick}).");
 
         if (_scrollMode)
         {
@@ -629,6 +684,13 @@ public class OverlayManager
 
         FileLogger.LogDebug(
             $"Confirmation #{attempt} accepted (target={_selectionManager.TargetCoordinate}).");
+        if (continueAfterClick)
+        {
+            // Entering continuous mode before dispatch lets the shared
+            // completion path reopen Stage 1 after the click.
+            _continuousMode = true;
+        }
+
         ExecuteConfirmedClick(clickKind, attempt);
     }
 

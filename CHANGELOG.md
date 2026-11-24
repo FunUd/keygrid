@@ -1,5 +1,12 @@
 # Changelog
 
+## [Unreleased]
+
+### Changed
+
+- Reassign grid-display keys: `Tab`/`Shift+Tab` now cycle the Stage 1 grid monitor forward/backward in spatial order (digits `1`–`9` still jump directly), and `;` toggles continuous mode instead of `Tab`.
+- Add `C` in Stage 2 as a confirm-and-continue key: it clicks like `Enter` (`Shift+C` right, `Ctrl+C` middle) and enters continuous mode in one step. `C` stays a normal column key in Stage 1 and is ignored while a range or drag anchor is active.
+
 ## [0.4.0] - 2026-11-24
 
 ### Changed

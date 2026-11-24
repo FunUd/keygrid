@@ -302,7 +302,31 @@ public class OverlayKeyHandlerTests
     }
 
     [Fact]
-    public void PrimaryOverlay_TabTogglesContinuousModeAndIgnoresModifiedOrRepeatedTabs()
+    public void PrimaryOverlay_TabCyclesMonitorAndIgnoresModifiedOrRepeatedTabs()
+    {
+        UiTestThread.Run(() =>
+        {
+            var handler = new OverlayKeyHandler(isPrimary: true);
+            var directions = new List<int>();
+            int toggleCount = 0;
+            handler.MonitorCycleRequested += direction => directions.Add(direction);
+            handler.ContinuousModeToggleRequested += () => toggleCount++;
+
+            Assert.True(handler.HandleKeyDown(Key.Tab, ModifierKeys.None, isRepeat: false));
+            Assert.True(handler.HandleKeyDown(Key.Tab, ModifierKeys.Shift, isRepeat: false));
+            // Repeats and other modified Tabs are consumed without dispatching.
+            Assert.True(handler.HandleKeyDown(Key.Tab, ModifierKeys.None, isRepeat: true));
+            Assert.True(handler.HandleKeyDown(Key.Tab, ModifierKeys.Control, isRepeat: false));
+            Assert.True(handler.HandleKeyDown(Key.Tab, ModifierKeys.Alt, isRepeat: false));
+            Assert.False(handler.HandleKeyUp(Key.Tab, ModifierKeys.None));
+
+            Assert.Equal(new[] { 1, -1 }, directions);
+            Assert.Equal(0, toggleCount);
+        });
+    }
+
+    [Fact]
+    public void PrimaryOverlay_SemicolonTogglesContinuousModeAndIgnoresModifiedPresses()
     {
         UiTestThread.Run(() =>
         {
@@ -310,13 +334,74 @@ public class OverlayKeyHandlerTests
             int toggleCount = 0;
             handler.ContinuousModeToggleRequested += () => toggleCount++;
 
-            Assert.True(handler.HandleKeyDown(Key.Tab, ModifierKeys.None, isRepeat: false));
-            Assert.True(handler.HandleKeyDown(Key.Tab, ModifierKeys.None, isRepeat: true));
-            Assert.True(handler.HandleKeyDown(Key.Tab, ModifierKeys.Shift, isRepeat: false));
-            Assert.True(handler.HandleKeyDown(Key.Tab, ModifierKeys.Control, isRepeat: false));
-            Assert.False(handler.HandleKeyUp(Key.Tab, ModifierKeys.None));
+            Assert.True(handler.HandleKeyDown(Key.OemSemicolon, ModifierKeys.None, isRepeat: false));
+            Assert.True(handler.HandleKeyDown(Key.OemSemicolon, ModifierKeys.None, isRepeat: true));
+            Assert.True(handler.HandleKeyDown(Key.OemSemicolon, ModifierKeys.Shift, isRepeat: false));
+            Assert.True(handler.HandleKeyDown(Key.OemSemicolon, ModifierKeys.Control, isRepeat: false));
 
             Assert.Equal(1, toggleCount);
+        });
+    }
+
+    [Theory]
+    [InlineData(ModifierKeys.None, ClickKind.Left)]
+    [InlineData(ModifierKeys.Shift, ClickKind.Right)]
+    [InlineData(ModifierKeys.Control, ClickKind.Middle)]
+    public void PrimaryOverlay_CRequestsConfirmAndContinueOnlyWhenEligible(
+        ModifierKeys modifiers,
+        ClickKind expected)
+    {
+        UiTestThread.Run(() =>
+        {
+            var handler = new OverlayKeyHandler(isPrimary: true)
+            {
+                AllowContinueConfirm = true
+            };
+            var continued = new List<ClickKind>();
+            var confirmed = new List<ClickKind>();
+            var pressedKeys = new List<char>();
+            handler.ConfirmAndContinueRequested += clickKind => continued.Add(clickKind);
+            handler.ConfirmRequested += clickKind => confirmed.Add(clickKind);
+            handler.KeyPressed += key => pressedKeys.Add(key);
+
+            Assert.True(handler.HandleKeyDown(Key.C, modifiers, isRepeat: false));
+            Assert.True(handler.HandleKeyDown(Key.C, modifiers, isRepeat: true));
+            Assert.True(handler.HandleKeyUp(Key.C, modifiers));
+
+            Assert.Equal(new[] { expected }, continued);
+            Assert.Empty(confirmed);
+            Assert.Empty(pressedKeys);
+
+            // Without eligibility C stays an ordinary letter key.
+            handler.AllowContinueConfirm = false;
+            Assert.True(handler.HandleKeyDown(Key.C, ModifierKeys.None, isRepeat: false));
+            Assert.Equal(new[] { 'C' }, pressedKeys);
+        });
+    }
+
+    [Fact]
+    public void PrimaryOverlay_CAndEnterPendingConfirmationsDoNotCrossDispatch()
+    {
+        UiTestThread.Run(() =>
+        {
+            var handler = new OverlayKeyHandler(isPrimary: true)
+            {
+                AllowContinueConfirm = true
+            };
+            var continued = new List<ClickKind>();
+            var confirmed = new List<ClickKind>();
+            handler.ConfirmAndContinueRequested += clickKind => continued.Add(clickKind);
+            handler.ConfirmRequested += clickKind => confirmed.Add(clickKind);
+
+            // A held C released after Enter must not complete the Enter press.
+            Assert.True(handler.HandleKeyDown(Key.C, ModifierKeys.None, isRepeat: false));
+            Assert.True(handler.HandleKeyDown(Key.Enter, ModifierKeys.None, isRepeat: false));
+            Assert.True(handler.HandleKeyUp(Key.C, ModifierKeys.None));
+            Assert.Empty(continued);
+            Assert.Empty(confirmed);
+            Assert.True(handler.HandleKeyUp(Key.Enter, ModifierKeys.None));
+            Assert.Equal(new[] { ClickKind.Left }, confirmed);
+            Assert.Empty(continued);
         });
     }
 

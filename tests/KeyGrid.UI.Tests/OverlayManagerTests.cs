@@ -225,6 +225,160 @@ public class OverlayManagerTests
     }
 
     [Fact]
+    public void MonitorCycleTab_MovesGridThroughMonitorsAndWraps()
+    {
+        UiTestThread.Run(() =>
+        {
+            // Same spatial ordering as the digit test: left monitor is 1, the
+            // primary monitor at the origin is 2 and hosts the initial grid.
+            var leftMonitor = new MonitorInfo(new PixelRect(-800, 0, 800, 600), 1.0, false);
+            var primaryMonitor = new MonitorInfo(new PixelRect(0, 0, 1920, 1080), 1.5, true);
+            var monitorProvider = new FakeMonitorProvider(leftMonitor, primaryMonitor);
+            var focus = new FakeWindowFocusService { ForegroundWindow = nint.Zero };
+            var factory = new FakeOverlayFactory { FocusService = focus };
+            var manager = CreateManager(monitorProvider, factory, focus, new FakeClickSender());
+            manager.ShowOverlays();
+            UiTestThread.DrainDispatcher();
+
+            Assert.Equal(primaryMonitor.Bounds, manager.SelectionManager.ActiveMonitorRect);
+            var primary = factory.Windows.Single(w => w.IsPrimary);
+
+            primary.RaiseKey(manager.SelectionManager.ColumnKeys[0]);
+            primary.RaiseMonitorCycle(1);
+            Assert.Equal(leftMonitor.Bounds, manager.SelectionManager.ActiveMonitorRect);
+            Assert.Empty(manager.SelectionManager.History);
+
+            // Cycling forward from the first monitor wraps to the last one.
+            primary.RaiseMonitorCycle(1);
+            Assert.Equal(primaryMonitor.Bounds, manager.SelectionManager.ActiveMonitorRect);
+
+            primary.RaiseMonitorCycle(-1);
+            Assert.Equal(leftMonitor.Bounds, manager.SelectionManager.ActiveMonitorRect);
+
+            // Cycling backward from the first monitor wraps to the last one.
+            primary.RaiseMonitorCycle(-1);
+            Assert.Equal(primaryMonitor.Bounds, manager.SelectionManager.ActiveMonitorRect);
+
+            manager.CloseOverlays();
+        });
+    }
+
+    [Fact]
+    public void MonitorCycleTab_OnSingleMonitor_IsIgnored()
+    {
+        UiTestThread.Run(() =>
+        {
+            var factory = new FakeOverlayFactory();
+            var manager = CreateManager(
+                SingleMonitorProvider(),
+                factory,
+                new FakeWindowFocusService(),
+                new FakeClickSender());
+            manager.ShowOverlays();
+            UiTestThread.DrainDispatcher();
+            var primary = Assert.Single(factory.Windows);
+            var initialRect = manager.SelectionManager.ActiveMonitorRect;
+
+            primary.RaiseMonitorCycle(1);
+            primary.RaiseMonitorCycle(-1);
+
+            Assert.Equal(initialRect, manager.SelectionManager.ActiveMonitorRect);
+
+            manager.CloseOverlays();
+        });
+    }
+
+    [Fact]
+    public void ConfirmAndContinue_ClickEntersContinuousModeAndReopensStage1()
+    {
+        UiTestThread.Run(() =>
+        {
+            var factory = new FakeOverlayFactory();
+            var focus = new FakeWindowFocusService { ForegroundWindow = new nint(71) };
+            var clickSender = new FakeClickSender();
+            clickSender.WasClickTargetActivated = () =>
+                focus.ForegroundWindow == new nint(0x500);
+            clickSender.AreAllOverlaysClosed = () =>
+                factory.Windows.Count > 0 && factory.Windows.All(window => window.CloseCount > 0);
+            var manager = CreateManager(SingleMonitorProvider(), factory, focus, clickSender);
+            manager.ShowOverlays();
+            UiTestThread.DrainDispatcher();
+            var firstPrimary = Assert.Single(factory.Windows);
+            Assert.False(manager.IsContinuousMode);
+            Assert.False(firstPrimary.LastAllowContinueConfirm);
+
+            firstPrimary.RaiseKey(manager.SelectionManager.ColumnKeys[0]);
+            firstPrimary.RaiseKey(manager.SelectionManager.RowKeys[0]);
+            Assert.True(firstPrimary.LastAllowContinueConfirm);
+
+            firstPrimary.RaiseConfirmAndContinue(ClickKind.Left);
+
+            Assert.Equal(1, clickSender.CallCount);
+            Assert.True(clickSender.OverlaysWereClosedBeforeSend);
+            Assert.True(manager.IsActive);
+            Assert.True(manager.IsContinuousMode);
+            Assert.Equal(SelectionState.Selecting, manager.SelectionManager.State);
+            Assert.Equal(1, manager.SelectionManager.CurrentStage);
+            Assert.Empty(manager.SelectionManager.History);
+            Assert.Equal(1, firstPrimary.CloseCount);
+
+            var secondPrimary = factory.Windows[1];
+            Assert.True(secondPrimary.IsPrimary);
+            Assert.True(secondPrimary.LastContinuousMode);
+
+            // Continuous mode stays on, so a plain Enter keeps the session going.
+            secondPrimary.RaiseKey(manager.SelectionManager.ColumnKeys[0]);
+            secondPrimary.RaiseKey(manager.SelectionManager.RowKeys[0]);
+            secondPrimary.RaiseConfirm(ClickKind.Left);
+
+            Assert.Equal(2, clickSender.CallCount);
+            Assert.True(manager.IsActive);
+            Assert.Equal(3, factory.Windows.Count);
+
+            manager.CloseOverlays();
+        });
+    }
+
+    [Fact]
+    public void ConfirmAndContinue_IsIgnoredDuringRangeSelectionAndStage1()
+    {
+        UiTestThread.Run(() =>
+        {
+            var factory = new FakeOverlayFactory();
+            var focus = new FakeWindowFocusService { ForegroundWindow = new nint(71) };
+            var clickSender = new FakeClickSender();
+            var manager = CreateManager(SingleMonitorProvider(), factory, focus, clickSender);
+            manager.ShowOverlays();
+            UiTestThread.DrainDispatcher();
+            var primary = Assert.Single(factory.Windows);
+
+            // Stage 1: not confirmable, so nothing is dispatched.
+            primary.RaiseConfirmAndContinue(ClickKind.Left);
+            Assert.Equal(0, clickSender.CallCount);
+            Assert.False(manager.IsContinuousMode);
+            Assert.True(manager.IsActive);
+
+            primary.RaiseKey(manager.SelectionManager.ColumnKeys[0]);
+            primary.RaiseKey(manager.SelectionManager.RowKeys[0]);
+            Assert.True(manager.SelectionManager.TryGetStage2Target(out _));
+            primary.RaiseRangeStart();
+            primary.RaiseKey(manager.SelectionManager.ColumnKeys[0]);
+            primary.RaiseKey(manager.SelectionManager.RowKeys[0]);
+            Assert.Equal(2, manager.SelectionManager.CurrentStage);
+
+            // An active range anchor requires plain Enter; C must not complete it.
+            primary.RaiseConfirmAndContinue(ClickKind.Left);
+            Assert.Equal(0, clickSender.CallCount);
+            Assert.Equal(0, clickSender.RangeCallCount);
+            Assert.False(manager.IsContinuousMode);
+            Assert.True(manager.HasRangeSelection);
+            Assert.True(manager.IsActive);
+
+            manager.CloseOverlays();
+        });
+    }
+
+    [Fact]
     public void PrimarySurfaceEvents_UpdateSelectionAndCloseBeforeSendingClick()
     {
         UiTestThread.Run(() =>
@@ -646,7 +800,7 @@ public class OverlayManagerTests
     }
 
     [Fact]
-    public void Tab_TogglesContinuousModeAndUpdatesTheRenderedIndicator()
+    public void Semicolon_TogglesContinuousModeAndUpdatesTheRenderedIndicator()
     {
         UiTestThread.Run(() =>
         {
@@ -1896,6 +2050,7 @@ public class OverlayManagerTests
         public event Action<char>? KeyPressed;
         public event Action<int, int>? MoveRequested;
         public event Action<ClickKind>? ConfirmRequested;
+        public event Action<ClickKind>? ConfirmAndContinueRequested;
         public event Action? BackspacePressed;
         public event Action? CancelRequested;
         public event Action? ContinuousModeToggleRequested;
@@ -1904,6 +2059,7 @@ public class OverlayManagerTests
         public event Action? RangeDragWorkflowRequested;
         public event Action<int>? PageScrollRequested;
         public event Action<int>? MonitorSelectRequested;
+        public event Action<int>? MonitorCycleRequested;
         public event Action? FocusLost;
         public event Action? DisplayConfigurationChanged;
 
@@ -1917,6 +2073,7 @@ public class OverlayManagerTests
         public PixelPoint? LastDragStartPoint { get; private set; }
         public bool LastRangeDragWorkflow { get; private set; }
         public bool LastAllowRangeDragChord { get; private set; }
+        public bool LastAllowContinueConfirm { get; private set; }
         public string? LastMonitorBadgeLabel { get; private set; }
         public int ShowCount { get; private set; }
         public int CloseCount { get; private set; }
@@ -1962,12 +2119,14 @@ public class OverlayManagerTests
             LastScrollMode = isScrollMode;
             LastRangeDragWorkflow = isRangeDragWorkflow;
             // Mirrors the eligibility computed by OverlayWindow.UpdateRenderState.
-            LastAllowRangeDragChord = IsPrimary
+            bool stage2TargetEligible = IsPrimary
                 && selectionManager.CurrentStage == 2
                 && !isScrollMode
                 && !isRangeDragWorkflow
                 && rangeStartPoint is null
                 && dragStartPoint is null;
+            LastAllowRangeDragChord = stage2TargetEligible;
+            LastAllowContinueConfirm = stage2TargetEligible;
             LastMonitorBadgeLabel = monitorBadgeLabel;
             RenderUpdateCount++;
         }
@@ -1990,6 +2149,8 @@ public class OverlayManagerTests
 
         public void RaiseConfirm(ClickKind clickKind) => ConfirmRequested?.Invoke(clickKind);
 
+        public void RaiseConfirmAndContinue(ClickKind clickKind) => ConfirmAndContinueRequested?.Invoke(clickKind);
+
         public void RaiseBackspace() => BackspacePressed?.Invoke();
 
         public void RaiseCancel() => CancelRequested?.Invoke();
@@ -2005,6 +2166,8 @@ public class OverlayManagerTests
         public void RaisePageScroll(int direction) => PageScrollRequested?.Invoke(direction);
 
         public void RaiseMonitorSelect(int monitorNumber) => MonitorSelectRequested?.Invoke(monitorNumber);
+
+        public void RaiseMonitorCycle(int direction) => MonitorCycleRequested?.Invoke(direction);
 
         public void RaiseFocusLost() => FocusLost?.Invoke();
 

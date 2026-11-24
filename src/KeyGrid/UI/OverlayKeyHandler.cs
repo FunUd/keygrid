@@ -8,6 +8,8 @@ internal sealed class OverlayKeyHandler
     private readonly bool _isPrimary;
     private ClickKind? _pendingClickKind;
     private Key? _pendingChordKey;
+    private Key? _pendingConfirmKey;
+    private bool _pendingContinueConfirm;
 
     /// <summary>
     /// Whether repeated arrow keys should dispatch movement. Enabled only while
@@ -30,9 +32,21 @@ internal sealed class OverlayKeyHandler
     /// </summary>
     public bool AllowRangeDragChord { get; set; }
 
+    /// <summary>
+    /// Whether C should request a confirmation that also enters continuous
+    /// mode. Enabled only for an eligible Stage 2 target; while disabled, C
+    /// remains an ordinary Stage 1 column key.
+    /// </summary>
+    public bool AllowContinueConfirm { get; set; }
+
     public event Action<char>? KeyPressed;
     public event Action<int, int>? MoveRequested;
     public event Action<ClickKind>? ConfirmRequested;
+    /// <summary>
+    /// Raised on key-up of C in eligible Stage 2 state. Confirms like Enter
+    /// but also enters continuous mode for the next selection.
+    /// </summary>
+    public event Action<ClickKind>? ConfirmAndContinueRequested;
     public event Action? BackspacePressed;
     public event Action? CancelRequested;
     public event Action? ContinuousModeToggleRequested;
@@ -53,6 +67,11 @@ internal sealed class OverlayKeyHandler
     /// 1-based monitor number in the manager's spatial ordering.
     /// </summary>
     public event Action<int>? MonitorSelectRequested;
+    /// <summary>
+    /// Raised for Tab (+1, next monitor) or Shift+Tab (-1, previous monitor).
+    /// The manager wraps the direction around the monitor list.
+    /// </summary>
+    public event Action<int>? MonitorCycleRequested;
 
     public OverlayKeyHandler(bool isPrimary)
     {
@@ -108,8 +127,18 @@ internal sealed class OverlayKeyHandler
         switch (key)
         {
             case Key.Tab:
-                // Only plain Tab toggles continuous mode; modified Tab combinations
-                // are consumed so they cannot move focus away from the overlay.
+                // Tab cycles the Stage 1 grid monitor; Shift+Tab cycles
+                // backwards. Other modified Tab combinations are consumed so
+                // they cannot move focus away from the overlay.
+                if (modifiers == ModifierKeys.None || modifiers == ModifierKeys.Shift)
+                {
+                    MonitorCycleRequested?.Invoke(modifiers == ModifierKeys.Shift ? -1 : 1);
+                }
+
+                return true;
+            case Key.OemSemicolon:
+                // Only plain ";" toggles continuous mode; modified presses are
+                // consumed so they cannot reach the window that gets focus next.
                 if (modifiers == ModifierKeys.None)
                 {
                     ContinuousModeToggleRequested?.Invoke();
@@ -117,9 +146,11 @@ internal sealed class OverlayKeyHandler
 
                 return true;
             case Key.Escape:
-                // A pending Enter must not fire after the selection was cancelled
-                // or a sub-mode was exited.
+                // A pending Enter or C must not fire after the selection was
+                // cancelled or a sub-mode was exited.
                 _pendingClickKind = null;
+                _pendingConfirmKey = null;
+                _pendingContinueConfirm = false;
                 CancelRequested?.Invoke();
                 return true;
             case Key.Back:
@@ -129,23 +160,31 @@ internal sealed class OverlayKeyHandler
                 // Page keys can enter Scroll Mode, where Enter is ignored. Drop a
                 // pending confirmation so releasing a held Enter cannot click later.
                 _pendingClickKind = null;
+                _pendingConfirmKey = null;
+                _pendingContinueConfirm = false;
                 PageScrollRequested?.Invoke(-1);
                 return true;
             case Key.PageDown when modifiers == ModifierKeys.None:
                 _pendingClickKind = null;
+                _pendingConfirmKey = null;
+                _pendingContinueConfirm = false;
                 PageScrollRequested?.Invoke(1);
                 return true;
             case Key.Enter:
                 // Consume the key down so Windows does not deliver it to another window
                 // when the overlay closes. Confirmation runs on key up. Capture the
                 // modifiers now because the user may release a modifier before Enter.
-                _pendingClickKind = modifiers switch
-                {
-                    ModifierKeys.None => ClickKind.Left,
-                    ModifierKeys.Shift => ClickKind.Right,
-                    ModifierKeys.Control => ClickKind.Middle,
-                    _ => null
-                };
+                _pendingClickKind = MapClickKind(modifiers);
+                _pendingConfirmKey = Key.Enter;
+                _pendingContinueConfirm = false;
+                return true;
+            case Key.C when AllowContinueConfirm:
+                // C confirms like Enter but enters continuous mode afterwards.
+                // The same modifier-to-click-kind mapping applies; the pending
+                // key is tracked so a held C is not confused with Enter.
+                _pendingClickKind = MapClickKind(modifiers);
+                _pendingConfirmKey = Key.C;
+                _pendingContinueConfirm = true;
                 return true;
             case Key.Left:
                 MoveRequested?.Invoke(-1, 0);
@@ -221,6 +260,17 @@ internal sealed class OverlayKeyHandler
         }
     }
 
+    private static ClickKind? MapClickKind(ModifierKeys modifiers)
+    {
+        return modifiers switch
+        {
+            ModifierKeys.None => ClickKind.Left,
+            ModifierKeys.Shift => ClickKind.Right,
+            ModifierKeys.Control => ClickKind.Middle,
+            _ => null
+        };
+    }
+
     private static bool IsArrowKey(Key key)
     {
         return key is Key.Left or Key.Right or Key.Up or Key.Down;
@@ -276,20 +326,38 @@ internal sealed class OverlayKeyHandler
             return true;
         }
 
-        if (key != Key.Enter)
+        if (key is not (Key.Enter or Key.C))
         {
             return false;
         }
 
-        ClickKind? clickKind = _pendingClickKind;
-        _pendingClickKind = null;
-        if (clickKind.HasValue)
+        // Dispatch only when the released key is the one that armed the pending
+        // confirmation, so releasing a held C cannot complete (or cancel) an
+        // Enter confirmation and vice versa. Both keys are consumed either way
+        // so a stale key-up cannot reach the window that gets focus next.
+        if (_pendingConfirmKey != key)
         {
-            ConfirmRequested?.Invoke(clickKind.Value);
+            return true;
         }
 
-        // Consume Enter even when the key down was not seen, so a stale key up
-        // cannot reach the window that receives focus after the overlay closes.
+        ClickKind? clickKind = _pendingClickKind;
+        bool continueConfirm = _pendingContinueConfirm;
+        _pendingClickKind = null;
+        _pendingConfirmKey = null;
+        _pendingContinueConfirm = false;
+
+        if (clickKind.HasValue)
+        {
+            if (continueConfirm)
+            {
+                ConfirmAndContinueRequested?.Invoke(clickKind.Value);
+            }
+            else
+            {
+                ConfirmRequested?.Invoke(clickKind.Value);
+            }
+        }
+
         return true;
     }
 }

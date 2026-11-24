@@ -16,7 +16,7 @@
 |---|---|
 | 仮想画面 | 全モニターの表示領域を包含する外接矩形（物理ピクセル）。SendInputの正規化に用いる |
 | モニター表示領域 | 各モニターの表示領域（物理ピクセル）。オーバーレイの配置および有効領域判定・描画クリッピングに用いる |
-| グリッド対象モニター | 第1段階のグリッドを表示するモニター。選択開始時はフォアグラウンドウィンドウが存在するモニター（フォールバック：プライマリモニター、空間順の先頭モニター）。数字キー1〜9でセッション中に切り替える。第1段階の目標セル（128 DIP）および第2段階の固定セル（24 DIP）を物理ピクセルへ変換する基準として使用する |
+| グリッド対象モニター | 第1段階のグリッドを表示するモニター。選択開始時はフォアグラウンドウィンドウが存在するモニター（フォールバック：プライマリモニター、空間順の先頭モニター）。数字キー1〜9で直接指定し、Tab（次へ）/Shift+Tab（前へ）で巡回してセッション中に切り替える。第1段階の目標セル（128 DIP）および第2段階の固定セル（24 DIP）を物理ピクセルへ変換する基準として使用する |
 | 選択領域 | 現在の選択範囲。モニター表示領域との交差部分の集合で、非矩形になりうる |
 | 外接矩形 | 選択領域を包含する最小の矩形。分割・基準点の算出に用いる |
 | 段階 | 1回の絞り込み。第1段階は列キーと行キーでセルを選び、第2段階は矢印キーでカーソルを移動する |
@@ -31,7 +31,7 @@
 | 基準点 | 外接矩形の中心（4.4の規則で有効座標に補正する） |
 | 確定座標 | 最終的にクリックする座標 |
 | 確定キー | `Enter`（左クリック）、`Shift+Enter`（右クリック）、`Ctrl+Enter`（中クリック）の総称 |
-| 連続モード | 確定後も選択を終了せず、第1段階から選択をやり直すモード。グリッド表示中にTabで切り替える |
+| 連続モード | 確定後も選択を終了せず、第1段階から選択をやり直すモード。グリッド表示中に`;`で切り替え、Stage 2の`C`で確定と同時にONへ移行できる |
 | Range selection | A two-point selection started with `R` in Stage 2. The first point becomes the anchor, then selection returns to Stage 1 to choose the endpoint region. In Stage 2, `Enter` performs a left click at the anchor and a Shift+left click at the endpoint |
 | Range anchor | The physical-pixel screen coordinate captured when range selection starts. It remains fixed while the Stage 2 cursor or Stage 1 region changes |
 | Scroll Mode | A Stage 2 sub-mode entered with `PageUp` or `PageDown`. Arrow and Page keys send mouse wheel input to the current target; `Esc` returns to Stage 2 |
@@ -155,7 +155,8 @@ selection keys and do not participate.
 - The click kind is captured when `Enter` is pressed. Releasing the modifier before `Enter` does not change the selected click kind; this lets the user release the modifier before the click is dispatched.
 - 段階数は2回で固定する。第2段階のカーソル移動回数に上限は設けない。
 - 連続モードでは、確定キーによるクリック後も選択を終了せず、第1段階から再開する。1回の選択は通常モードと同じ2段階で、連続モードはその繰り返しである。
-- 連続モードはグリッド表示中にTabでON/OFFする。初期状態はOFFとし、ホットキーによる新規開始時はOFFに戻る。
+- 連続モードはグリッド表示中に`;`（OemSemicolon、修飾なし）でON/OFFする。初期状態はOFFとし、ホットキーによる新規開始時はOFFに戻る。
+- Stage 2の適格状態（アンカー・Scroll Modeなし）では、`C`をEnterと同じ修飾キー体系（無修飾=左、Shift=右、Ctrl=中）で押すと、確定クリックを送信した上で連続モードをONにして第1段階から再開する。`C`は範囲・ドラッグの確定には使えず、それらのアンカーが有効な間は無視される。Stage 1では`C`は通常の列キーである。
 - 連続モードでもEscは選択を破棄して終了する。
 - 連続モードでクリックを送信できなかった場合も第1段階から再開し、エラーを通知する。
 - Range selection uses plain `Enter` only. The start and end points must resolve to the same top-level window after the overlays are hidden; otherwise no synthetic input is sent, the range is cleared, Stage 2 is restored, and an error is reported.
@@ -168,7 +169,7 @@ selection keys and do not participate.
 - Scroll Mode delivers wheel input to the current Stage 2 target. The first scroll input of a burst hides the overlays and activates the target window once; while the burst is active a low-level keyboard hook keeps receiving scroll keys and each input sends wheel input directly without another hide/show cycle. When scroll input pauses, `Esc` exits, or the target becomes invalid, the same Stage 2 selection is restored.
 - Scroll Mode uses one notch for arrow keys and five notches for Page keys. Positive vertical notches scroll up and positive horizontal notches scroll right; the key mapping follows the arrow direction.
 - `Esc` exits Scroll Mode and returns to Stage 2. A second `Esc` exits selection mode. Scroll Mode does not complete the click or change continuous mode.
-- Scroll Mode is ignored while a range anchor is active. `R`, `Tab`, `Backspace`, and confirmation keys are ignored while Scroll Mode is active.
+- Scroll Mode is ignored while a range anchor is active. `R`, Tab, `;`, `C`, `Backspace`, and confirmation keys are ignored while Scroll Mode is active.
 - If the scroll target cannot be resolved or activated, no wheel input is sent; Scroll Mode is cancelled, Stage 2 is restored, and an error is reported.
 
 ### 3.5 キー操作
@@ -181,8 +182,10 @@ selection keys and do not participate.
 | `Shift+Enter` | Confirm with a right click; accepted with Shift alone |
 | `Ctrl+Enter` | Confirm with a middle (wheel) click; accepted with Ctrl alone |
 | `Backspace` | Undo the last Stage 1 key. Arrow movement is not part of the undo history; an active range or drag anchor is preserved. Ignored in Scroll Mode |
-| `Tab` | Toggle continuous mode while the grid is visible. Only an unmodified Tab press is accepted; ignored in Scroll Mode |
-| `1`–`9` | Switch the Stage 1 grid to the monitor with that number. Monitors are numbered from 1 in spatial order (top-to-bottom, then left-to-right), matching the "Grid n/N" badge on the grid monitor's overlay. Switching resets the Stage-1 keystroke history but preserves range/drag anchors. Ignored in Scroll Mode |
+| `Tab` / `Shift+Tab` | Cycle the Stage 1 grid monitor forward / backward in spatial order, wrapping around. Only unmodified Tab and Shift+Tab are accepted; ignored in Scroll Mode and with a single monitor |
+| `1`–`9` | Switch the Stage 1 grid directly to the monitor with that number. Monitors are numbered from 1 in spatial order (top-to-bottom, then left-to-right), matching the "Grid n/N" badge on the grid monitor's overlay. Switching resets the Stage-1 keystroke history but preserves range/drag anchors. Ignored in Scroll Mode |
+| `;` | Toggle continuous mode while the grid is visible. Only an unmodified press is accepted; ignored in Scroll Mode and while a range or drag anchor is active |
+| `C` (Stage 2) | Confirm like Enter (unmodified = left, `Shift+C` = right, `Ctrl+C` = middle click) and enter continuous mode afterwards. Accepted only in eligible Stage 2 state with no range/drag anchor or Scroll Mode; ignored otherwise. `C` remains a Stage 1 column key |
 | `R` (Stage 2) | Set the range anchor at the current target and return to Stage 1. Only an unmodified press is accepted; ignored while an anchor is already active or Scroll Mode is active |
 | `D` (Stage 2) | Set the drag anchor at the current target and return to Stage 1. Only an unmodified, non-repeat press is accepted; D remains a Stage 1 column key |
 | `F` (Stage 2) | Start the range-then-drag workflow at the current target. Only an unmodified press in eligible Stage 2 state is accepted; F remains a Stage 1 column key |
@@ -263,7 +266,7 @@ totalDeviation = |cellWidthPx - targetPx| + |cellHeightPx - targetPx|
 - 全モニターの表示領域を取得し、それらを包含する外接矩形（仮想画面）をSendInputの正規化基準として保持する。
 - 第1段階のグリッドは1つのモニター（グリッド対象モニター）の表示領域だけを分割対象とし、そのモニターの実効DPIで目標セルサイズを決める。モニターごとに密度の異なるグリッドにはならず、各モニターが単独使用時と同じ分割精度を持つ。
 - グリッド対象モニターの初期値は、フォアグラウンドウィンドウが存在するモニターとする。取得できない場合はプライマリモニター、さらに空間順の先頭モニターへフォールバックする。
-- グリッド対象モニターは数字キー1〜9でセッション中に切り替えられる。モニターの番号は空間順（上から下、同じ高さでは左から右）で1から採番し、グリッド対象モニターのオーバーレイに「Grid n/N」バッジを表示する。切替時は第1段階の打鍵履歴をリセットして新しいモニターのグリッドで選択をやり直す。範囲・ドラッグのアンカーは切替を跨いで保持されるため、画面Aでアンカーを設定して別モニターへ切り替え、ドロップ先を選ぶ操作ができる。
+- グリッド対象モニターは数字キー1〜9で直接指定し、Tab（次へ）/Shift+Tab（前へ）で巡回してセッション中に切り替えられる。モニターの番号は空間順（上から下、同じ高さでは左から右）で1から採番し、グリッド対象モニターのオーバーレイに「Grid n/N」バッジを表示する。切替時は第1段階の打鍵履歴をリセットして新しいモニターのグリッドで選択をやり直す。範囲・ドラッグのアンカーは切替を跨いで保持されるため、画面Aでアンカーを設定して別モニターへ切り替え、ドロップ先を選ぶ操作ができる。
 - 第1段階の対象となる選択領域（段階0）は、グリッド対象モニターの表示領域とする。
 - 選択領域は、モニター表示領域との交差部分の集合として管理する。モニター間の空白領域は選択領域に含めない。
 - 第2段階の25×25ウィンドウは全モニター表示領域との交差で有効セルを求める。ウィンドウが隣接モニターへはみ出した場合はその領域のセルも有効となり、モニター境界付近のターゲットをそのまま補正できる。
@@ -398,11 +401,11 @@ For Scroll Mode input, steps 2-4 of the normal click flow are applied to the scr
 - 表示中は主オーバーレイのIMEを無効化し（ImmAssociateContext(hwnd, IntPtr.Zero)）、表示終了時に元の状態に戻す。
 - キーの判定は文字ではなくキーコードで行う。第1段階の列・行キーは3.3の対応表で番号に変換し、第2段階は矢印キーと確定キーで操作する。IMEが処理したキーは元のキーコードで判定する。
 - キーリピート（IsRepeat）は原則無視する。ただし第2段階では矢印キー、Scroll Mode中は矢印キーとPageキーのリピートを連続した移動・スクロールとして受け付ける。第1段階、Scroll Mode突入前のPageキー、その他のキーのリピートは無視する。
-- Tabは修飾キーなしの場合のみ連続モードの切り替えに使う。キーリピートは無視する。修飾キー付きのTabは連続モードを切り替えない。
+- Tabは修飾キーなしで次のモニターへ、Shift+Tabで前のモニターへグリッド対象モニターを巡回する（モニターが2台以上の場合）。キーリピートとその他の修飾キー付きTabは無視する。`;`（修飾なし）は連続モードの切り替えに使い、キーリピートと修飾キー付きの`;`は無視する。
 - `R` activates range selection only in Stage 2 with no modifiers. Unmodified `R` in Stage 1 remains an ordinary selection key, and modified `R` is treated as an ordinary letter key.
 - The `R`+`D` chord is recognized only while the primary overlay is in eligible Stage 2 state. The first of the pair is deferred to key-up; if the other key's key-down arrives first, the chord fires and neither single-key action is dispatched. Repeats and modified presses do not participate, and pending chord state is cleared on `Esc`, focus loss, and overlay teardown.
 - Plain `PageUp` and `PageDown` enter Scroll Mode in Stage 2 and scroll by five notches. Modified Page keys are consumed without entering or scrolling. In Scroll Mode, unmodified arrow keys are interpreted as scroll commands instead of cursor movement.
-- While Scroll Mode is active, letter keys, Tab, Backspace, R, and confirmation keys are ignored. Esc exits Scroll Mode before the normal cancellation behavior runs.
+- While Scroll Mode is active, letter keys, Tab, `;`, Backspace, R, and confirmation keys are ignored. Esc exits Scroll Mode before the normal cancellation behavior runs.
 
 ### 7.2 ホットキー
 
@@ -438,7 +441,8 @@ For Scroll Mode input, steps 2-4 of the normal click flow are applied to the scr
 | 選択中（履歴0個） | 有効な列キー | 選択中（履歴1個） | 列を履歴に追加し、列をハイライト |
 | 選択中（履歴1個） | 有効な行キー | 選択中（履歴2個） | 行を履歴に追加し、選択領域を第2段階の25×25コンテキストグリッドへ進める |
 | 選択中 | 無効な列・行キー | 変化なし | 無視 |
-| 選択中 | Tab（修飾なし） | 選択中 | 連続モードを切り替える。履歴と選択カーソルは維持 |
+| 選択中 | `;`（修飾なし） | 選択中 | 連続モードを切り替える。履歴と選択カーソルは維持 |
+| 選択中 | Tab / Shift+Tab | 選択中（履歴0個） | グリッド対象モニターを次/前へ巡回し、打鍵履歴をリセット。範囲・ドラッグのアンカーは維持 |
 | 選択中 | 数字キー 1〜9 | 選択中（履歴0個） | Stage 1 グリッドをその番号のモニターへ移し、打鍵履歴をリセット。範囲・ドラッグのアンカーは維持 |
 | 選択中（履歴2個） | 有効セルへの矢印移動 | 選択中 | 25×25コンテキストグリッド内の次の有効セルへ選択カーソルを移動。空白領域のセルは飛び越す |
 | 選択中（履歴2個） | 矢印キーのリピート | 選択中 | キーリピート間隔でカーソルを連続移動 |
@@ -446,6 +450,7 @@ For Scroll Mode input, steps 2-4 of the normal click flow are applied to the scr
 | Selecting (history length 2) | `Enter` | Executing click | Confirm the cursor cell with a left click |
 | Selecting (history length 2) | `Shift+Enter` | Executing click | Confirm the cursor cell with a right click |
 | Selecting (history length 2) | `Ctrl+Enter` | Executing click | Confirm the cursor cell with a middle (wheel) click |
+| Selecting (history length 2, eligible Stage 2) | `C`, `Shift+C`, `Ctrl+C` | Executing click, then 選択中（履歴0個）with continuous mode ON | Confirm like the matching Enter variant, then enter continuous mode |
 | Selecting (history length 2, no range anchor) | `R` (no modifiers) | Selecting (range active, history length 0) | Capture the current target as the range anchor and return to Stage 1 |
 | Selecting (history length 2, no drag anchor) | `D` (no modifiers) | Selecting (drag active, history length 0) | Capture the current target as the drag anchor and return to Stage 1 |
 | Selecting (history length 2, no anchors, no Scroll Mode) | `R`+`D` overlapping key-downs | Selecting (range-drag workflow, range phase, history length 0) | Capture the current target as the range anchor, enter the workflow, and return to Stage 1; neither single-key action fires |
@@ -466,7 +471,7 @@ For Scroll Mode input, steps 2-4 of the normal click flow are applied to the scr
 | Selecting (history length 2, no range) | `PageUp` / `PageDown` (no modifiers) | Selecting (scroll active) | Enter Scroll Mode and send a five-notch page scroll |
 | Selecting (scroll active) | Arrow keys | Selecting (scroll active) | Send one vertical or horizontal wheel notch per press or repeat; do not move the cursor |
 | Selecting (scroll active) | `PageUp` / `PageDown` | Selecting (scroll active) | Send a five-notch vertical wheel scroll per press or repeat |
-| Selecting (scroll active) | `R`, `D`, `Tab`, `Backspace`, `Enter` and other keys | Selecting (scroll active) | Ignore without changing the mode or cursor; while the overlays are hidden the keys are consumed by the keyboard hook |
+| Selecting (scroll active) | `R`, `D`, Tab, `;`, `C`, `Backspace`, `Enter` and other keys | Selecting (scroll active) | Ignore without changing the mode or cursor; while the overlays are hidden the keys are consumed by the keyboard hook |
 | Selecting (scroll active, overlays hidden) | Scroll input pauses | Selecting (scroll active) | Restore the Stage 2 overlays and reclaim focus; Scroll Mode stays active |
 | Selecting (scroll active) | `Esc` | Selecting (Stage 2, no scroll) | Exit Scroll Mode and keep the selection session open |
 | Selecting (scroll active) | Scroll target failure | Selecting (Stage 2, no scroll) | Send no input when the target is invalid; restore Stage 2 and report the error |
@@ -531,7 +536,7 @@ For Scroll Mode input, steps 2-4 of the normal click flow are applied to the scr
 | カーソル移動 | 第2段階で矢印キー。有効セルを順に移動 |
 | 戻るキー | Backspace（第1段階の打鍵履歴を戻す） |
 | キャンセルキー | Esc（Scroll Modeと範囲アンカーを先に解除し、連続モードでも終了） |
-| 連続モード | 初期値OFF。グリッド表示中にTabでON/OFF。ONの間は確定後も第1段階へ戻る |
+| 連続モード | 初期値OFF。グリッド表示中に`;`でON/OFF。Stage 2の`C`確定でもONになる。ONの間は確定後も第1段階へ戻る |
 | Click kinds | Left, right, and middle (wheel) clicks |
 | Range selection | Stage 2で`R`。アンカーは固定し、`Enter`で左クリック＋Shift+左クリック。Escでアンカーを解除 |
 | Range-then-drag | Stage 2で`F`(または`R`+`D`同時押し)。範囲確定後に範囲終点をドラッグアンカーとしてStage 1を再表示し、ドロップ先を選んで`Enter` |
@@ -701,7 +706,8 @@ Win32に依存しない部分を対象とする。
 - 第2段階で矢印キーを押し続けると、キーリピートでカーソルが連続移動すること
 - 第1段階、その他のキーのリピートが無視されること（第2段階では矢印キー、Scroll Mode中は矢印キーとPageキーのリピートを連続入力として受け付ける）
 - 第2段階の `Enter` / `Shift+Enter` / `Ctrl+Enter` でカーソル位置が確定され、それぞれ左・右・中クリックのクリック実行状態へ移ること
-- Tabで連続モードが切り替わり、修飾キー付き・リピートのTabが無視されること
+- `;`で連続モードが切り替わり、Tab/Shift+Tabでグリッド対象モニターが巡回され、修飾キー付き・リピートの入力が無視されること
+- Stage 2の`C`（および`Shift+C`/`Ctrl+C`）でEnterと同じクリック種別の確定後に連続モードへ移行し、第1段階へ戻ること。アンカー有効時・Scroll Mode中・Stage 1では無視され、`C`はStage 1の列キーとして機能すること
 - 連続モードの確定後にクリックが送信され、第1段階へ戻ること
 - 連続モードをOFFに戻した場合、確定後に待機へ戻ること
 - 連続モードのEsc、ホットキー再開始、フォーカス喪失、モニター変更でモードが解除されること
@@ -755,7 +761,7 @@ Win32に依存しない部分を対象とする。
 - 列・行ラベルの視認性（モニター境界付近を含む）
 - 1920×1080・4Kの第1段階での選択しやすさ、および第2段階カーソルの操作性
 - クリック後の通常状態への復帰
-- 連続モードのTab切り替えと「Continuous Mode」表示
+- 連続モードの`;`切り替えと「Continuous Mode」表示
 - 連続モードで左・右・中クリックを繰り返し、毎回第1段階へ戻ること
 - 連続モードのEsc、ホットキー再開始、フォーカス喪失、モニター変更
 - 連続モードのクリック失敗時の再表示と通知
@@ -832,7 +838,8 @@ Win32に依存しない部分を対象とする。
 - 第2段階の選択セルを確定キーで正しくクリックできる（左・右・中）。
 - 第1段階の後であれば、確定キーで選択領域を確定してクリックできる（左・右・中）。
 - Backspaceで第1段階の打鍵履歴を1つずつ取り消せる。
-- グリッド表示中にTabで連続モードをON/OFFできる。
+- グリッド表示中に`;`で連続モードをON/OFFでき、Stage 2の`C`で確定と同時に連続モードへ移行できる。
+- Tab/Shift+Tabでグリッド対象モニターを巡回でき、数字キーで直接指定できる。
 - 連続モードでは確定後に第1段階のグリッドが再表示され、続けてクリックできる。
 - Stage 2で`R`により範囲アンカーを設定し、`Enter`でアンカーから端点までShift+左クリックの範囲選択を実行できる。
 - Stage 2で`D`によりドラッグアンカーを設定し、`Enter`で開始点からドロップ点まで左ボタンのドラッグを実行できる。開始点とドロップ点は異なるウィンドウ・モニターでもよい。

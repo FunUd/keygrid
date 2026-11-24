@@ -9,6 +9,7 @@ public interface IOverlayWindowSurface
     event Action<char>? KeyPressed;
     event Action<int, int>? MoveRequested;
     event Action<ClickKind>? ConfirmRequested;
+    event Action<ClickKind>? ConfirmAndContinueRequested;
     event Action? BackspacePressed;
     event Action? CancelRequested;
     event Action? ContinuousModeToggleRequested;
@@ -17,6 +18,7 @@ public interface IOverlayWindowSurface
     event Action? RangeDragWorkflowRequested;
     event Action<int>? PageScrollRequested;
     event Action<int>? MonitorSelectRequested;
+    event Action<int>? MonitorCycleRequested;
     event Action? FocusLost;
     event Action? DisplayConfigurationChanged;
 

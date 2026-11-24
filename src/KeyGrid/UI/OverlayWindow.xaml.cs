@@ -18,6 +18,7 @@ public partial class OverlayWindow : Window, IOverlayWindowSurface
     public event Action<char>? KeyPressed;
     public event Action<int, int>? MoveRequested;
     public event Action<ClickKind>? ConfirmRequested;
+    public event Action<ClickKind>? ConfirmAndContinueRequested;
     public event Action? BackspacePressed;
     public event Action? CancelRequested;
     public event Action? ContinuousModeToggleRequested;
@@ -26,6 +27,7 @@ public partial class OverlayWindow : Window, IOverlayWindowSurface
     public event Action? RangeDragWorkflowRequested;
     public event Action<int>? PageScrollRequested;
     public event Action<int>? MonitorSelectRequested;
+    public event Action<int>? MonitorCycleRequested;
     public event Action? FocusLost;
     public event Action? DisplayConfigurationChanged;
 
@@ -46,6 +48,7 @@ public partial class OverlayWindow : Window, IOverlayWindowSurface
         _keyHandler.KeyPressed += key => KeyPressed?.Invoke(key);
         _keyHandler.MoveRequested += (columnDelta, rowDelta) => MoveRequested?.Invoke(columnDelta, rowDelta);
         _keyHandler.ConfirmRequested += clickKind => ConfirmRequested?.Invoke(clickKind);
+        _keyHandler.ConfirmAndContinueRequested += clickKind => ConfirmAndContinueRequested?.Invoke(clickKind);
         _keyHandler.BackspacePressed += () => BackspacePressed?.Invoke();
         _keyHandler.CancelRequested += () => CancelRequested?.Invoke();
         _keyHandler.ContinuousModeToggleRequested += () => ContinuousModeToggleRequested?.Invoke();
@@ -54,6 +57,7 @@ public partial class OverlayWindow : Window, IOverlayWindowSurface
         _keyHandler.RangeDragWorkflowRequested += () => RangeDragWorkflowRequested?.Invoke();
         _keyHandler.PageScrollRequested += direction => PageScrollRequested?.Invoke(direction);
         _keyHandler.MonitorSelectRequested += number => MonitorSelectRequested?.Invoke(number);
+        _keyHandler.MonitorCycleRequested += direction => MonitorCycleRequested?.Invoke(direction);
 
         Focusable = isPrimary;
         ShowActivated = isPrimary;
@@ -117,14 +121,17 @@ public partial class OverlayWindow : Window, IOverlayWindowSurface
         // Mode; Page repeats are still ignored when entering it.
         _keyHandler.AllowPageScrollRepeat = isScrollMode;
 
-        // The R+D chord is eligible only for a plain Stage 2 target with no
-        // anchor or Scroll Mode active. Stage 1 letters stay immediate keys.
-        _keyHandler.AllowRangeDragChord = IsPrimary
+        // The R+D chord and the C continue-confirm are eligible only for a
+        // plain Stage 2 target with no anchor or Scroll Mode active. Stage 1
+        // letters stay immediate keys.
+        bool stage2TargetEligible = IsPrimary
             && selectionManager.CurrentStage == 2
             && !isScrollMode
             && !isRangeDragWorkflow
             && rangeStartPoint is null
             && dragStartPoint is null;
+        _keyHandler.AllowRangeDragChord = stage2TargetEligible;
+        _keyHandler.AllowContinueConfirm = stage2TargetEligible;
 
         RenderElement.UpdateState(
             MonitorRect,
