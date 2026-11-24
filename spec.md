@@ -14,9 +14,9 @@
 
 | 用語 | 定義 |
 |---|---|
-| 仮想画面 | 全モニターの表示領域を包含する外接矩形（物理ピクセル）。SendInputの正規化および第1段階のグリッド外枠に用いる |
+| 仮想画面 | 全モニターの表示領域を包含する外接矩形（物理ピクセル）。SendInputの正規化に用いる |
 | モニター表示領域 | 各モニターの表示領域（物理ピクセル）。オーバーレイの配置および有効領域判定・描画クリッピングに用いる |
-| DPI参照モニター | 選択開始時にフォアグラウンドウィンドウが存在するモニター（フォールバック：プライマリモニター、第1モニター）。第1段階の目標セル（128 DIP）および第2段階の固定セル（24 DIP）を物理ピクセルへ変換する基準として使用する |
+| グリッド対象モニター | 第1段階のグリッドを表示するモニター。選択開始時はフォアグラウンドウィンドウが存在するモニター（フォールバック：プライマリモニター、空間順の先頭モニター）。数字キー1〜9でセッション中に切り替える。第1段階の目標セル（128 DIP）および第2段階の固定セル（24 DIP）を物理ピクセルへ変換する基準として使用する |
 | 選択領域 | 現在の選択範囲。モニター表示領域との交差部分の集合で、非矩形になりうる |
 | 外接矩形 | 選択領域を包含する最小の矩形。分割・基準点の算出に用いる |
 | 段階 | 1回の絞り込み。第1段階は列キーと行キーでセルを選び、第2段階は矢印キーでカーソルを移動する |
@@ -84,7 +84,7 @@ It displays column and row labels across the virtual screen on every monitor. Th
 
 ### 3.1 起動
 
-設定されたホットキーを押すと選択モードを開始し、仮想画面の寸法から第1段階の列数・行数を算出する（4.1）。
+設定されたホットキーを押すと選択モードを開始し、グリッド対象モニターの寸法から第1段階の列数・行数を算出する（4.1）。
 
 初期ホットキー：`Ctrl + Shift + Space`
 
@@ -141,7 +141,7 @@ selection keys and do not participate.
 - 列が右ブロックを借用している場合、行には右ブロックの残りを元の順で使う。
 - C + R ≤ 26を満たすため、必要なキーは必ず確保できる。列と行のキー集合は重複しない。
 - Key allocation is used only in Stage 1. Stage 2 uses arrow keys, `Enter`, `Shift+Enter`, and `Ctrl+Enter`. Repeating an arrow key in Stage 2 continues cursor movement; repeats of other keys are ignored.
-- 例：1920×1080（100% DPI）では第1段階は8×4。列・行キーは上記のブロックから重複なく割り当てる。
+- 例：1920×1080（100% DPI）では第1段階は15×8。列・行キーは上記のブロックから重複なく割り当てる。
 - キーの並びは画面上の位置と対応しない。その代わり、列ラベルと行ラベルを画面に表示して、押すキーを示す。
 - ブロックはQWERTY/JIS配列の物理的な段を前提とする。AZERTYなど文字配置が異なる配列では、ラベルの文字と物理キー位置が一致しない場合がある。
 - Unassigned keys are ignored in Stage 1. In Stage 2, only the arrow keys and the supported confirmation keys are used; other keys are ignored.
@@ -182,6 +182,7 @@ selection keys and do not participate.
 | `Ctrl+Enter` | Confirm with a middle (wheel) click; accepted with Ctrl alone |
 | `Backspace` | Undo the last Stage 1 key. Arrow movement is not part of the undo history; an active range or drag anchor is preserved. Ignored in Scroll Mode |
 | `Tab` | Toggle continuous mode while the grid is visible. Only an unmodified Tab press is accepted; ignored in Scroll Mode |
+| `1`–`9` | Switch the Stage 1 grid to the monitor with that number. Monitors are numbered from 1 in spatial order (top-to-bottom, then left-to-right), matching the "Grid n/N" badge on the grid monitor's overlay. Switching resets the Stage-1 keystroke history but preserves range/drag anchors. Ignored in Scroll Mode |
 | `R` (Stage 2) | Set the range anchor at the current target and return to Stage 1. Only an unmodified press is accepted; ignored while an anchor is already active or Scroll Mode is active |
 | `D` (Stage 2) | Set the drag anchor at the current target and return to Stage 1. Only an unmodified, non-repeat press is accepted; D remains a Stage 1 column key |
 | `F` (Stage 2) | Start the range-then-drag workflow at the current target. Only an unmodified press in eligible Stage 2 state is accepted; F remains a Stage 1 column key |
@@ -199,7 +200,7 @@ Backspace undoes one Stage 1 keystroke. In Stage 2 it removes the Stage 1 row ke
 
 ### 4.1 分割数の算出
 
-第1段階は、仮想画面を目標セルサイズ **128 DIP** に近づけるよう分割する。DPI参照モニターの実効DPI倍率 `activeDpiScale` を用いて、物理ピクセルの目標サイズ `targetPx = round(128.0 × activeDpiScale)` を算出する。仮想画面の幅W・高さH（物理ピクセル）について、列数C・行数Rは `C ≥ 1`, `R ≥ 1`, `C + R ≤ 26` の範囲で次の順序により決定する。
+第1段階は、グリッド対象モニターの表示領域を目標セルサイズ **128 DIP** に近づけるよう分割する。グリッド対象モニターの実効DPI倍率 `activeDpiScale` を用いて、物理ピクセルの目標サイズ `targetPx = round(128.0 × activeDpiScale)` を算出する。グリッド対象モニターの幅W・高さH（物理ピクセル）について、列数C・行数Rは `C ≥ 1`, `R ≥ 1`, `C + R ≤ 26` の範囲で次の順序により決定する。
 
 ```text
 cellWidthPx = ceil(W / C)
@@ -219,7 +220,7 @@ totalDeviation = |cellWidthPx - targetPx| + |cellHeightPx - targetPx|
 
 代表例（サイズはDPI換算DIP）：
 
-| 仮想画面 | DPI | 第1段階列×行 | キー数 | 第1段階セル (DIP) | 最大偏差 |
+| モニター表示領域 | DPI | 第1段階列×行 | キー数 | 第1段階セル (DIP) | 最大偏差 |
 |---|---:|---:|---:|---:|---:|
 | 1920×1080 | 100% | 15×8 | 23 | 128×135 | 5.5% |
 | 1920×1080 | 125% | 12×7 | 19 | 128×124 | 3.1% |
@@ -240,7 +241,7 @@ totalDeviation = |cellWidthPx - targetPx| + |cellHeightPx - targetPx|
 
 ### 4.2 分割規則
 
-- 第1段階の分割対象は仮想画面とする。
+- 第1段階の分割対象はグリッド対象モニターの表示領域とする。
 - 第2段階の分割対象は、第1段階で選択したセル（focusBox）の基準点（refX, refY）を中心とする固定25列×25行のウィンドウとする。
   - セルサイズ：`stage2CellPx = max(1, round(24.0 × activeDpiScale))`（24 DIP固定）
   - ウィンドウサイズ：`stage2WindowPx = 25 × stage2CellPx`（600 DIP固定）
@@ -259,10 +260,13 @@ totalDeviation = |cellWidthPx - targetPx| + |cellHeightPx - targetPx|
 
 ### 4.3 多重モニター
 
-- 全モニターの表示領域を取得し、それらを包含する外接矩形（仮想画面）を求める。
-- 第1段階の対象となる選択領域（段階0）は、全モニター表示領域の集合とする。
-- 以降の分割は4.2の規則で行う。
+- 全モニターの表示領域を取得し、それらを包含する外接矩形（仮想画面）をSendInputの正規化基準として保持する。
+- 第1段階のグリッドは1つのモニター（グリッド対象モニター）の表示領域だけを分割対象とし、そのモニターの実効DPIで目標セルサイズを決める。モニターごとに密度の異なるグリッドにはならず、各モニターが単独使用時と同じ分割精度を持つ。
+- グリッド対象モニターの初期値は、フォアグラウンドウィンドウが存在するモニターとする。取得できない場合はプライマリモニター、さらに空間順の先頭モニターへフォールバックする。
+- グリッド対象モニターは数字キー1〜9でセッション中に切り替えられる。モニターの番号は空間順（上から下、同じ高さでは左から右）で1から採番し、グリッド対象モニターのオーバーレイに「Grid n/N」バッジを表示する。切替時は第1段階の打鍵履歴をリセットして新しいモニターのグリッドで選択をやり直す。範囲・ドラッグのアンカーは切替を跨いで保持されるため、画面Aでアンカーを設定して別モニターへ切り替え、ドロップ先を選ぶ操作ができる。
+- 第1段階の対象となる選択領域（段階0）は、グリッド対象モニターの表示領域とする。
 - 選択領域は、モニター表示領域との交差部分の集合として管理する。モニター間の空白領域は選択領域に含めない。
+- 第2段階の25×25ウィンドウは全モニター表示領域との交差で有効セルを求める。ウィンドウが隣接モニターへはみ出した場合はその領域のセルも有効となり、モニター境界付近のターゲットをそのまま補正できる。
 - 第2段階の25×25ウィンドウも同じ規則でモニター表示領域との交差を求め、空白領域のセルは無効とする。外周セルが別モニター上にある場合は、そのモニターの領域を選択できる。
 - これにより、モニターが不規則に配置されていても、実際に表示されている領域だけを選択できる。
 
@@ -281,8 +285,8 @@ totalDeviation = |cellWidthPx - targetPx| + |cellHeightPx - targetPx|
 - app.manifestでPer-Monitor DPI Awareness V2を指定する。
 - オーバーレイの位置・サイズはWin32（SetWindowPos）で物理ピクセル指定する。
 - WPFのDIPは、オーバーレイ内の描画にのみ使用する。
-- DPI参照モニターは、フォアグラウンドウィンドウからWin32のMonitorFromWindow(handle, MONITOR_DEFAULTTONEAREST)で取得する。取得できない場合はプライマリモニター、さらに第1モニターへフォールバックする。
-- 第1段階の目標128 DIPおよび第2段階の固定24 DIP・600 DIPは、このDPI参照モニターの実効DPI倍率により物理ピクセルへ変換される。
+- グリッド対象モニターは、フォアグラウンドウィンドウからWin32のMonitorFromWindow(handle, MONITOR_DEFAULTTONEAREST)で取得する。取得できない場合はプライマリモニター、さらに空間順の先頭モニターへフォールバックする。
+- 第1段階の目標128 DIPおよび第2段階の固定24 DIP・600 DIPは、グリッド対象モニターの実効DPI倍率により物理ピクセルへ変換される。
 - GetDpiForMonitorが失敗した場合は96 DPI（倍率1.0）へフォールバックし、警告をログに記録する。推測値は使わない。
 - WPF描画のDIP変換には、各オーバーレイが属するモニターの実効DPIを使う。
 - SendInputの仮想画面座標の正規化はCoordinateConverterに集約し、全モニターを包含する仮想画面の外接矩形を正規化基準とする。
@@ -435,6 +439,7 @@ For Scroll Mode input, steps 2-4 of the normal click flow are applied to the scr
 | 選択中（履歴1個） | 有効な行キー | 選択中（履歴2個） | 行を履歴に追加し、選択領域を第2段階の25×25コンテキストグリッドへ進める |
 | 選択中 | 無効な列・行キー | 変化なし | 無視 |
 | 選択中 | Tab（修飾なし） | 選択中 | 連続モードを切り替える。履歴と選択カーソルは維持 |
+| 選択中 | 数字キー 1〜9 | 選択中（履歴0個） | Stage 1 グリッドをその番号のモニターへ移し、打鍵履歴をリセット。範囲・ドラッグのアンカーは維持 |
 | 選択中（履歴2個） | 有効セルへの矢印移動 | 選択中 | 25×25コンテキストグリッド内の次の有効セルへ選択カーソルを移動。空白領域のセルは飛び越す |
 | 選択中（履歴2個） | 矢印キーのリピート | 選択中 | キーリピート間隔でカーソルを連続移動 |
 | 選択中（履歴2個） | 境界・無効セル方向への矢印移動 | 変化なし | 無視 |

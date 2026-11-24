@@ -13,15 +13,17 @@ public class OverlayRenderElementTests
     private static readonly PixelRect[] Monitors = { LeftMonitor, RightMonitor };
 
     [Fact]
-    public void Stage1Labels_AreDrawnOnlyOnMonitorOwningEachCell()
+    public void Stage1Labels_AreDrawnOnlyOnTheGridMonitor()
     {
         var selection = CreateSelection();
 
         var leftGlyphs = RenderGlyphs(LeftMonitor, selection);
         var rightGlyphs = RenderGlyphs(RightMonitor, selection);
 
+        // The Stage 1 grid covers only the active (left) monitor; the other
+        // monitor is fully dimmed and carries no cell labels.
         Assert.NotEmpty(leftGlyphs);
-        Assert.NotEmpty(rightGlyphs);
+        Assert.Empty(rightGlyphs);
     }
 
     [Fact]
@@ -263,7 +265,7 @@ public class OverlayRenderElementTests
     {
         var selection = new SelectionManager();
         Assert.True(selection.StartSelection(Monitors, 1.0));
-        Assert.Equal(5, selection.ColumnCount);
+        Assert.Equal(2, selection.ColumnCount);
         Assert.Equal(2, selection.RowCount);
         return selection;
     }

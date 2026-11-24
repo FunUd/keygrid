@@ -7,7 +7,7 @@ KeyGrid is a lightweight, resident Windows 11 utility that enables mouse-free le
 ## Features
 
 - **Keyboard-Driven Precision**: Select a coarse region with two disjoint column/row letter keys (targeting ~128 DIP), navigate a fixed 600 DIP (25×25 cells of 24 DIP each) focus-plus-context grid with the arrow keys, and use `Enter`, `Shift+Enter`, or `Ctrl+Enter` to left-, right-, or middle-click. The selected Stage 1 cell is outlined, and holding an arrow key moves the cursor continuously.
-- **Multi-Monitor Support**: Automatically maps across all active displays, handles non-standard topologies (L-shaped, vertical offsets, gaps), and operates with Per-Monitor DPI Awareness V2. The foreground window's monitor sets the DPI reference for the 128 DIP Stage 1 target and 24 DIP Stage 2 cells; the primary monitor remains the keyboard input owner.
+- **Multi-Monitor Support**: The Stage 1 grid covers one monitor at a time — the "grid monitor" — so each display keeps single-monitor grid density regardless of how many monitors are connected. Handles non-standard topologies (L-shaped, vertical offsets, gaps), and operates with Per-Monitor DPI Awareness V2. The foreground window's monitor is the initial grid monitor; press `1`–`9` to move the grid to another monitor mid-selection, which also enables cross-monitor drag-and-drop. The primary monitor remains the keyboard input owner.
 - **Background Resident Utility**: Runs silently in the system tray with low idle CPU usage and an idle working-set target below 100 MB.
 - **IME & Repeat Protection**: Automatically suppresses IME during grid selection. Key repeats are ignored except while holding an arrow key to move the Stage 2 cursor continuously.
 - **Safe Fallback**: Excludes gaps between disjoint monitors, snapping center reference points to the closest valid display pixel.
@@ -116,7 +116,7 @@ Press the global hotkey:
 
 $$\text{Ctrl} + \text{Shift} + \text{Space}$$
 
-Full-screen overlays will appear across all connected monitors. Stage 1 displays a two-letter label (column key + row key) in each valid cell (~128 DIP target). After choosing a region, Stage 2 shows a fixed 600 DIP (25×25 cells of 24 DIP each) focus-plus-context grid centered on that region's reference point. The selected Stage 1 cell remains outlined and bright, the outer margin is dimmed for context, and the center-most valid cell is highlighted in red.
+Full-screen overlays will appear across all connected monitors, but the Stage 1 grid covers only the grid monitor — the monitor hosting the foreground window, or the primary monitor as a fallback. Every monitor shows a small `n/N` badge in its top-right corner with its number in spatial order (top-to-bottom, then left-to-right); the grid monitor's badge reads `Grid n/N`. Press `1`–`9` at any time to move the grid to another monitor; the keystroke history resets but range/drag anchors are preserved, so you can set an anchor on one monitor and pick the endpoint on another. Stage 1 displays a two-letter label (column key + row key) in each valid cell (~128 DIP target). After choosing a region, Stage 2 shows a fixed 600 DIP (25×25 cells of 24 DIP each) focus-plus-context grid centered on that region's reference point. The selected Stage 1 cell remains outlined and bright, the outer margin is dimmed for context, and the center-most valid cell is highlighted in red.
 
 ### 2. Selecting Coordinates (2 Stages)
 
@@ -162,6 +162,7 @@ The blocks assume the physical rows of a QWERTY or JIS keyboard. On layouts such
 | **`R`** (Stage 2) | Sets the range anchor at the current target and returns to Stage 1. When pressed together with `D`, starts the range-then-drag workflow instead. |
 | **`D`** (Stage 2) | Sets the drag anchor at the current target and returns to Stage 1. When pressed together with `R`, starts the range-then-drag workflow instead. |
 | **`PageUp` / `PageDown`** (Stage 2) | Enters Scroll Mode and scrolls the current target vertically. Page keys scroll by five wheel notches; arrow keys scroll by one and also handle horizontal scrolling. |
+| **`1`–`9`** | Moves the Stage 1 grid to the monitor with that number (spatial order, top-to-bottom then left-to-right). Resets the Stage 1 keystroke history; range/drag anchors are preserved. |
 | **`Tab`** | Toggles continuous mode while the grid is visible. In continuous mode, each click returns to Stage 1 instead of exiting. |
 | **`Esc`** | Exits Scroll Mode first, then clears an active range or drag anchor. When neither sub-mode is active, cancels the selection mode (including continuous mode) and returns to standby. |
 | **Focus Loss** | Switching to a visible application cancels selection. Transient focus loss to hidden Windows/IME helper windows is recovered automatically. |

@@ -279,6 +279,29 @@ public class OverlayKeyHandlerTests
     }
 
     [Fact]
+    public void PrimaryOverlay_DigitKeysRequestMonitorSelect()
+    {
+        UiTestThread.Run(() =>
+        {
+            var handler = new OverlayKeyHandler(isPrimary: true);
+            var numbers = new List<int>();
+            handler.MonitorSelectRequested += number => numbers.Add(number);
+
+            Assert.True(handler.HandleKeyDown(Key.D1, ModifierKeys.None, isRepeat: false));
+            Assert.True(handler.HandleKeyDown(Key.D9, ModifierKeys.None, isRepeat: false));
+            Assert.True(handler.HandleKeyDown(Key.NumPad3, ModifierKeys.None, isRepeat: false));
+            // Modified digits are consumed without dispatching.
+            Assert.True(handler.HandleKeyDown(Key.D2, ModifierKeys.Shift, isRepeat: false));
+            // Repeats are consumed without dispatching.
+            Assert.True(handler.HandleKeyDown(Key.D4, ModifierKeys.None, isRepeat: true));
+            // Digit 0 has no monitor mapping and is consumed silently.
+            Assert.True(handler.HandleKeyDown(Key.D0, ModifierKeys.None, isRepeat: false));
+
+            Assert.Equal(new[] { 1, 9, 3 }, numbers);
+        });
+    }
+
+    [Fact]
     public void PrimaryOverlay_TabTogglesContinuousModeAndIgnoresModifiedOrRepeatedTabs()
     {
         UiTestThread.Run(() =>

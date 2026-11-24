@@ -46,6 +46,10 @@ public class OverlayManager
     private readonly List<IOverlayWindowSurface> _overlays = new();
     private readonly FocusLossPolicy _focusLossPolicy = new();
     private IReadOnlyList<PixelRect> _activeMonitorRects = Array.Empty<PixelRect>();
+    // Monitors in spatial order (top-to-bottom, then left-to-right). Digit keys
+    // 1-9 select the Stage 1 grid monitor by this numbering.
+    private List<MonitorInfo> _monitors = new();
+    private int _activeMonitorIndex = -1;
     private PixelRect _virtualScreenBounds = PixelRect.Empty;
     private IOverlayWindowSurface? _primaryOverlay;
     private nint _originatingForegroundWindow;
@@ -170,6 +174,8 @@ public class OverlayManager
 
         var monitors = _monitorProvider.GetMonitors()
             .Where(m => !m.Bounds.IsEmpty)
+            .OrderBy(m => m.Bounds.Top)
+            .ThenBy(m => m.Bounds.Left)
             .ToList();
         if (monitors.Count == 0)
         {
@@ -183,24 +189,30 @@ public class OverlayManager
         // Calculate virtual desktop bounds from all monitors for SendInput normalization
         _virtualScreenBounds = PixelRect.BoundingBox(monitors.Select(m => m.Bounds));
 
-        MonitorInfo dpiReferenceMonitor;
+        // The Stage 1 grid lives on a single monitor: the one hosting the window
+        // that was foreground when the hotkey fired, falling back to the primary
+        // monitor and then the first in spatial order.
+        MonitorInfo activeMonitor;
         var fromWindow = _originatingForegroundWindow != nint.Zero
             ? _monitorProvider.GetMonitorForWindow(_originatingForegroundWindow)
             : null;
-        if (fromWindow.HasValue)
+        if (fromWindow.HasValue && monitors.Any(m => m.Bounds == fromWindow.Value.Bounds))
         {
-            dpiReferenceMonitor = fromWindow.Value;
+            activeMonitor = fromWindow.Value;
         }
         else
         {
             int primaryIdx = monitors.FindIndex(m => m.IsPrimary);
-            dpiReferenceMonitor = primaryIdx >= 0 ? monitors[primaryIdx] : monitors[0];
+            activeMonitor = primaryIdx >= 0 ? monitors[primaryIdx] : monitors[0];
         }
-        double dpiReferenceScale = dpiReferenceMonitor.DpiScale;
+
+        _monitors = monitors;
+        _activeMonitorIndex = monitors.FindIndex(m => m.Bounds == activeMonitor.Bounds);
+        double activeMonitorDpiScale = activeMonitor.DpiScale;
 
         var monitorRects = monitors.Select(m => m.Bounds).ToList();
         _activeMonitorRects = monitorRects;
-        if (!_selectionManager.StartSelection(monitorRects, dpiReferenceScale))
+        if (!_selectionManager.StartSelection(monitorRects, activeMonitor.Bounds, activeMonitorDpiScale))
         {
             _continuousMode = false;
             ErrorOccurred?.Invoke("Failed to initialize selection area.");
@@ -216,7 +228,7 @@ public class OverlayManager
             FileLogger.LogWarning("No monitor reported as primary; using the first enumerated monitor.");
         }
 
-        int targetPx = (int)Math.Round(GridCalculator.Stage1CellTargetDip * dpiReferenceScale);
+        int targetPx = (int)Math.Round(GridCalculator.Stage1CellTargetDip * activeMonitorDpiScale);
         int cellWidthPx = (_selectionManager.CurrentBoundingBox.Width + _selectionManager.ColumnCount - 1) / _selectionManager.ColumnCount;
         int cellHeightPx = (_selectionManager.CurrentBoundingBox.Height + _selectionManager.RowCount - 1) / _selectionManager.RowCount;
         int maxDev = Math.Max(Math.Abs(cellWidthPx - targetPx), Math.Abs(cellHeightPx - targetPx));
@@ -228,9 +240,9 @@ public class OverlayManager
 
         FileLogger.LogInfo(
             $"Selection started across {monitors.Count} monitor(s) with virtual desktop {_virtualScreenBounds}, " +
-            $"DPI reference monitor at {dpiReferenceMonitor.Bounds} ({dpiReferenceScale:P0}), " +
+            $"grid monitor {_activeMonitorIndex + 1}/{monitors.Count} at {activeMonitor.Bounds} ({activeMonitorDpiScale:P0}), " +
             $"Stage 1 grid {_selectionManager.ColumnCount}x{_selectionManager.RowCount} " +
-            $"(cell ~{cellWidthPx / dpiReferenceScale:F0}x{cellHeightPx / dpiReferenceScale:F0} DIP), " +
+            $"(cell ~{cellWidthPx / activeMonitorDpiScale:F0}x{cellHeightPx / activeMonitorDpiScale:F0} DIP), " +
             $"Stage 2 window {SelectionManager.Stage2WindowDip} DIP, continuousMode={_continuousMode}.");
 
         // Create an overlay for each monitor; wire input only on the primary overlay
@@ -254,6 +266,7 @@ public class OverlayManager
                 overlay.DragStartRequested += OnDragStartRequested;
                 overlay.RangeDragWorkflowRequested += OnRangeDragWorkflowRequested;
                 overlay.PageScrollRequested += OnPageScrollRequested;
+                overlay.MonitorSelectRequested += OnMonitorSelectRequested;
                 overlay.FocusLost += () => OnFocusLost(generation);
             }
 
@@ -266,7 +279,8 @@ public class OverlayManager
                 _rangeStartPoint,
                 _scrollMode,
                 IsRangeDragWorkflow,
-                _dragStartPoint);
+                _dragStartPoint,
+                MonitorBadgeLabel(i));
         }
 
         if (_primaryOverlay == null || !_primaryOverlay.TryReactivate())
@@ -507,6 +521,44 @@ public class OverlayManager
         }
 
         ExecuteScrollOperation(target, notches, horizontal);
+    }
+
+    /// <summary>
+    /// The "n/N" badge identifying a monitor's position in the digit-key
+    /// ordering. Every overlay gets its own label so the user can see which
+    /// digit moves the Stage 1 grid to that monitor. Hidden for single-monitor
+    /// sessions where digit selection is meaningless. Relies on _overlays
+    /// keeping the same order as _monitors.
+    /// </summary>
+    private string? MonitorBadgeLabel(int monitorIndex) =>
+        _monitors.Count > 1 && monitorIndex >= 0 && monitorIndex < _monitors.Count
+            ? $"{monitorIndex + 1}/{_monitors.Count}"
+            : null;
+
+    private void OnMonitorSelectRequested(int monitorNumber)
+    {
+        if (IsClosing
+            || !IsActive
+            || _isInputInProgress
+            || _scrollMode
+            || _selectionManager.State != SelectionState.Selecting
+            || monitorNumber < 1
+            || monitorNumber > _monitors.Count)
+        {
+            return;
+        }
+
+        var target = _monitors[monitorNumber - 1];
+        if (!_selectionManager.SwitchActiveMonitor(target.Bounds, target.DpiScale))
+        {
+            return;
+        }
+
+        _activeMonitorIndex = monitorNumber - 1;
+        FileLogger.LogInfo(
+            $"Stage 1 grid switched to monitor {monitorNumber}/{_monitors.Count} " +
+            $"at {target.Bounds} ({target.DpiScale:P0}).");
+        UpdateAllOverlays();
     }
 
     private void OnContinuousModeToggleRequested()
@@ -845,16 +897,19 @@ public class OverlayManager
 
     private void UpdateAllOverlays()
     {
-        foreach (var overlay in _overlays)
+        // _overlays is built in _monitors order, so the index doubles as the
+        // monitor's digit-key number.
+        for (int i = 0; i < _overlays.Count; i++)
         {
-            overlay.UpdateRenderState(
+            _overlays[i].UpdateRenderState(
                 _selectionManager,
                 _activeMonitorRects,
                 _continuousMode,
                 _rangeStartPoint,
                 _scrollMode,
                 IsRangeDragWorkflow,
-                _dragStartPoint);
+                _dragStartPoint,
+                MonitorBadgeLabel(i));
         }
     }
 
@@ -1705,6 +1760,8 @@ public class OverlayManager
             }
             _overlays.Clear();
             _primaryOverlay = null;
+            _monitors.Clear();
+            _activeMonitorIndex = -1;
             FileLogger.LogInfo($"Overlay teardown finished (requested={overlayCount}, active={IsActive}).");
         }
         finally

@@ -23,6 +23,7 @@ public class OverlayRenderElement : FrameworkElement
     private PixelPoint? _dragStartPoint;
     private bool _isScrollMode;
     private bool _isRangeDragWorkflow;
+    private string? _monitorBadgeLabel;
 
     private readonly Brush _dimBrush = new SolidColorBrush(Color.FromArgb(145, 10, 15, 25));
     private readonly Brush _columnHighlightBrush = new SolidColorBrush(Color.FromArgb(55, 0, 229, 255));
@@ -98,7 +99,8 @@ public class OverlayRenderElement : FrameworkElement
         PixelPoint? rangeStartPoint = null,
         bool isScrollMode = false,
         bool isRangeDragWorkflow = false,
-        PixelPoint? dragStartPoint = null)
+        PixelPoint? dragStartPoint = null,
+        string? monitorBadgeLabel = null)
     {
         _monitorRect = monitorRect;
         _monitorRects = monitorRects;
@@ -109,6 +111,7 @@ public class OverlayRenderElement : FrameworkElement
         _dragStartPoint = dragStartPoint;
         _isScrollMode = isScrollMode;
         _isRangeDragWorkflow = isRangeDragWorkflow;
+        _monitorBadgeLabel = monitorBadgeLabel;
         InvalidateVisual();
     }
 
@@ -277,6 +280,50 @@ public class OverlayRenderElement : FrameworkElement
         {
             DrawStatusBadges(dc);
         }
+
+        // 8. Every monitor shows its digit-key number so the user can see which
+        // key moves the Stage 1 grid there; the grid monitor is marked "Grid".
+        if (_monitorBadgeLabel != null
+            && _selectionManager.State == SelectionState.Selecting)
+        {
+            DrawMonitorBadge(dc);
+        }
+    }
+
+    /// <summary>
+    /// Draws a small badge in the top-right corner identifying this monitor's
+    /// position in the digit-key ordering (for example "2/3"). The monitor
+    /// hosting the Stage 1 grid is prefixed with "Grid".
+    /// </summary>
+    private void DrawMonitorBadge(DrawingContext dc)
+    {
+        const double margin = 12.0;
+        const double paddingX = 10.0;
+        const double paddingY = 6.0;
+        const double fontSize = 14.0;
+
+        bool isGridMonitor = _selectionManager?.ActiveMonitorRect == _monitorRect;
+        string textValue = isGridMonitor ? $"Grid {_monitorBadgeLabel}" : _monitorBadgeLabel!;
+        var text = new FormattedText(
+            textValue,
+            CultureInfo.InvariantCulture,
+            FlowDirection.LeftToRight,
+            _labelTypeface,
+            fontSize,
+            _statusTextBrush,
+            _pixelsPerDip);
+
+        double width = text.Width + (paddingX * 2);
+        double height = text.Height + (paddingY * 2);
+        double badgeLeft = ActualWidth - margin - width;
+        if (badgeLeft < margin)
+        {
+            badgeLeft = margin;
+        }
+
+        var badgeRect = new Rect(badgeLeft, margin, width, height);
+        dc.DrawRoundedRectangle(_statusBackgroundBrush, _statusBorderPen, badgeRect, 4, 4);
+        dc.DrawText(text, new Point(badgeRect.Left + paddingX, badgeRect.Top + paddingY));
     }
 
     /// <summary>

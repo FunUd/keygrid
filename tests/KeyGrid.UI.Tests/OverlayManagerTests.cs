@@ -180,6 +180,51 @@ public class OverlayManagerTests
     }
 
     [Fact]
+    public void MonitorSelectDigit_MovesStage1GridToNumberedMonitor()
+    {
+        UiTestThread.Run(() =>
+        {
+            // Spatial order (top, then left): the left monitor is 1, the primary
+            // monitor at the origin is 2.
+            var leftMonitor = new MonitorInfo(new PixelRect(-800, 0, 800, 600), 1.0, false);
+            var primaryMonitor = new MonitorInfo(new PixelRect(0, 0, 1920, 1080), 1.5, true);
+            var monitorProvider = new FakeMonitorProvider(leftMonitor, primaryMonitor);
+            var focus = new FakeWindowFocusService { ForegroundWindow = nint.Zero };
+            var factory = new FakeOverlayFactory { FocusService = focus };
+            var manager = CreateManager(monitorProvider, factory, focus, new FakeClickSender());
+            manager.ShowOverlays();
+            UiTestThread.DrainDispatcher();
+
+            // With no resolvable foreground window, the primary monitor hosts the
+            // initial grid.
+            Assert.Equal(primaryMonitor.Bounds, manager.SelectionManager.ActiveMonitorRect);
+            Assert.Equal(1.5, manager.SelectionManager.DpiReferenceScale);
+            // Each overlay carries its own digit-key number; the primary monitor
+            // is monitor 2 in spatial order.
+            Assert.Equal("1/2", factory.Windows[0].LastMonitorBadgeLabel);
+            Assert.Equal("2/2", factory.Windows[1].LastMonitorBadgeLabel);
+
+            var primary = factory.Windows.Single(w => w.IsPrimary);
+            primary.RaiseKey(manager.SelectionManager.ColumnKeys[0]);
+            primary.RaiseMonitorSelect(1);
+
+            Assert.Equal(leftMonitor.Bounds, manager.SelectionManager.ActiveMonitorRect);
+            Assert.Equal(1.0, manager.SelectionManager.DpiReferenceScale);
+            Assert.Empty(manager.SelectionManager.History);
+            Assert.Equal(1, manager.SelectionManager.CurrentStage);
+            // Badge labels are positional and do not change on a monitor switch.
+            Assert.Equal("1/2", factory.Windows[0].LastMonitorBadgeLabel);
+            Assert.Equal("2/2", factory.Windows[1].LastMonitorBadgeLabel);
+
+            // Out-of-range monitor numbers are ignored.
+            primary.RaiseMonitorSelect(3);
+            Assert.Equal(leftMonitor.Bounds, manager.SelectionManager.ActiveMonitorRect);
+
+            manager.CloseOverlays();
+        });
+    }
+
+    [Fact]
     public void PrimarySurfaceEvents_UpdateSelectionAndCloseBeforeSendingClick()
     {
         UiTestThread.Run(() =>
@@ -1858,6 +1903,7 @@ public class OverlayManagerTests
         public event Action? DragStartRequested;
         public event Action? RangeDragWorkflowRequested;
         public event Action<int>? PageScrollRequested;
+        public event Action<int>? MonitorSelectRequested;
         public event Action? FocusLost;
         public event Action? DisplayConfigurationChanged;
 
@@ -1871,6 +1917,7 @@ public class OverlayManagerTests
         public PixelPoint? LastDragStartPoint { get; private set; }
         public bool LastRangeDragWorkflow { get; private set; }
         public bool LastAllowRangeDragChord { get; private set; }
+        public string? LastMonitorBadgeLabel { get; private set; }
         public int ShowCount { get; private set; }
         public int CloseCount { get; private set; }
         public int RenderUpdateCount { get; private set; }
@@ -1904,7 +1951,8 @@ public class OverlayManagerTests
             PixelPoint? rangeStartPoint = null,
             bool isScrollMode = false,
             bool isRangeDragWorkflow = false,
-            PixelPoint? dragStartPoint = null)
+            PixelPoint? dragStartPoint = null,
+            string? monitorBadgeLabel = null)
         {
             Assert.NotEqual(SelectionState.Standby, selectionManager.State);
             Assert.Contains(monitorRect, monitorRects);
@@ -1920,6 +1968,7 @@ public class OverlayManagerTests
                 && !isRangeDragWorkflow
                 && rangeStartPoint is null
                 && dragStartPoint is null;
+            LastMonitorBadgeLabel = monitorBadgeLabel;
             RenderUpdateCount++;
         }
 
@@ -1954,6 +2003,8 @@ public class OverlayManagerTests
         public void RaiseRangeDragWorkflow() => RangeDragWorkflowRequested?.Invoke();
 
         public void RaisePageScroll(int direction) => PageScrollRequested?.Invoke(direction);
+
+        public void RaiseMonitorSelect(int monitorNumber) => MonitorSelectRequested?.Invoke(monitorNumber);
 
         public void RaiseFocusLost() => FocusLost?.Invoke();
 

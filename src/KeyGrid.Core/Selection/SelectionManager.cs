@@ -18,6 +18,7 @@ public class SelectionManager
     private readonly List<PixelRect> _initialMonitors = new();
     private readonly List<char> _history = new();
     private KeyAllocation? _keyAllocation;
+    private PixelRect _activeMonitorRect = PixelRect.Empty;
 
     public SelectionState State { get; private set; } = SelectionState.Standby;
 
@@ -46,6 +47,12 @@ public class SelectionManager
     public PixelRect GridBoundingBox => CurrentStage >= 2 ? Stage2Window : CurrentBoundingBox;
 
     public PixelRect VirtualScreenBoundingBox { get; private set; } = PixelRect.Empty;
+
+    /// <summary>
+    /// The monitor display area that hosts the Stage 1 grid. Stage 2 may still
+    /// reach into neighboring monitors through its context window.
+    /// </summary>
+    public PixelRect ActiveMonitorRect => _activeMonitorRect;
 
     public double DpiReferenceScale { get; private set; } = 1.0;
 
@@ -80,13 +87,33 @@ public class SelectionManager
 
     /// <summary>
     /// Initiates selection mode with the provided monitor display bounds and DPI scale.
+    /// The first non-empty monitor rect hosts the Stage 1 grid.
     /// </summary>
     /// <param name="monitorRects">Active monitor bounds in physical pixels.</param>
     /// <param name="dpiScale">Effective DPI scale of the active monitor.</param>
     public bool StartSelection(IReadOnlyList<PixelRect> monitorRects, double dpiScale)
     {
+        var activeRect = monitorRects.FirstOrDefault(r => !r.IsEmpty);
+        return StartSelection(monitorRects, activeRect, dpiScale);
+    }
+
+    /// <summary>
+    /// Initiates selection mode across all monitors while hosting the Stage 1
+    /// grid on a single active monitor. The remaining monitors stay reachable
+    /// through the Stage 2 context window and remain valid click targets.
+    /// </summary>
+    /// <param name="monitorRects">Active monitor bounds in physical pixels.</param>
+    /// <param name="activeMonitorRect">Monitor bounds that host the Stage 1 grid; must equal one of <paramref name="monitorRects"/>.</param>
+    /// <param name="activeMonitorDpiScale">Effective DPI scale of the active monitor.</param>
+    public bool StartSelection(
+        IReadOnlyList<PixelRect> monitorRects,
+        PixelRect activeMonitorRect,
+        double activeMonitorDpiScale)
+    {
         var validRects = monitorRects.Where(r => !r.IsEmpty).ToList();
-        if (validRects.Count == 0)
+        if (validRects.Count == 0
+            || activeMonitorRect.IsEmpty
+            || !validRects.Contains(activeMonitorRect))
         {
             return false;
         }
@@ -94,10 +121,11 @@ public class SelectionManager
         _initialMonitors.Clear();
         _initialMonitors.AddRange(validRects);
         _history.Clear();
-        DpiReferenceScale = dpiScale > 0 ? dpiScale : 1.0;
+        _activeMonitorRect = activeMonitorRect;
+        DpiReferenceScale = activeMonitorDpiScale > 0 ? activeMonitorDpiScale : 1.0;
         VirtualScreenBoundingBox = PixelRect.BoundingBox(_initialMonitors);
-        CurrentSelection = _initialMonitors.ToList();
-        CurrentBoundingBox = VirtualScreenBoundingBox;
+        CurrentSelection = new[] { activeMonitorRect };
+        CurrentBoundingBox = activeMonitorRect;
 
         SetupStage1Divisions();
 
@@ -117,6 +145,34 @@ public class SelectionManager
     public bool StartSelection(IReadOnlyList<PixelRect> monitorRects)
     {
         return StartSelection(monitorRects, 1.0);
+    }
+
+    /// <summary>
+    /// Moves the Stage 1 grid to another monitor mid-session. The keystroke
+    /// history is reset so the selection restarts on the new monitor; range and
+    /// drag anchors held by the caller are unaffected.
+    /// </summary>
+    /// <param name="monitorRect">Monitor bounds that host the new Stage 1 grid.</param>
+    /// <param name="dpiScale">Effective DPI scale of that monitor.</param>
+    public bool SwitchActiveMonitor(PixelRect monitorRect, double dpiScale)
+    {
+        if (State != SelectionState.Selecting
+            || monitorRect.IsEmpty
+            || !_initialMonitors.Contains(monitorRect))
+        {
+            return false;
+        }
+
+        _activeMonitorRect = monitorRect;
+        DpiReferenceScale = dpiScale > 0 ? dpiScale : 1.0;
+        _history.Clear();
+        CurrentSelection = new[] { monitorRect };
+        CurrentBoundingBox = monitorRect;
+        SetupStage1Divisions();
+        SelectedColumnIndex = -1;
+        SelectedRowIndex = -1;
+        TargetCoordinate = null;
+        return true;
     }
 
     private void SetupStage1Divisions()
@@ -381,10 +437,11 @@ public class SelectionManager
         // Copy history and remove last key
         var replayKeys = _history.Take(_history.Count - 1).ToList();
 
-        // Reset to initial state
+        // Reset to the active monitor's Stage 1 grid, not the whole virtual
+        // desktop, so Backspace cannot escape the per-monitor selection scope.
         _history.Clear();
-        CurrentSelection = _initialMonitors.ToList();
-        CurrentBoundingBox = VirtualScreenBoundingBox;
+        CurrentSelection = new[] { _activeMonitorRect };
+        CurrentBoundingBox = _activeMonitorRect;
         SetupStage1Divisions();
         SelectedColumnIndex = -1;
         SelectedRowIndex = -1;
@@ -408,6 +465,7 @@ public class SelectionManager
         State = SelectionState.Standby;
         _history.Clear();
         _initialMonitors.Clear();
+        _activeMonitorRect = PixelRect.Empty;
         CurrentSelection = Array.Empty<PixelRect>();
         CurrentBoundingBox = PixelRect.Empty;
         FocusSelection = Array.Empty<PixelRect>();

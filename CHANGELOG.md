@@ -1,5 +1,11 @@
 # Changelog
 
+## [Unreleased]
+
+### Changed
+
+- Scope the Stage 1 grid to a single monitor instead of the whole virtual desktop. Each monitor now gets the same division density as a single-monitor setup, fixing unusably large cells on multi-monitor and large-display configurations. The initial grid monitor is the one hosting the foreground window (falling back to the primary monitor); press `1`–`9` during selection to move the grid to another monitor. Every monitor shows an `n/N` badge in spatial order (top-to-bottom, then left-to-right) and the grid monitor is marked `Grid n/N`. Switching monitors resets the Stage 1 keystroke history but preserves range/drag anchors, so cross-monitor drag-and-drop still works: set the anchor on one monitor, switch with a digit key, and pick the endpoint on another. Stage 2 keeps its fixed 25×25 window and may still reach into neighboring monitors at the edges.
+
 ## [0.3.2] - 2026-11-23
 
 ### Changed

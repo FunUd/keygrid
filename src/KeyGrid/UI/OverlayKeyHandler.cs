@@ -48,6 +48,11 @@ internal sealed class OverlayKeyHandler
     /// the key enters Scroll Mode or scrolls an already active session.
     /// </summary>
     public event Action<int>? PageScrollRequested;
+    /// <summary>
+    /// Raised for an unmodified digit key (1-9, row or numpad). The value is the
+    /// 1-based monitor number in the manager's spatial ordering.
+    /// </summary>
+    public event Action<int>? MonitorSelectRequested;
 
     public OverlayKeyHandler(bool isPrimary)
     {
@@ -75,6 +80,29 @@ internal sealed class OverlayKeyHandler
         if (key is not (Key.R or Key.D) && !IsModifierKey(key))
         {
             _pendingChordKey = null;
+        }
+
+        // Digit keys select the monitor hosting the Stage 1 grid. They are
+        // consumed even with modifiers held so modified digits cannot leak to
+        // the window that receives focus after the overlay closes.
+        if (key >= Key.D1 && key <= Key.D9)
+        {
+            if (modifiers == ModifierKeys.None)
+            {
+                MonitorSelectRequested?.Invoke(key - Key.D1 + 1);
+            }
+
+            return true;
+        }
+
+        if (key >= Key.NumPad1 && key <= Key.NumPad9)
+        {
+            if (modifiers == ModifierKeys.None)
+            {
+                MonitorSelectRequested?.Invoke(key - Key.NumPad1 + 1);
+            }
+
+            return true;
         }
 
         switch (key)

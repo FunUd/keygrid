@@ -25,6 +25,7 @@ public partial class OverlayWindow : Window, IOverlayWindowSurface
     public event Action? DragStartRequested;
     public event Action? RangeDragWorkflowRequested;
     public event Action<int>? PageScrollRequested;
+    public event Action<int>? MonitorSelectRequested;
     public event Action? FocusLost;
     public event Action? DisplayConfigurationChanged;
 
@@ -52,6 +53,7 @@ public partial class OverlayWindow : Window, IOverlayWindowSurface
         _keyHandler.DragStartRequested += () => DragStartRequested?.Invoke();
         _keyHandler.RangeDragWorkflowRequested += () => RangeDragWorkflowRequested?.Invoke();
         _keyHandler.PageScrollRequested += direction => PageScrollRequested?.Invoke(direction);
+        _keyHandler.MonitorSelectRequested += number => MonitorSelectRequested?.Invoke(number);
 
         Focusable = isPrimary;
         ShowActivated = isPrimary;
@@ -104,7 +106,8 @@ public partial class OverlayWindow : Window, IOverlayWindowSurface
         PixelPoint? rangeStartPoint = null,
         bool isScrollMode = false,
         bool isRangeDragWorkflow = false,
-        PixelPoint? dragStartPoint = null)
+        PixelPoint? dragStartPoint = null,
+        string? monitorBadgeLabel = null)
     {
         // Holding an arrow key repeats cursor movement in Stage 2 and wheel
         // input in Scroll Mode. Repeats stay ignored in Stage 1.
@@ -132,7 +135,8 @@ public partial class OverlayWindow : Window, IOverlayWindowSurface
             rangeStartPoint,
             isScrollMode,
             isRangeDragWorkflow,
-            dragStartPoint);
+            dragStartPoint,
+            monitorBadgeLabel);
     }
 
     /// <summary>

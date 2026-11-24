@@ -16,6 +16,7 @@ public interface IOverlayWindowSurface
     event Action? DragStartRequested;
     event Action? RangeDragWorkflowRequested;
     event Action<int>? PageScrollRequested;
+    event Action<int>? MonitorSelectRequested;
     event Action? FocusLost;
     event Action? DisplayConfigurationChanged;
 
@@ -28,7 +29,8 @@ public interface IOverlayWindowSurface
         PixelPoint? rangeStartPoint = null,
         bool isScrollMode = false,
         bool isRangeDragWorkflow = false,
-        PixelPoint? dragStartPoint = null);
+        PixelPoint? dragStartPoint = null,
+        string? monitorBadgeLabel = null);
     void RefreshExpectedDpi();
     void EnableDpiChangeNotifications();
     void Show();
