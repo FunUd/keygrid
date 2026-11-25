@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.5.0] - 2026-11-26
+
+### Added
+
+- Add an adaptive Stage 0 coarse grid for monitors where the 26-key Stage 1 budget cannot keep cells near the target size. A deterministic coarse split is chosen to minimize the resulting fine-cell deviation and is selected with the usual column+row key pair, after which Stage 1 runs inside the chosen region. Monitors that already meet the target skip Stage 0 and keep the two-keystroke flow.
+- Shrink the selection targets for finer click accuracy: Stage 1 now targets approximately 112 DIP cells (was 128 DIP) and Stage 2 uses a fixed 500 DIP window of 25×25 cells at 20 DIP each (was 600 DIP / 24 DIP).
+- Add an application icon, used for the executable, taskbar, Alt+Tab, and the system tray.
+
+### Changed
+
+- Tone down the Stage 0/1 grid visuals: cell badges now use a translucent neutral fill with a thinner border, smaller regular-weight labels in muted hues, and the grid frame, highlights, grid lines, and dim mask are all lower-opacity so the overlay reads quieter over arbitrary content. Stage 2 rendering is unchanged.
+
 ## [0.4.1] - 2026-11-25
 
 ### Changed
