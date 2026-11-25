@@ -25,29 +25,31 @@ public class OverlayRenderElement : FrameworkElement
     private bool _isRangeDragWorkflow;
     private string? _monitorBadgeLabel;
 
-    private readonly Brush _dimBrush = new SolidColorBrush(Color.FromArgb(145, 10, 15, 25));
-    private readonly Brush _columnHighlightBrush = new SolidColorBrush(Color.FromArgb(55, 0, 229, 255));
-    private readonly Brush _cellHighlightBrush = new SolidColorBrush(Color.FromArgb(65, 180, 220, 255));
+    private readonly Brush _dimBrush = new SolidColorBrush(Color.FromArgb(125, 10, 12, 20));
+    private readonly Brush _columnHighlightBrush = new SolidColorBrush(Color.FromArgb(30, 140, 180, 225));
+    private readonly Brush _cellHighlightBrush = new SolidColorBrush(Color.FromArgb(40, 160, 200, 235));
     private readonly Brush _stage2CursorBrush = new SolidColorBrush(Color.FromArgb(100, 255, 40, 40));
     // Grid lines are drawn as two one-physical-pixel lines straddling each boundary:
     // black on the left/top and white on the right/bottom. On white content only the
     // black line is visible; on black content only the white line is visible, so the
     // grid remains legible without reading the screen or changing colors dynamically.
-    private readonly Brush _gridDarkBrush = new SolidColorBrush(Color.FromArgb(100, 0, 0, 0));
-    private readonly Brush _gridLightBrush = new SolidColorBrush(Color.FromArgb(100, 255, 255, 255));
+    private readonly Brush _gridDarkBrush = new SolidColorBrush(Color.FromArgb(70, 0, 0, 0));
+    private readonly Brush _gridLightBrush = new SolidColorBrush(Color.FromArgb(70, 255, 255, 255));
     private readonly Pen _bboxPen = new(new SolidColorBrush(Color.FromArgb(200, 0, 200, 255)), 2.0);
+    // Stage 0/1 frame: a quiet neutral outline so the badges stay the focus.
+    private readonly Pen _stage1FramePen = new(new SolidColorBrush(Color.FromArgb(190, 170, 185, 205)), 1.25);
     // The outer Stage 2 window is context; the central focus keeps the stronger pen.
     private readonly Pen _stage2WindowPen = new(new SolidColorBrush(Color.FromArgb(120, 0, 200, 255)), 1.0);
 
-    // Stage-1 badges. The dark pill keeps both key colors legible over arbitrary
-    // screen content without sampling the background.
-    private readonly Brush _badgeBgBrush = new SolidColorBrush(Color.FromArgb(225, 12, 16, 24));
-    private readonly Pen _badgeBorderPen = new(new SolidColorBrush(Color.FromArgb(150, 0, 229, 255)), 1.0);
-    private readonly Brush _activeBadgeBgBrush = new SolidColorBrush(Color.FromArgb(240, 12, 16, 24));
-    private readonly Pen _activeBadgeBorderPen = new(new SolidColorBrush(Color.FromArgb(255, 255, 255, 255)), 1.4);
+    // Stage-1 badges use a translucent neutral fill so the dense label grid
+    // stays legible over arbitrary content without visually shouting.
+    private readonly Brush _badgeBgBrush = new SolidColorBrush(Color.FromArgb(170, 12, 14, 20));
+    private readonly Pen _badgeBorderPen = new(new SolidColorBrush(Color.FromArgb(70, 180, 195, 215)), 1.0);
+    private readonly Brush _activeBadgeBgBrush = new SolidColorBrush(Color.FromArgb(205, 24, 28, 38));
+    private readonly Pen _activeBadgeBorderPen = new(new SolidColorBrush(Color.FromArgb(205, 220, 235, 255)), 1.0);
 
-    private readonly Brush _columnKeyBrush = new SolidColorBrush(Color.FromRgb(0, 229, 255));
-    private readonly Brush _rowKeyBrush = new SolidColorBrush(Color.FromRgb(255, 200, 87));
+    private readonly Brush _columnKeyBrush = new SolidColorBrush(Color.FromRgb(140, 190, 220));
+    private readonly Brush _rowKeyBrush = new SolidColorBrush(Color.FromRgb(225, 190, 130));
 
     // Simple status badges. They are drawn only on the primary overlay.
     private readonly Brush _statusTextBrush = new SolidColorBrush(Color.FromRgb(255, 255, 255));
@@ -61,10 +63,12 @@ public class OverlayRenderElement : FrameworkElement
     private readonly Pen _rangeStartHaloPen = new(new SolidColorBrush(Color.FromArgb(220, 0, 0, 0)), 4.0);
 
     private readonly Typeface _labelTypeface = new(new FontFamily("Segoe UI"), FontStyles.Normal, FontWeights.Bold, FontStretches.Normal);
+    private readonly Typeface _cellTypeface = new(new FontFamily("Segoe UI"), FontStyles.Normal, FontWeights.Normal, FontStretches.Normal);
 
     // Reuse glyph layouts across labels and renders. The key includes DPI because
     // FormattedText stores a pixelsPerDip value that changes with per-monitor DPI.
     private readonly Dictionary<GlyphKey, FormattedText> _glyphCache = new();
+    private readonly Dictionary<GlyphKey, FormattedText> _cellGlyphCache = new();
 
     public OverlayRenderElement()
     {
@@ -75,6 +79,7 @@ public class OverlayRenderElement : FrameworkElement
         _gridDarkBrush.Freeze();
         _gridLightBrush.Freeze();
         _bboxPen.Freeze();
+        _stage1FramePen.Freeze();
         _stage2WindowPen.Freeze();
         _badgeBgBrush.Freeze();
         _badgeBorderPen.Freeze();
@@ -210,8 +215,9 @@ public class OverlayRenderElement : FrameworkElement
         if (!_isScrollMode && !bboxIntersection.IsEmpty)
         {
             // Bounding box border. The Stage 2 context window uses a lighter pen
-            // so the central focus remains the visual anchor.
-            var bboxPen = _selectionManager.CurrentStage >= 2 ? _stage2WindowPen : _bboxPen;
+            // so the central focus remains the visual anchor; Stage 0/1 get a
+            // quieter neutral frame.
+            var bboxPen = _selectionManager.CurrentStage >= 2 ? _stage2WindowPen : _stage1FramePen;
             dc.DrawRectangle(null, bboxPen, ToDipRect(bboxIntersection, dpiX, dpiY));
 
             // Vertical grid lines
@@ -495,7 +501,7 @@ public class OverlayRenderElement : FrameworkElement
         double maxWidth = Math.Max(1.0, cellRect.Width - 2);
         double maxHeight = Math.Max(1.0, cellRect.Height - 2);
 
-        double targetFontSize = columnKey.HasValue ? 18.0 : 22.0;
+        double targetFontSize = columnKey.HasValue ? 15.0 : 18.0;
         double widthFactor = columnKey.HasValue ? 1.4 : 0.7;
         double estimatedByWidth = maxWidth / widthFactor;
         double estimatedByHeight = maxHeight / 1.2;
@@ -517,9 +523,9 @@ public class OverlayRenderElement : FrameworkElement
         for (int attempt = 0; attempt < 3; attempt++)
         {
             columnGlyph = columnKey.HasValue
-                ? GetGlyph(columnKey.Value, _columnKeyBrush, fontSize, pixelsPerDip)
+                ? GetCellGlyph(columnKey.Value, _columnKeyBrush, fontSize, pixelsPerDip)
                 : null;
-            rowGlyph = GetGlyph(rowKey, _rowKeyBrush, fontSize, pixelsPerDip);
+            rowGlyph = GetCellGlyph(rowKey, _rowKeyBrush, fontSize, pixelsPerDip);
             textWidth = (columnGlyph?.Width ?? 0) + (columnGlyph != null ? glyphGap : 0) + rowGlyph.Width;
             textHeight = Math.Max(columnGlyph?.Height ?? 0, rowGlyph.Height);
             badgeWidth = textWidth + (paddingX * 2);
@@ -541,9 +547,9 @@ public class OverlayRenderElement : FrameworkElement
         }
 
         columnGlyph = columnKey.HasValue
-            ? GetGlyph(columnKey.Value, _columnKeyBrush, fontSize, pixelsPerDip)
+            ? GetCellGlyph(columnKey.Value, _columnKeyBrush, fontSize, pixelsPerDip)
             : null;
-        rowGlyph = GetGlyph(rowKey, _rowKeyBrush, fontSize, pixelsPerDip);
+        rowGlyph = GetCellGlyph(rowKey, _rowKeyBrush, fontSize, pixelsPerDip);
         textWidth = (columnGlyph?.Width ?? 0) + (columnGlyph != null ? glyphGap : 0) + rowGlyph.Width;
         textHeight = Math.Max(columnGlyph?.Height ?? 0, rowGlyph.Height);
         badgeWidth = textWidth + (paddingX * 2);
@@ -573,7 +579,7 @@ public class OverlayRenderElement : FrameworkElement
         var bgBrush = isActiveColumn ? _activeBadgeBgBrush : _badgeBgBrush;
         var borderPen = isActiveColumn ? _activeBadgeBorderPen : _badgeBorderPen;
 
-        dc.DrawRoundedRectangle(bgBrush, borderPen, badgeRect, 3, 3);
+        dc.DrawRoundedRectangle(bgBrush, borderPen, badgeRect, 2, 2);
 
         double textLeft = badgeCenterX - (textWidth / 2.0);
         if (columnGlyph != null)
@@ -654,6 +660,28 @@ public class OverlayRenderElement : FrameworkElement
 
         double lightTop = (y - _monitorRect.Top) / dpiY;
         dc.DrawRectangle(_gridLightBrush, null, new Rect(left, lightTop, width, height));
+    }
+
+    private FormattedText GetCellGlyph(char character, Brush brush, double fontSize, double pixelsPerDip)
+    {
+        int fontSizeKey = Math.Max(1, (int)Math.Round(fontSize * 100));
+        int pixelsPerDipKey = Math.Max(1, (int)Math.Round(pixelsPerDip * 1000));
+        var key = new GlyphKey(character, brush, fontSizeKey, pixelsPerDipKey);
+        if (_cellGlyphCache.TryGetValue(key, out var cached))
+        {
+            return cached;
+        }
+
+        var glyph = new FormattedText(
+            character.ToString(),
+            CultureInfo.InvariantCulture,
+            FlowDirection.LeftToRight,
+            _cellTypeface,
+            fontSizeKey / 100.0,
+            brush,
+            pixelsPerDipKey / 1000.0);
+        _cellGlyphCache[key] = glyph;
+        return glyph;
     }
 
     private FormattedText GetGlyph(char character, Brush brush, double fontSize, double pixelsPerDip)

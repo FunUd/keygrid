@@ -215,7 +215,7 @@ public class OverlayRenderElementTests
 
         static bool IsDimMask(GeometryDrawing drawing) =>
             drawing.Brush is SolidColorBrush brush
-                && brush.Color == Color.FromArgb(145, 10, 15, 25);
+                && brush.Color == Color.FromArgb(125, 10, 12, 20);
 
         Assert.Contains(
             GetGeometryDrawings(RenderDrawings(LeftMonitor, selection)),
@@ -246,12 +246,13 @@ public class OverlayRenderElementTests
         // grid-related colors are checked here.
         static bool IsGridDrawing(GeometryDrawing drawing) =>
             drawing.Brush is SolidColorBrush brush
-                && (brush.Color == Color.FromArgb(100, 0, 0, 0)
-                    || brush.Color == Color.FromArgb(100, 255, 255, 255)
-                    || brush.Color == Color.FromArgb(145, 10, 15, 25))
+                && (brush.Color == Color.FromArgb(70, 0, 0, 0)
+                    || brush.Color == Color.FromArgb(70, 255, 255, 255)
+                    || brush.Color == Color.FromArgb(125, 10, 12, 20))
             || drawing.Pen?.Brush is SolidColorBrush penBrush
                 && (penBrush.Color == Color.FromArgb(120, 0, 200, 255)
-                    || penBrush.Color == Color.FromArgb(200, 0, 200, 255));
+                    || penBrush.Color == Color.FromArgb(200, 0, 200, 255)
+                    || penBrush.Color == Color.FromArgb(190, 170, 185, 205));
         Assert.DoesNotContain(drawings, IsGridDrawing);
 
         string text = new(
