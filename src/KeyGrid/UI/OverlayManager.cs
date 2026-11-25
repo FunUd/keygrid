@@ -232,10 +232,16 @@ public class OverlayManager
         int cellWidthPx = (_selectionManager.CurrentBoundingBox.Width + _selectionManager.ColumnCount - 1) / _selectionManager.ColumnCount;
         int cellHeightPx = (_selectionManager.CurrentBoundingBox.Height + _selectionManager.RowCount - 1) / _selectionManager.RowCount;
         int maxDev = Math.Max(Math.Abs(cellWidthPx - targetPx), Math.Abs(cellHeightPx - targetPx));
-        if (targetPx > 0 && (double)maxDev / targetPx > 0.25)
+        if (_selectionManager.Stage0Enabled)
+        {
+            FileLogger.LogInfo(
+                $"Stage 0 coarse grid {_selectionManager.ColumnCount}x{_selectionManager.RowCount} enabled " +
+                $"(plain Stage 1 deviation would exceed {GridCalculator.Stage1DeviationThreshold:P0} of target).");
+        }
+        else if (targetPx > 0 && (double)maxDev / targetPx > GridCalculator.Stage1DeviationThreshold)
         {
             FileLogger.LogWarning(
-                $"Stage 1 cell deviation ({(double)maxDev / targetPx:P1}) exceeds 25% of target ({targetPx} px). Coarse grid selected.");
+                $"Stage 1 cell deviation ({(double)maxDev / targetPx:P1}) exceeds {GridCalculator.Stage1DeviationThreshold:P0} of target ({targetPx} px). Coarse grid selected.");
         }
 
         FileLogger.LogInfo(

@@ -9,11 +9,23 @@ namespace KeyGrid.Core.Calculation;
 public static class GridCalculator
 {
     public const int MaxDivisions = 26;
-    public const double Stage1CellTargetDip = 128.0;
-    public const double Stage2CellDip = 24.0;
+    public const double Stage1CellTargetDip = 112.0;
+    public const double Stage2CellDip = 20.0;
     public const int Stage2ColumnCount = 25;
     public const int Stage2RowCount = 25;
-    public const double Stage2WindowDip = Stage2ColumnCount * Stage2CellDip; // 600.0 DIP
+    public const double Stage2WindowDip = Stage2ColumnCount * Stage2CellDip; // 500.0 DIP
+
+    /// <summary>
+    /// Relative cell-size deviation above which the plain Stage 1 grid is
+    /// considered too coarse and a Stage 0 coarse grid is inserted.
+    /// </summary>
+    public const double Stage1DeviationThreshold = 0.25;
+
+    /// <summary>
+    /// Per-axis cap for Stage 0 coarse divisions. Stage 0 only runs on very
+    /// large monitors, so a small bound keeps the search cheap.
+    /// </summary>
+    public const int MaxStage0Divisions = 8;
 
     /// <summary>
     /// Chooses the Stage 1 divisions that keep the physical cell size close to
@@ -81,6 +93,110 @@ public static class GridCalculator
         }
 
         return (bestColumns, bestRows);
+    }
+
+    /// <summary>
+    /// Decides whether a Stage 0 coarse grid is needed and, if so, chooses its
+    /// divisions. Stage 0 runs only when the plain Stage 1 grid cannot keep the
+    /// physical cell size within <see cref="Stage1DeviationThreshold"/> of
+    /// <paramref name="targetCellPx"/>. Each candidate coarse grid is scored by
+    /// the Stage 1 divisions it leaves inside one region, so the chosen split
+    /// minimizes the keystrokes added while restoring the target cell size.
+    /// Returns null when Stage 1 alone is sufficient or no coarse split helps.
+    /// </summary>
+    public static (int Columns, int Rows)? CalculateStage0Divisions(
+        int widthPx,
+        int heightPx,
+        int targetCellPx)
+    {
+        // Validate through the Stage 1 search so argument checks stay in one place.
+        var (directColumns, directRows) = CalculateFirstStageDivisions(
+            widthPx,
+            heightPx,
+            targetCellPx);
+
+        int directMaxDeviation = MaxCellDeviation(
+            widthPx,
+            heightPx,
+            directColumns,
+            directRows,
+            targetCellPx);
+
+        if ((double)directMaxDeviation <= Stage1DeviationThreshold * targetCellPx)
+        {
+            return null;
+        }
+
+        int bestColumns = 0;
+        int bestRows = 0;
+        int bestMaxDeviation = int.MaxValue;
+        int bestTotalDeviation = int.MaxValue;
+        int bestKeyCount = int.MaxValue;
+        long bestCellCount = -1;
+
+        for (int columns = 1; columns <= MaxStage0Divisions; columns++)
+        {
+            int regionWidth = DivideCeiling(widthPx, columns);
+            for (int rows = 1; rows <= MaxStage0Divisions; rows++)
+            {
+                if (columns == 1 && rows == 1)
+                {
+                    continue;
+                }
+
+                int regionHeight = DivideCeiling(heightPx, rows);
+                var (fineColumns, fineRows) = CalculateFirstStageDivisions(
+                    regionWidth,
+                    regionHeight,
+                    targetCellPx);
+
+                int cellWidth = DivideCeiling(regionWidth, fineColumns);
+                int cellHeight = DivideCeiling(regionHeight, fineRows);
+                int devWidth = Math.Abs(cellWidth - targetCellPx);
+                int devHeight = Math.Abs(cellHeight - targetCellPx);
+                int maxDeviation = Math.Max(devWidth, devHeight);
+                int totalDeviation = devWidth + devHeight;
+                int keyCount = columns + rows;
+                long cellCount = (long)columns * rows;
+
+                bool isBetter = maxDeviation < bestMaxDeviation
+                    || (maxDeviation == bestMaxDeviation && totalDeviation < bestTotalDeviation)
+                    || (maxDeviation == bestMaxDeviation && totalDeviation == bestTotalDeviation && keyCount < bestKeyCount)
+                    || (maxDeviation == bestMaxDeviation && totalDeviation == bestTotalDeviation && keyCount == bestKeyCount && cellCount > bestCellCount)
+                    || (maxDeviation == bestMaxDeviation && totalDeviation == bestTotalDeviation && keyCount == bestKeyCount && cellCount == bestCellCount && columns < bestColumns);
+
+                if (isBetter)
+                {
+                    bestMaxDeviation = maxDeviation;
+                    bestTotalDeviation = totalDeviation;
+                    bestKeyCount = keyCount;
+                    bestCellCount = cellCount;
+                    bestColumns = columns;
+                    bestRows = rows;
+                }
+            }
+        }
+
+        // Stage 0 costs two extra keystrokes; adopt it only when it strictly
+        // improves the worst cell deviation over the plain Stage 1 grid.
+        if (bestColumns == 0 || bestMaxDeviation >= directMaxDeviation)
+        {
+            return null;
+        }
+
+        return (bestColumns, bestRows);
+    }
+
+    private static int MaxCellDeviation(
+        int widthPx,
+        int heightPx,
+        int columns,
+        int rows,
+        int targetCellPx)
+    {
+        int devWidth = Math.Abs(DivideCeiling(widthPx, columns) - targetCellPx);
+        int devHeight = Math.Abs(DivideCeiling(heightPx, rows) - targetCellPx);
+        return Math.Max(devWidth, devHeight);
     }
 
     private static int DivideCeiling(int dividend, int divisor)

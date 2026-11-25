@@ -325,6 +325,49 @@ public class GridCalculatorTests
                 Array.Empty<PixelRect>()));
     }
 
+    [Theory]
+    [InlineData(1920, 1080, 112, -1, -1)]   // 17x9 fits the 26-key budget
+    [InlineData(1080, 1920, 112, -1, -1)]
+    [InlineData(2560, 1440, 112, 2, 1)]
+    [InlineData(3840, 2160, 112, 5, 1)]
+    [InlineData(5120, 1440, 112, 5, 1)]
+    [InlineData(5120, 2880, 112, 5, 2)]
+    [InlineData(7680, 4320, 112, 7, 3)]
+    [InlineData(2160, 3840, 112, 1, 5)]
+    public void CalculateStage0Divisions_SelectsCoarseGridOnlyWhenNeeded(
+        int width,
+        int height,
+        int targetCellPx,
+        int expectedColumns,
+        int expectedRows)
+    {
+        var result = GridCalculator.CalculateStage0Divisions(width, height, targetCellPx);
+
+        if (expectedColumns < 0)
+        {
+            Assert.Null(result);
+            return;
+        }
+
+        Assert.NotNull(result);
+        Assert.Equal(expectedColumns, result.Value.Columns);
+        Assert.Equal(expectedRows, result.Value.Rows);
+        Assert.True(result.Value.Columns + result.Value.Rows <= KeyGrid.Core.KeyLayout.MaxKeys);
+    }
+
+    [Theory]
+    [InlineData(0, 1080, 112)]
+    [InlineData(1920, 0, 112)]
+    [InlineData(1920, 1080, 0)]
+    public void CalculateStage0Divisions_InvalidDimensions_Throws(
+        int width,
+        int height,
+        int targetCellPx)
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(
+            () => GridCalculator.CalculateStage0Divisions(width, height, targetCellPx));
+    }
+
     private static (int Columns, int Rows) FindBestCandidate(
         int width,
         int height,

@@ -23,8 +23,8 @@ public class MultiMonitorIntegrationTests
         Assert.Equal(new PixelRect(0, 0, 3840, 1080), mgr.VirtualScreenBoundingBox);
         Assert.Equal(monitor1, mgr.ActiveMonitorRect);
         Assert.Equal(monitor1, mgr.CurrentBoundingBox);
-        Assert.Equal(15, mgr.ColumnCount);
-        Assert.Equal(8, mgr.RowCount);
+        Assert.Equal(17, mgr.ColumnCount);
+        Assert.Equal(9, mgr.RowCount);
     }
 
     [Fact]
@@ -41,10 +41,10 @@ public class MultiMonitorIntegrationTests
         Assert.Equal(monitor2, mgr.CurrentBoundingBox);
         Assert.Equal(1.5, mgr.DpiReferenceScale);
 
-        // 2560x1440 physical pixels at 150% DPI: target cell is 192 px, which
-        // resolves to the 13x8 division documented for this configuration.
-        Assert.Equal(13, mgr.ColumnCount);
-        Assert.Equal(8, mgr.RowCount);
+        // 2560x1440 physical pixels at 150% DPI: target cell is 168 px, which
+        // resolves to the 15x9 division for this configuration.
+        Assert.Equal(15, mgr.ColumnCount);
+        Assert.Equal(9, mgr.RowCount);
     }
 
     [Fact]
@@ -68,8 +68,8 @@ public class MultiMonitorIntegrationTests
         Assert.Equal(1, mgr.CurrentStage);
         Assert.Equal(-1, mgr.SelectedColumnIndex);
         Assert.Equal(-1, mgr.SelectedRowIndex);
-        Assert.Equal(13, mgr.ColumnCount);
-        Assert.Equal(8, mgr.RowCount);
+        Assert.Equal(15, mgr.ColumnCount);
+        Assert.Equal(9, mgr.RowCount);
 
         // The new grid accepts input immediately.
         Assert.True(mgr.ProcessKey(mgr.ColumnKeys[0]));
@@ -163,7 +163,7 @@ public class MultiMonitorIntegrationTests
         // Backspace replays the same allocation before confirming the selection.
         Assert.True(mgr.ProcessBackspace());
         Assert.Single(mgr.History);
-        Assert.Equal("QWERTASDFGZXCVB", new string(mgr.ColumnKeys.ToArray()));
+        Assert.Equal("QWERTASDFGZXCVBYU", new string(mgr.ColumnKeys.ToArray()));
         Assert.False(mgr.ProcessKey('Q')); // After Backspace, the next key is a row key.
         Assert.True(mgr.ProcessKey(mgr.RowKeys[0]));
 
@@ -204,7 +204,7 @@ public class MultiMonitorIntegrationTests
         Assert.True(mgr.StartSelection(new[] { top, bottom }, top, 1.0));
 
         Assert.True(mgr.ProcessKey('Q'));
-        Assert.True(mgr.ProcessKey('U')); // Stage 1 row 1 spans the monitor gap.
+        Assert.True(mgr.ProcessKey(mgr.RowKeys[1])); // Stage 1 row 1 spans the monitor gap.
         Assert.Equal(2, mgr.CurrentStage);
         Assert.Equal(SelectionManager.Stage2RowCount / 2, mgr.SelectedRowIndex); // Row 12
 

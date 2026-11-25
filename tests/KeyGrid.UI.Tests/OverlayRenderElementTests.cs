@@ -265,7 +265,7 @@ public class OverlayRenderElementTests
     {
         var selection = new SelectionManager();
         Assert.True(selection.StartSelection(Monitors, 1.0));
-        Assert.Equal(2, selection.ColumnCount);
+        Assert.Equal(3, selection.ColumnCount);
         Assert.Equal(2, selection.RowCount);
         return selection;
     }

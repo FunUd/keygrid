@@ -18,8 +18,8 @@ public class SelectionManagerTests
         Assert.True(started);
         Assert.Equal(SelectionState.Selecting, mgr.State);
         Assert.Equal(1, mgr.CurrentStage);
-        Assert.Equal(15, mgr.ColumnCount);
-        Assert.Equal(8, mgr.RowCount);
+        Assert.Equal(17, mgr.ColumnCount);
+        Assert.Equal(9, mgr.RowCount);
         Assert.Empty(mgr.History);
         Assert.Equal(-1, mgr.SelectedColumnIndex);
         Assert.Equal(-1, mgr.SelectedRowIndex);
@@ -31,7 +31,7 @@ public class SelectionManagerTests
         var mgr = new SelectionManager();
         mgr.StartSelection(_single1080pMonitor, 1.0);
         Assert.True(mgr.ProcessKey('Q'));
-        Assert.True(mgr.ProcessKey('U'));
+        Assert.True(mgr.ProcessKey('I'));
         Assert.True(mgr.MoveStage2Cursor(1, 0));
 
         bool restarted = mgr.StartSelection(_single1080pMonitor, 1.0);
@@ -75,8 +75,8 @@ public class SelectionManagerTests
         var mgr = new SelectionManager();
         mgr.StartSelection(_single1080pMonitor, 1.0);
 
-        Assert.Equal(15, mgr.ColumnCount);
-        Assert.Equal(8, mgr.RowCount);
+        Assert.Equal(17, mgr.ColumnCount);
+        Assert.Equal(9, mgr.RowCount);
     }
 
     [Fact]
@@ -90,7 +90,7 @@ public class SelectionManagerTests
         Assert.Equal(SelectionState.Selecting, mgr.State);
         Assert.Equal(0, mgr.SelectedColumnIndex);
         Assert.Single(mgr.History);
-        Assert.True(mgr.ProcessKey('Y'));
+        Assert.True(mgr.ProcessKey('I'));
         Assert.Equal(SelectionState.Selecting, mgr.State);
         Assert.Equal(2, mgr.CurrentStage);
         Assert.Equal(2, mgr.History.Count);
@@ -128,7 +128,7 @@ public class SelectionManagerTests
         Assert.True(mgr.ProcessKey('Q'));
         Assert.False(mgr.TryGetStage2Target(out _));
 
-        Assert.True(mgr.ProcessKey('Y'));
+        Assert.True(mgr.ProcessKey('I'));
         Assert.True(mgr.MoveStage2Cursor(1, 0));
         Assert.True(mgr.TryGetStage2Target(out var previewTarget));
         Assert.Equal(SelectionState.Selecting, mgr.State);
@@ -145,7 +145,7 @@ public class SelectionManagerTests
         var mgr = new SelectionManager();
         mgr.StartSelection(_single1080pMonitor, 1.0);
         Assert.True(mgr.ProcessKey('Q'));
-        Assert.True(mgr.ProcessKey('Y'));
+        Assert.True(mgr.ProcessKey('I'));
 
         int initialColumn = mgr.SelectedColumnIndex;
         int initialRow = mgr.SelectedRowIndex;
@@ -172,10 +172,10 @@ public class SelectionManagerTests
         var mgr = new SelectionManager();
         mgr.StartSelection(_single1080pMonitor, 1.0);
         Assert.True(mgr.ProcessKey('Q'));
-        Assert.True(mgr.ProcessKey('Y'));
+        Assert.True(mgr.ProcessKey('I'));
 
         var focusBox = PixelRect.BoundingBox(mgr.FocusSelection);
-        Assert.Equal(new PixelRect(0, 0, 128, 135), focusBox);
+        Assert.Equal(new PixelRect(0, 0, 113, 120), focusBox);
 
         Assert.True(mgr.TryGetStage2Target(out var focusTarget));
         Assert.True(focusBox.Contains(focusTarget));
@@ -202,7 +202,7 @@ public class SelectionManagerTests
         var mgr = new SelectionManager();
         mgr.StartSelection(_single1080pMonitor, 1.0);
         Assert.True(mgr.ProcessKey('Q'));
-        Assert.True(mgr.ProcessKey('Y'));
+        Assert.True(mgr.ProcessKey('I'));
         Assert.True(mgr.ProcessEnter());
 
         mgr.CompleteClick();
@@ -219,36 +219,36 @@ public class SelectionManagerTests
     }
 
     [Fact]
-    public void Stage2_UsesCenteredFixed24DipGrid()
+    public void Stage2_UsesCenteredFixed20DipGrid()
     {
         var mgr = new SelectionManager();
         mgr.StartSelection(_single1080pMonitor, 1.0);
 
-        Assert.Equal(15, mgr.ColumnCount);
-        Assert.Equal(8, mgr.RowCount);
+        Assert.Equal(17, mgr.ColumnCount);
+        Assert.Equal(9, mgr.RowCount);
 
         Assert.True(mgr.ProcessKey('Q'));
-        Assert.True(mgr.ProcessKey('Y'));
+        Assert.True(mgr.ProcessKey('I'));
 
         Assert.Equal(SelectionManager.Stage2ColumnCount, mgr.ColumnCount);
         Assert.Equal(SelectionManager.Stage2RowCount, mgr.RowCount);
         Assert.Equal(26, mgr.XBoundaries.Length);
         Assert.Equal(26, mgr.YBoundaries.Length);
-        Assert.Equal(new PixelRect(-237, -233, 600, 600), mgr.Stage2Window);
+        Assert.Equal(new PixelRect(-194, -191, 500, 500), mgr.Stage2Window);
         Assert.Equal(12, mgr.SelectedColumnIndex);
         Assert.Equal(12, mgr.SelectedRowIndex);
 
-        // Every cell in Stage 2 has exact width 24 and height 24
+        // Every cell in Stage 2 has exact width 20 and height 20
         for (int i = 0; i < 25; i++)
         {
-            Assert.Equal(24, mgr.XBoundaries[i + 1] - mgr.XBoundaries[i]);
-            Assert.Equal(24, mgr.YBoundaries[i + 1] - mgr.YBoundaries[i]);
+            Assert.Equal(20, mgr.XBoundaries[i + 1] - mgr.XBoundaries[i]);
+            Assert.Equal(20, mgr.YBoundaries[i + 1] - mgr.YBoundaries[i]);
         }
 
         Assert.True(mgr.ProcessEnter());
         Assert.Equal(SelectionState.ExecutingClick, mgr.State);
-        Assert.Equal(24, mgr.CurrentBoundingBox.Width);
-        Assert.Equal(24, mgr.CurrentBoundingBox.Height);
+        Assert.Equal(20, mgr.CurrentBoundingBox.Width);
+        Assert.Equal(20, mgr.CurrentBoundingBox.Height);
     }
 
     [Fact]
@@ -267,7 +267,7 @@ public class SelectionManagerTests
         Assert.Equal(SelectionState.Selecting, mgr.State);
 
         // Stage 2 starts with a centered cell ready to confirm or navigate.
-        mgr.ProcessKey('Y');
+        mgr.ProcessKey('I');
         Assert.True(mgr.ProcessEnter());
         Assert.Equal(SelectionState.ExecutingClick, mgr.State);
         Assert.NotNull(mgr.TargetCoordinate);
@@ -281,19 +281,19 @@ public class SelectionManagerTests
 
         // Select a Stage 1 cell, then move the Stage 2 cursor.
         mgr.ProcessKey('Q');
-        mgr.ProcessKey('Y');
+        mgr.ProcessKey('I');
         Assert.True(mgr.MoveStage2Cursor(1, 0));
 
         // Backspace returns from Stage 2 to the preceding Stage 1 key.
         Assert.True(mgr.ProcessBackspace());
         Assert.Equal(SelectionState.Selecting, mgr.State);
         Assert.Single(mgr.History);
-        Assert.Equal(15, mgr.ColumnCount);
-        Assert.Equal(8, mgr.RowCount);
-        Assert.Equal(16, mgr.XBoundaries.Length);
-        Assert.Equal(9, mgr.YBoundaries.Length);
-        Assert.Equal("QWERTASDFGZXCVB", new string(mgr.ColumnKeys.ToArray()));
-        Assert.Equal("YUIOPHJK", new string(mgr.RowKeys.ToArray()));
+        Assert.Equal(17, mgr.ColumnCount);
+        Assert.Equal(9, mgr.RowCount);
+        Assert.Equal(18, mgr.XBoundaries.Length);
+        Assert.Equal(10, mgr.YBoundaries.Length);
+        Assert.Equal("QWERTASDFGZXCVBYU", new string(mgr.ColumnKeys.ToArray()));
+        Assert.Equal("IOPHJKLNM", new string(mgr.RowKeys.ToArray()));
         Assert.Empty(mgr.FocusSelection);
         Assert.True(mgr.Stage2Window.IsEmpty);
 
@@ -302,8 +302,8 @@ public class SelectionManagerTests
         Assert.Equal(SelectionState.Selecting, mgr.State);
         Assert.Empty(mgr.History);
         Assert.Equal(-1, mgr.SelectedColumnIndex);
-        Assert.Equal(16, mgr.XBoundaries.Length);
-        Assert.Equal(9, mgr.YBoundaries.Length);
+        Assert.Equal(18, mgr.XBoundaries.Length);
+        Assert.Equal(10, mgr.YBoundaries.Length);
         Assert.Equal(new PixelRect(0, 0, 1920, 1080), mgr.CurrentBoundingBox);
 
         // Backspace on empty Stage 1 history does nothing.
@@ -332,16 +332,16 @@ public class SelectionManagerTests
         var mgr = new SelectionManager();
         mgr.StartSelection(_single1080pMonitor, 1.0);
 
-        Assert.Equal("QWERTASDFGZXCVB", new string(mgr.ColumnKeys.ToArray()));
-        Assert.Equal("YUIOPHJK", new string(mgr.RowKeys.ToArray()));
+        Assert.Equal("QWERTASDFGZXCVBYU", new string(mgr.ColumnKeys.ToArray()));
+        Assert.Equal("IOPHJKLNM", new string(mgr.RowKeys.ToArray()));
 
         // Q is a column key, not a row key.
         Assert.True(mgr.ProcessKey('q'));
         Assert.False(mgr.ProcessKey('Q'));
         Assert.Single(mgr.History);
 
-        // Y is a row key, not a column key.
-        Assert.True(mgr.ProcessKey('Y'));
+        // I is a row key, not a column key.
+        Assert.True(mgr.ProcessKey('I'));
         Assert.Equal(2, mgr.History.Count);
         Assert.Equal(SelectionState.Selecting, mgr.State);
 
@@ -353,25 +353,46 @@ public class SelectionManagerTests
     }
 
     [Fact]
-    public void OverflowGrid_ColumnBorrowsRightBlockKeys()
+    public void OverflowGrid_Stage0ThenColumnBorrowsRightBlockKeys()
     {
         var mgr = new SelectionManager();
         mgr.StartSelection(new[] { new PixelRect(0, 0, 7680, 2160) }, 1.0);
 
-        Assert.Equal(20, mgr.ColumnCount);
-        Assert.Equal(6, mgr.RowCount);
-        Assert.Equal("QWERTASDFGZXCVBYUIOP", new string(mgr.ColumnKeys.ToArray()));
-        Assert.Equal("HJKLNM", new string(mgr.RowKeys.ToArray()));
+        // 7680x2160 needs a Stage 0 coarse grid (4x4) before the fine grid.
+        Assert.True(mgr.Stage0Enabled);
+        Assert.Equal(4, mgr.ColumnCount);
+        Assert.Equal(4, mgr.RowCount);
+        Assert.Equal("QWER", new string(mgr.ColumnKeys.ToArray()));
+        Assert.Equal("YUIO", new string(mgr.RowKeys.ToArray()));
 
-        // U is a borrowed column key; H is a row key.
+        // Stage 0 column + row select the top-left 1920x540 region.
+        Assert.True(mgr.ProcessKey('Q'));
+        Assert.True(mgr.ProcessKey('Y'));
+        Assert.Equal(2, mgr.History.Count);
+        Assert.Equal(1, mgr.CurrentStage);
+
+        // Inside the region the fine Stage 1 grid is 17x5 and borrows right-block keys.
+        Assert.Equal(17, mgr.ColumnCount);
+        Assert.Equal(5, mgr.RowCount);
+        Assert.Equal("QWERTASDFGZXCVBYU", new string(mgr.ColumnKeys.ToArray()));
+        Assert.Equal("IOPHJ", new string(mgr.RowKeys.ToArray()));
+
+        // U is a borrowed column key; J is a row key.
         Assert.True(mgr.ProcessKey('U'));
-        Assert.True(mgr.ProcessKey('H'));
+        Assert.True(mgr.ProcessKey('J'));
+        Assert.Equal(4, mgr.History.Count);
         Assert.Equal(2, mgr.CurrentStage);
 
-        // Backspace must replay the same borrowed allocation.
+        // Backspace must replay through Stage 0 and restore the fine allocation.
         Assert.True(mgr.ProcessBackspace());
-        Assert.Equal("QWERTASDFGZXCVBYUIOP", new string(mgr.ColumnKeys.ToArray()));
-        Assert.True(mgr.ProcessKey('H'));
+        Assert.Equal(3, mgr.History.Count);
+        Assert.Equal("QWERTASDFGZXCVBYU", new string(mgr.ColumnKeys.ToArray()));
+        Assert.Equal("IOPHJ", new string(mgr.RowKeys.ToArray()));
+
+        // Re-entering the fine row key reaches Stage 2 again.
+        Assert.True(mgr.ProcessKey('J'));
+        Assert.Equal(4, mgr.History.Count);
+        Assert.Equal(2, mgr.CurrentStage);
 
         // Stage 2 uses a fixed arrow-navigated grid.
         Assert.Equal(SelectionManager.Stage2ColumnCount, mgr.ColumnCount);
@@ -382,26 +403,133 @@ public class SelectionManagerTests
     }
 
     [Fact]
-    public void OverflowGrid_RowBorrowsUnusedLeftBlockKeys()
+    public void OverflowGrid_Stage0ThenRowBorrowsUnusedLeftBlockKeys()
     {
         var mgr = new SelectionManager();
         mgr.StartSelection(new[] { new PixelRect(0, 0, 2160, 3840) }, 1.0);
 
-        Assert.Equal(10, mgr.ColumnCount);
-        Assert.Equal(16, mgr.RowCount);
-        Assert.Equal("QWERTASDFG", new string(mgr.ColumnKeys.ToArray()));
-        Assert.Equal("YUIOPHJKLNMZXCVB", new string(mgr.RowKeys.ToArray()));
+        // 2160x3840 needs a Stage 0 coarse grid (1x5) before the fine grid.
+        Assert.True(mgr.Stage0Enabled);
+        Assert.Equal(1, mgr.ColumnCount);
+        Assert.Equal(5, mgr.RowCount);
+        Assert.Equal("Q", new string(mgr.ColumnKeys.ToArray()));
+        Assert.Equal("YUIOP", new string(mgr.RowKeys.ToArray()));
 
+        // Stage 0 column + row select the top 2160x768 region.
         Assert.True(mgr.ProcessKey('Q'));
         Assert.True(mgr.ProcessKey('Y'));
+        Assert.Equal(2, mgr.History.Count);
+        Assert.Equal(1, mgr.CurrentStage);
+
+        // Inside the region the fine Stage 1 grid is 19x7 and borrows left-block keys.
+        Assert.Equal(19, mgr.ColumnCount);
+        Assert.Equal(7, mgr.RowCount);
+        Assert.Equal("QWERTASDFGZXCVBYUIO", new string(mgr.ColumnKeys.ToArray()));
+        Assert.Equal("PHJKLNM", new string(mgr.RowKeys.ToArray()));
+
+        Assert.True(mgr.ProcessKey('Q'));
+        Assert.True(mgr.ProcessKey('P'));
+        Assert.Equal(4, mgr.History.Count);
         Assert.Equal(2, mgr.CurrentStage);
 
         // The second-stage grid is navigated with arrows and confirmed with Enter.
         Assert.Equal(SelectionManager.Stage2ColumnCount, mgr.ColumnCount);
         Assert.Equal(SelectionManager.Stage2RowCount, mgr.RowCount);
-        Assert.False(mgr.ProcessKey('Y'));
+        Assert.False(mgr.ProcessKey('P'));
         Assert.True(mgr.ProcessEnter());
         Assert.Equal(SelectionState.ExecutingClick, mgr.State);
+    }
+
+    [Fact]
+    public void Stage0_LargeMonitor_RequiresFourKeystrokes()
+    {
+        var mgr = new SelectionManager();
+        mgr.StartSelection(new[] { new PixelRect(0, 0, 2560, 1440) }, 1.0);
+
+        Assert.True(mgr.Stage0Enabled);
+        Assert.Equal(2, mgr.ColumnCount);
+        Assert.Equal(1, mgr.RowCount);
+        Assert.Equal("QW", new string(mgr.ColumnKeys.ToArray()));
+        Assert.Equal("Y", new string(mgr.RowKeys.ToArray()));
+
+        // Stage 0 column + row narrow to the left half (1280x1440).
+        Assert.True(mgr.ProcessKey('Q'));
+        Assert.True(mgr.ProcessKey('Y'));
+        Assert.Equal(2, mgr.History.Count);
+        Assert.Equal(1, mgr.CurrentStage);
+        Assert.Equal(11, mgr.ColumnCount);
+        Assert.Equal(13, mgr.RowCount);
+
+        // Fine Stage 1 column + row reach Stage 2 on the fourth keystroke.
+        Assert.True(mgr.ProcessKey(mgr.ColumnKeys[0]));
+        Assert.Equal(3, mgr.History.Count);
+        Assert.Equal(1, mgr.CurrentStage);
+        Assert.True(mgr.ProcessKey(mgr.RowKeys[0]));
+        Assert.Equal(4, mgr.History.Count);
+        Assert.Equal(2, mgr.CurrentStage);
+        Assert.Equal(SelectionManager.Stage2ColumnCount, mgr.ColumnCount);
+
+        Assert.True(mgr.ProcessEnter());
+        Assert.Equal(SelectionState.ExecutingClick, mgr.State);
+        Assert.NotNull(mgr.TargetCoordinate);
+    }
+
+    [Fact]
+    public void Stage0_BackspaceReplaysThroughBothKeyEntryGrids()
+    {
+        var mgr = new SelectionManager();
+        mgr.StartSelection(new[] { new PixelRect(0, 0, 2560, 1440) }, 1.0);
+
+        Assert.True(mgr.ProcessKey('Q'));
+        Assert.True(mgr.ProcessKey('Y'));
+        Assert.True(mgr.ProcessKey(mgr.ColumnKeys[0]));
+        Assert.True(mgr.ProcessKey(mgr.RowKeys[0]));
+        Assert.Equal(2, mgr.CurrentStage);
+
+        // Backspace returns to the fine Stage 1 grid with three keys replayed.
+        Assert.True(mgr.ProcessBackspace());
+        Assert.Equal(3, mgr.History.Count);
+        Assert.Equal(1, mgr.CurrentStage);
+        Assert.Equal(11, mgr.ColumnCount);
+        Assert.Equal(13, mgr.RowCount);
+
+        // Backspace to the Stage 0 boundary replays the coarse pair, which
+        // lands on the fine Stage 1 grid with an empty fine history.
+        Assert.True(mgr.ProcessBackspace());
+        Assert.Equal(2, mgr.History.Count);
+        Assert.Equal(1, mgr.CurrentStage);
+        Assert.Equal(11, mgr.ColumnCount);
+        Assert.Equal(13, mgr.RowCount);
+
+        Assert.True(mgr.ProcessBackspace());
+        Assert.Single(mgr.History);
+        Assert.Equal("QW", new string(mgr.ColumnKeys.ToArray()));
+        Assert.Equal("Y", new string(mgr.RowKeys.ToArray()));
+
+        Assert.True(mgr.ProcessBackspace());
+        Assert.Empty(mgr.History);
+        Assert.True(mgr.Stage0Enabled);
+    }
+
+    [Fact]
+    public void Stage0_IsDecidedPerMonitor()
+    {
+        var small = new PixelRect(0, 0, 1920, 1080);
+        var large = new PixelRect(1920, 0, 2560, 1440);
+        var mgr = new SelectionManager();
+        mgr.StartSelection(new[] { small, large }, small, 1.0);
+
+        Assert.False(mgr.Stage0Enabled);
+
+        // Switching to the large monitor enables Stage 0 for that grid only.
+        Assert.True(mgr.SwitchActiveMonitor(large, 1.0));
+        Assert.True(mgr.Stage0Enabled);
+        Assert.Empty(mgr.History);
+
+        Assert.True(mgr.SwitchActiveMonitor(small, 1.0));
+        Assert.False(mgr.Stage0Enabled);
+        Assert.Equal(17, mgr.ColumnCount);
+        Assert.Equal(9, mgr.RowCount);
     }
 
     [Fact]
@@ -410,8 +538,8 @@ public class SelectionManagerTests
         var mgr = new SelectionManager();
         mgr.StartSelection(_single1080pMonitor, 1.0);
 
-        // U is a valid row key but not a column key.
-        Assert.False(mgr.ProcessKey('U'));
+        // I is a row key but not a column key.
+        Assert.False(mgr.ProcessKey('I'));
         Assert.Empty(mgr.History);
     }
 }

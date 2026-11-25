@@ -19,6 +19,7 @@ public class SelectionManager
     private readonly List<char> _history = new();
     private KeyAllocation? _keyAllocation;
     private PixelRect _activeMonitorRect = PixelRect.Empty;
+    private bool _stage0Enabled;
 
     public SelectionState State { get; private set; } = SelectionState.Standby;
 
@@ -81,9 +82,23 @@ public class SelectionManager
     public PixelPoint? TargetCoordinate { get; private set; }
 
     /// <summary>
-    /// Current stage: 1 or 2 (or 0 when standby).
+    /// Whether the session opened with a Stage 0 coarse grid. Stage 0 runs only
+    /// on monitors whose Stage 1 cell deviation exceeds the spec threshold, so
+    /// the key-entry history needs four keystrokes instead of two.
     /// </summary>
-    public int CurrentStage => State == SelectionState.Standby ? 0 : (_history.Count < 2 ? 1 : 2);
+    public bool Stage0Enabled => _stage0Enabled;
+
+    /// <summary>
+    /// Keystrokes required to finish key entry and enter Stage 2: four when a
+    /// Stage 0 coarse grid precedes Stage 1, otherwise two.
+    /// </summary>
+    private int Stage1KeyCount => _stage0Enabled ? 4 : 2;
+
+    /// <summary>
+    /// Current stage: 1 or 2 (or 0 when standby). Stage 0 key entry still
+    /// reports stage 1 because it shares the column/row key mechanics.
+    /// </summary>
+    public int CurrentStage => State == SelectionState.Standby ? 0 : (_history.Count < Stage1KeyCount ? 1 : 2);
 
     /// <summary>
     /// Initiates selection mode with the provided monitor display bounds and DPI scale.
@@ -127,7 +142,7 @@ public class SelectionManager
         CurrentSelection = new[] { activeMonitorRect };
         CurrentBoundingBox = activeMonitorRect;
 
-        SetupStage1Divisions();
+        SetupInitialGrid();
 
         SelectedColumnIndex = -1;
         SelectedRowIndex = -1;
@@ -168,11 +183,39 @@ public class SelectionManager
         _history.Clear();
         CurrentSelection = new[] { monitorRect };
         CurrentBoundingBox = monitorRect;
-        SetupStage1Divisions();
+        SetupInitialGrid();
         SelectedColumnIndex = -1;
         SelectedRowIndex = -1;
         TargetCoordinate = null;
         return true;
+    }
+
+    /// <summary>
+    /// Installs the first key-entry grid on <see cref="CurrentBoundingBox"/>:
+    /// a Stage 0 coarse grid when the Stage 1 cell deviation would exceed the
+    /// spec threshold, otherwise the regular Stage 1 grid.
+    /// </summary>
+    private void SetupInitialGrid()
+    {
+        int targetPx = Math.Max(1, (int)Math.Round(Stage1CellTargetDip * DpiReferenceScale));
+        var stage0 = GridCalculator.CalculateStage0Divisions(
+            CurrentBoundingBox.Width,
+            CurrentBoundingBox.Height,
+            targetPx);
+
+        _stage0Enabled = stage0.HasValue;
+        if (stage0.HasValue)
+        {
+            ColumnCount = stage0.Value.Columns;
+            RowCount = stage0.Value.Rows;
+            _keyAllocation = KeyLayout.Allocate(ColumnCount, RowCount);
+            FocusSelection = Array.Empty<PixelRect>();
+            Stage2Window = PixelRect.Empty;
+            CalculateBoundaries(CurrentBoundingBox);
+            return;
+        }
+
+        SetupStage1Divisions();
     }
 
     private void SetupStage1Divisions()
@@ -275,7 +318,7 @@ public class SelectionManager
     public bool ProcessKey(char key)
     {
         if (State != SelectionState.Selecting
-            || _history.Count >= 2
+            || _history.Count >= Stage1KeyCount
             || _keyAllocation is not { } allocation)
         {
             return false;
@@ -319,7 +362,15 @@ public class SelectionManager
             CurrentSelection = GridCalculator.IntersectCellWithSelection(selectedCell, CurrentSelection);
             CurrentBoundingBox = PixelRect.BoundingBox(CurrentSelection);
 
-            if (_history.Count == 2)
+            if (_stage0Enabled && _history.Count == 2)
+            {
+                // The Stage 0 region is selected; swap in the fine Stage 1 grid
+                // inside it and restart key entry for that grid.
+                SelectedColumnIndex = -1;
+                SelectedRowIndex = -1;
+                SetupStage1Divisions();
+            }
+            else if (_history.Count == Stage1KeyCount)
             {
                 SetupStage2Divisions();
             }
@@ -335,7 +386,7 @@ public class SelectionManager
     public bool MoveStage2Cursor(int columnDelta, int rowDelta)
     {
         if (State != SelectionState.Selecting
-            || _history.Count != 2
+            || _history.Count != Stage1KeyCount
             || Math.Abs(columnDelta) + Math.Abs(rowDelta) != 1)
         {
             return false;
@@ -370,7 +421,7 @@ public class SelectionManager
     {
         target = default;
         if (State != SelectionState.Selecting
-            || _history.Count != 2
+            || _history.Count != Stage1KeyCount
             || SelectedColumnIndex < 0
             || SelectedRowIndex < 0)
         {
@@ -399,7 +450,7 @@ public class SelectionManager
     public bool ProcessEnter()
     {
         if (State == SelectionState.Selecting
-            && _history.Count == 2
+            && _history.Count == Stage1KeyCount
             && SelectedColumnIndex >= 0
             && SelectedRowIndex >= 0)
         {
@@ -442,7 +493,7 @@ public class SelectionManager
         _history.Clear();
         CurrentSelection = new[] { _activeMonitorRect };
         CurrentBoundingBox = _activeMonitorRect;
-        SetupStage1Divisions();
+        SetupInitialGrid();
         SelectedColumnIndex = -1;
         SelectedRowIndex = -1;
         TargetCoordinate = null;
@@ -464,6 +515,7 @@ public class SelectionManager
     {
         State = SelectionState.Standby;
         _history.Clear();
+        _stage0Enabled = false;
         _initialMonitors.Clear();
         _activeMonitorRect = PixelRect.Empty;
         CurrentSelection = Array.Empty<PixelRect>();
