@@ -109,6 +109,13 @@ internal static class NativeMethods
 
     public static readonly nint IDI_APPLICATION = new(32512);
 
+    // LoadImage: extracts an icon resource from a file (exe/ico) at a requested size.
+    public const uint IMAGE_ICON = 1;
+    public const uint LR_LOADFROMFILE = 0x00000010;
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    public static extern nint LoadImage(nint hInst, string lpName, uint uType, int cxDesired, int cyDesired, uint fuLoad);
+
     // Window styles
     public const int GWL_EXSTYLE = -20;
     public const int WS_EX_TOPMOST = 0x00000008;
@@ -168,6 +175,8 @@ internal static class NativeMethods
     public const uint VK_RWIN = 0x5C;
 
     // System Metrics
+    public const int SM_CXSMICON = 49;
+    public const int SM_CYSMICON = 50;
     public const int SM_XVIRTUALSCREEN = 76;
     public const int SM_YVIRTUALSCREEN = 77;
     public const int SM_CXVIRTUALSCREEN = 78;

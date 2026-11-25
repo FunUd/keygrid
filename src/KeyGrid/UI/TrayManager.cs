@@ -12,6 +12,7 @@ public class TrayManager : IDisposable
     private const uint TrayIconId = 1001;
     private const int ExitMenuCommand = 1;
     private readonly nint _hWnd;
+    private nint _trayIconHandle = nint.Zero;
     private bool _iconCreated = false;
     private bool _hotkeyFailed = false;
     private bool _menuOpen = false;
@@ -38,10 +39,35 @@ public class TrayManager : IDisposable
         nid.uID = TrayIconId;
         nid.uFlags = NativeMethods.NIF_MESSAGE | NativeMethods.NIF_ICON | NativeMethods.NIF_TIP;
         nid.uCallbackMessage = NativeMethods.WM_TRAYICON;
-        nid.hIcon = NativeMethods.LoadIcon(nint.Zero, NativeMethods.IDI_APPLICATION);
+        _trayIconHandle = LoadApplicationIcon();
+        nid.hIcon = _trayIconHandle != nint.Zero
+            ? _trayIconHandle
+            : NativeMethods.LoadIcon(nint.Zero, NativeMethods.IDI_APPLICATION);
         nid.szTip = "KeyGrid";
 
         _iconCreated = NativeMethods.Shell_NotifyIcon(NativeMethods.NIM_ADD, ref nid);
+    }
+
+    /// <summary>
+    /// Loads the icon embedded in the executable (via ApplicationIcon) at the
+    /// system tray size. Returns Zero when unavailable so the caller can fall
+    /// back to the generic application icon.
+    /// </summary>
+    private static nint LoadApplicationIcon()
+    {
+        string? exePath = Environment.ProcessPath;
+        if (string.IsNullOrEmpty(exePath))
+        {
+            return nint.Zero;
+        }
+
+        int cx = NativeMethods.GetSystemMetrics(NativeMethods.SM_CXSMICON);
+        int cy = NativeMethods.GetSystemMetrics(NativeMethods.SM_CYSMICON);
+        if (cx <= 0) cx = 16;
+        if (cy <= 0) cy = 16;
+
+        return NativeMethods.LoadImage(
+            nint.Zero, exePath, NativeMethods.IMAGE_ICON, cx, cy, NativeMethods.LR_LOADFROMFILE);
     }
 
     public void UpdateTooltip(string tooltip)
@@ -215,6 +241,12 @@ public class TrayManager : IDisposable
 
             NativeMethods.Shell_NotifyIcon(NativeMethods.NIM_DELETE, ref nid);
             _iconCreated = false;
+        }
+
+        if (_trayIconHandle != nint.Zero)
+        {
+            NativeMethods.DestroyIcon(_trayIconHandle);
+            _trayIconHandle = nint.Zero;
         }
     }
 }
