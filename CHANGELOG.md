@@ -9,6 +9,7 @@
 - Add `S` in Stage 2 as a direct trigger for the range-then-drag workflow (previously reachable only via the overlapping `R`+`D` chord, which still works). `S` remains a Stage 1 column key.
 - Allow `R`, `D`, `S`, and the `R`+`D` chord inside Fine Mode to start a range, drag, or range-then-drag workflow anchored at the fine-adjusted point, then return to Stage 1.
 - Allow Fine Mode (`F`) during range/drag endpoint selection, including both phases of the range-then-drag workflow: the fine point becomes the selection endpoint on `Enter`, and in the workflow it also becomes the drag anchor.
+- Restore the original application icon artwork with a transparent background instead of an opaque tile, so it blends into the taskbar.
 
 ### Changed
 
