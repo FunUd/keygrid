@@ -43,12 +43,15 @@ public class OverlayRenderElement : FrameworkElement
     // The outer Stage 2 window is context; the central focus keeps the stronger pen.
     private readonly Pen _stage2WindowPen = new(new SolidColorBrush(Color.FromArgb(120, 0, 200, 255)), 1.0);
 
-    // Stage-1 badges use a translucent neutral fill so the dense label grid
-    // stays legible over arbitrary content without visually shouting.
-    private readonly Brush _badgeBgBrush = new SolidColorBrush(Color.FromArgb(170, 12, 14, 20));
-    private readonly Pen _badgeBorderPen = new(new SolidColorBrush(Color.FromArgb(70, 180, 195, 215)), 1.0);
-    private readonly Brush _activeBadgeBgBrush = new SolidColorBrush(Color.FromArgb(205, 24, 28, 38));
-    private readonly Pen _activeBadgeBorderPen = new(new SolidColorBrush(Color.FromArgb(205, 220, 235, 255)), 1.0);
+    // Stage-1 badges use a dark translucent fill so the dense label grid stays
+    // legible over arbitrary content. The alpha is high enough that the pill
+    // still reads as a dark surface over white backgrounds (where a weaker
+    // fill would composite to mid-gray and wash out the pastel key colors),
+    // while staying slightly translucent so it does not become a solid slab.
+    private readonly Brush _badgeBgBrush = new SolidColorBrush(Color.FromArgb(212, 12, 14, 20));
+    private readonly Pen _badgeBorderPen = new(new SolidColorBrush(Color.FromArgb(130, 180, 195, 215)), 1.0);
+    private readonly Brush _activeBadgeBgBrush = new SolidColorBrush(Color.FromArgb(228, 24, 28, 38));
+    private readonly Pen _activeBadgeBorderPen = new(new SolidColorBrush(Color.FromArgb(235, 220, 235, 255)), 1.0);
 
     private readonly Brush _columnKeyBrush = new SolidColorBrush(Color.FromRgb(140, 190, 220));
     private readonly Brush _rowKeyBrush = new SolidColorBrush(Color.FromRgb(225, 190, 130));
