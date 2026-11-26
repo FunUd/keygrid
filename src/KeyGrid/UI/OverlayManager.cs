@@ -265,6 +265,7 @@ public class OverlayManager
                 overlay.KeyPressed += OnKeyPressed;
                 overlay.MoveRequested += OnMoveRequested;
                 overlay.ConfirmRequested += OnConfirmRequested;
+                overlay.DoubleClickRequested += OnDoubleClickRequested;
                 overlay.ConfirmAndContinueRequested += OnConfirmAndContinueRequested;
                 overlay.BackspacePressed += OnBackspacePressed;
                 overlay.CancelRequested += OnCancelRequested;
@@ -626,6 +627,35 @@ public class OverlayManager
         HandleConfirmRequest(clickKind, continueAfterClick: false);
     }
 
+    private void OnDoubleClickRequested()
+    {
+        int attempt = ++_confirmationAttempt;
+        FileLogger.LogInfo(
+            $"Double-click confirmation #{attempt} received (state={_selectionManager.State}, " +
+            $"historyLength={_selectionManager.History.Count}).");
+
+        // Double-click is a normal Stage 2 confirmation only. It is ignored in
+        // Scroll Mode and while a range or drag anchor is active, matching the
+        // rule that modified confirmation keys cannot complete those selections.
+        if (_scrollMode
+            || _dragStartPoint.HasValue
+            || _rangeStartPoint.HasValue)
+        {
+            FileLogger.LogDebug(
+                $"Double-click confirmation #{attempt} ignored (scrollMode={_scrollMode}, " +
+                $"rangeAnchor={_rangeStartPoint.HasValue}, dragAnchor={_dragStartPoint.HasValue}).");
+            return;
+        }
+
+        if (!_selectionManager.ProcessEnter())
+        {
+            FileLogger.LogDebug($"Double-click confirmation #{attempt} ignored because the selection is not confirmable.");
+            return;
+        }
+
+        ExecuteConfirmedClick(ClickKind.Left, attempt, isDoubleClick: true);
+    }
+
     private void OnConfirmAndContinueRequested(ClickKind clickKind)
     {
         // C confirms like Enter but enters continuous mode for the next
@@ -981,7 +1011,7 @@ public class OverlayManager
         }
     }
 
-    private void ExecuteConfirmedClick(ClickKind clickKind, int attempt)
+    private void ExecuteConfirmedClick(ClickKind clickKind, int attempt, bool isDoubleClick = false)
     {
         if (!_selectionManager.TargetCoordinate.HasValue)
         {
@@ -998,56 +1028,70 @@ public class OverlayManager
 
         bool success;
         bool clickTargetReady = false;
-        FileLogger.LogInfo($"Click attempt #{attempt} started (kind={clickKind}).");
+
+        bool PrepareClickTarget()
+        {
+            FileLogger.LogDebug($"Click attempt #{attempt}: waiting for overlay render.");
+            Dispatcher.CurrentDispatcher.Invoke(() => { }, DispatcherPriority.Render);
+            FileLogger.LogDebug($"Click attempt #{attempt}: overlay render wait completed.");
+
+            // Resolve the click target after the overlays are hidden. Hiding
+            // does not activate another window, so WindowFromPoint now
+            // reports the same window a physical click would hit.
+            nint windowAtTarget = _windowFocusService.GetWindowFromPoint(target);
+            nint clickTargetWindow = _windowFocusService.GetRootWindow(windowAtTarget);
+            FileLogger.LogDebug(
+                $"Click attempt #{attempt}: window under target is " +
+                $"{FormatWindowHandle(windowAtTarget)} " +
+                $"(root={FormatWindowHandle(clickTargetWindow)}).");
+            if (clickTargetWindow == nint.Zero)
+            {
+                FileLogger.LogWarning($"Click attempt #{attempt}: no window is under the click coordinate.");
+                clickTargetReady = false;
+                return false;
+            }
+
+            // Activate the target rather than the pre-selection window.
+            // Restoring the pre-selection window can raise it over the
+            // selected coordinate and make it receive the click instead.
+            bool activated = RestoreForegroundWindow(clickTargetWindow, "Click target");
+            nint windowAfterRestore = _windowFocusService.GetWindowFromPoint(target);
+            bool stillHitTarget = _windowFocusService.IsWindowOwnedBy(windowAfterRestore, clickTargetWindow);
+            clickTargetReady = stillHitTarget;
+            FileLogger.LogDebug(
+                $"Click attempt #{attempt}: target activation result={activated}, " +
+                $"window at target after activation is {FormatWindowHandle(windowAfterRestore)} " +
+                $"(matchesClickTarget={stillHitTarget}).");
+            return stillHitTarget;
+        }
+
+        FileLogger.LogInfo(
+            $"Click attempt #{attempt} started (kind={clickKind}{(isDoubleClick ? ", double" : string.Empty)}).");
         FileLogger.LogDebug(
             $"Click attempt #{attempt} target details (target=({target.X}, {target.Y}), " +
             $"virtualScreen={virtualScreen}).");
         try
         {
-            success = _clickExecutor.ExecuteClick(
-                target,
-                virtualScreen,
-                clickKind,
-                hideOverlaysAction: () =>
-                {
-                    FileLogger.LogDebug($"Click attempt #{attempt}: closing overlays.");
-                    CloseOverlaysWithoutRestore();
-                },
-                prepareClickAction: () =>
-                {
-                    FileLogger.LogDebug($"Click attempt #{attempt}: waiting for overlay render.");
-                    Dispatcher.CurrentDispatcher.Invoke(() => { }, DispatcherPriority.Render);
-                    FileLogger.LogDebug($"Click attempt #{attempt}: overlay render wait completed.");
-
-                    // Resolve the click target after the overlays are hidden. Hiding
-                    // does not activate another window, so WindowFromPoint now
-                    // reports the same window a physical click would hit.
-                    nint windowAtTarget = _windowFocusService.GetWindowFromPoint(target);
-                    nint clickTargetWindow = _windowFocusService.GetRootWindow(windowAtTarget);
-                    FileLogger.LogDebug(
-                        $"Click attempt #{attempt}: window under target is " +
-                        $"{FormatWindowHandle(windowAtTarget)} " +
-                        $"(root={FormatWindowHandle(clickTargetWindow)}).");
-                    if (clickTargetWindow == nint.Zero)
+            success = isDoubleClick
+                ? _clickExecutor.ExecuteDoubleClick(
+                    target,
+                    virtualScreen,
+                    hideOverlaysAction: () =>
                     {
-                        FileLogger.LogWarning($"Click attempt #{attempt}: no window is under the click coordinate.");
-                        clickTargetReady = false;
-                        return false;
-                    }
-
-                    // Activate the target rather than the pre-selection window.
-                    // Restoring the pre-selection window can raise it over the
-                    // selected coordinate and make it receive the click instead.
-                    bool activated = RestoreForegroundWindow(clickTargetWindow, "Click target");
-                    nint windowAfterRestore = _windowFocusService.GetWindowFromPoint(target);
-                    bool stillHitTarget = _windowFocusService.IsWindowOwnedBy(windowAfterRestore, clickTargetWindow);
-                    clickTargetReady = stillHitTarget;
-                    FileLogger.LogDebug(
-                        $"Click attempt #{attempt}: target activation result={activated}, " +
-                        $"window at target after activation is {FormatWindowHandle(windowAfterRestore)} " +
-                        $"(matchesClickTarget={stillHitTarget}).");
-                    return stillHitTarget;
-                });
+                        FileLogger.LogDebug($"Click attempt #{attempt}: closing overlays.");
+                        CloseOverlaysWithoutRestore();
+                    },
+                    prepareClickAction: PrepareClickTarget)
+                : _clickExecutor.ExecuteClick(
+                    target,
+                    virtualScreen,
+                    clickKind,
+                    hideOverlaysAction: () =>
+                    {
+                        FileLogger.LogDebug($"Click attempt #{attempt}: closing overlays.");
+                        CloseOverlaysWithoutRestore();
+                    },
+                    prepareClickAction: PrepareClickTarget);
             FileLogger.LogInfo(
                 $"Click attempt #{attempt}: click execution returned success={success} " +
                 $"(clickTargetReady={clickTargetReady}).");

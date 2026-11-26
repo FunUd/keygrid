@@ -19,6 +19,14 @@ public interface IClickSender
     bool SendClick(PixelPoint target, PixelRect virtualScreen, ClickKind clickKind);
 
     /// <summary>
+    /// Sends a mouse move followed by two left-button clicks at the same
+    /// coordinate. Windows treats the pair as a double-click because the
+    /// clicks share the position and fall inside the double-click interval.
+    /// Returns true if the complete SendInput sequence was accepted.
+    /// </summary>
+    bool SendDoubleClick(PixelPoint target, PixelRect virtualScreen);
+
+    /// <summary>
     /// Sends a two-point text selection: a normal left click at the start point,
     /// followed by a Shift+left click at the end point. Returns true only when
     /// the complete SendInput sequence was accepted.

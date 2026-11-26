@@ -379,6 +379,74 @@ public class OverlayManagerTests
     }
 
     [Fact]
+    public void DoubleClick_DispatchesSendDoubleClickInStage2()
+    {
+        UiTestThread.Run(() =>
+        {
+            var factory = new FakeOverlayFactory();
+            var focus = new FakeWindowFocusService { ForegroundWindow = new nint(71) };
+            var clickSender = new FakeClickSender();
+            clickSender.WasClickTargetActivated = () =>
+                focus.ForegroundWindow == new nint(0x500);
+            clickSender.AreAllOverlaysClosed = () =>
+                factory.Windows.Count > 0 && factory.Windows.All(window => window.CloseCount > 0);
+            var manager = CreateManager(SingleMonitorProvider(), factory, focus, clickSender);
+            manager.ShowOverlays();
+            UiTestThread.DrainDispatcher();
+            var primary = Assert.Single(factory.Windows);
+
+            // Stage 1: not confirmable, so nothing is dispatched.
+            primary.RaiseDoubleClick();
+            Assert.Equal(0, clickSender.DoubleClickCallCount);
+            Assert.True(manager.IsActive);
+
+            primary.RaiseKey(manager.SelectionManager.ColumnKeys[0]);
+            primary.RaiseKey(manager.SelectionManager.RowKeys[0]);
+            Assert.Equal(2, manager.SelectionManager.CurrentStage);
+
+            primary.RaiseDoubleClick();
+
+            Assert.Equal(1, clickSender.DoubleClickCallCount);
+            Assert.Equal(0, clickSender.CallCount);
+            Assert.False(manager.IsActive);
+            Assert.Equal(SelectionState.Standby, manager.SelectionManager.State);
+        });
+    }
+
+    [Fact]
+    public void DoubleClick_IsIgnoredWhileRangeAnchorIsActive()
+    {
+        UiTestThread.Run(() =>
+        {
+            var factory = new FakeOverlayFactory();
+            var focus = new FakeWindowFocusService { ForegroundWindow = new nint(71) };
+            var clickSender = new FakeClickSender();
+            var manager = CreateManager(SingleMonitorProvider(), factory, focus, clickSender);
+            manager.ShowOverlays();
+            UiTestThread.DrainDispatcher();
+            var primary = Assert.Single(factory.Windows);
+
+            primary.RaiseKey(manager.SelectionManager.ColumnKeys[0]);
+            primary.RaiseKey(manager.SelectionManager.RowKeys[0]);
+            primary.RaiseRangeStart();
+            primary.RaiseKey(manager.SelectionManager.ColumnKeys[0]);
+            primary.RaiseKey(manager.SelectionManager.RowKeys[0]);
+            Assert.Equal(2, manager.SelectionManager.CurrentStage);
+            Assert.True(manager.HasRangeSelection);
+
+            primary.RaiseDoubleClick();
+
+            Assert.Equal(0, clickSender.DoubleClickCallCount);
+            Assert.Equal(0, clickSender.CallCount);
+            Assert.Equal(0, clickSender.RangeCallCount);
+            Assert.True(manager.HasRangeSelection);
+            Assert.True(manager.IsActive);
+
+            manager.CloseOverlays();
+        });
+    }
+
+    [Fact]
     public void PrimarySurfaceEvents_UpdateSelectionAndCloseBeforeSendingClick()
     {
         UiTestThread.Run(() =>
@@ -2050,6 +2118,7 @@ public class OverlayManagerTests
         public event Action<char>? KeyPressed;
         public event Action<int, int>? MoveRequested;
         public event Action<ClickKind>? ConfirmRequested;
+        public event Action? DoubleClickRequested;
         public event Action<ClickKind>? ConfirmAndContinueRequested;
         public event Action? BackspacePressed;
         public event Action? CancelRequested;
@@ -2148,6 +2217,8 @@ public class OverlayManagerTests
         public void RaiseMove(int columnDelta, int rowDelta) => MoveRequested?.Invoke(columnDelta, rowDelta);
 
         public void RaiseConfirm(ClickKind clickKind) => ConfirmRequested?.Invoke(clickKind);
+
+        public void RaiseDoubleClick() => DoubleClickRequested?.Invoke();
 
         public void RaiseConfirmAndContinue(ClickKind clickKind) => ConfirmAndContinueRequested?.Invoke(clickKind);
 
@@ -2280,6 +2351,8 @@ public class OverlayManagerTests
         public PixelPoint? LastTarget { get; private set; }
         public PixelRect? LastVirtualScreen { get; private set; }
         public ClickKind? LastClickKind { get; private set; }
+        public int DoubleClickCallCount { get; private set; }
+        public PixelPoint? LastDoubleClickTarget { get; private set; }
         public int RangeCallCount { get; private set; }
         public PixelPoint? LastRangeStart { get; private set; }
         public PixelPoint? LastRangeEnd { get; private set; }
@@ -2301,6 +2374,16 @@ public class OverlayManagerTests
             LastTarget = target;
             LastVirtualScreen = virtualScreen;
             LastClickKind = clickKind;
+            OverlaysWereClosedBeforeSend = AreAllOverlaysClosed?.Invoke() ?? false;
+            ClickTargetWasActivatedBeforeSend = WasClickTargetActivated?.Invoke() ?? false;
+            return ReturnResult;
+        }
+
+        public bool SendDoubleClick(PixelPoint target, PixelRect virtualScreen)
+        {
+            DoubleClickCallCount++;
+            LastDoubleClickTarget = target;
+            LastVirtualScreen = virtualScreen;
             OverlaysWereClosedBeforeSend = AreAllOverlaysClosed?.Invoke() ?? false;
             ClickTargetWasActivatedBeforeSend = WasClickTargetActivated?.Invoke() ?? false;
             return ReturnResult;

@@ -32,6 +32,14 @@ public class ServicesTests
             return ReturnResult;
         }
 
+        public bool SendDoubleClick(PixelPoint target, PixelRect virtualScreen)
+        {
+            Calls.Add("send-double");
+            LastTarget = target;
+            LastVirtualScreen = virtualScreen;
+            return ReturnResult;
+        }
+
         public bool SendRangeClick(PixelPoint start, PixelPoint end, PixelRect virtualScreen)
         {
             Calls.Add("send-range");
@@ -124,6 +132,46 @@ public class ServicesTests
             prepareClickAction: null);
 
         Assert.False(result);
+    }
+
+    [Fact]
+    public void ClickExecutor_DoubleClickHidesWaitsThenSendsDoubleClick()
+    {
+        var fakeSender = new FakeClickSender();
+        var executor = new ClickExecutor(fakeSender);
+        var target = new PixelPoint(500, 400);
+        var screen = new PixelRect(0, 0, 1920, 1080);
+
+        bool result = executor.ExecuteDoubleClick(
+            target,
+            screen,
+            hideOverlaysAction: () => fakeSender.Calls.Add("hide"),
+            prepareClickAction: () =>
+            {
+                fakeSender.Calls.Add("wait");
+                return true;
+            });
+
+        Assert.True(result);
+        Assert.Equal(new[] { "hide", "wait", "send-double" }, fakeSender.Calls);
+        Assert.Equal(target, fakeSender.LastTarget);
+        Assert.Equal(screen, fakeSender.LastVirtualScreen);
+    }
+
+    [Fact]
+    public void ClickExecutor_DoubleClickWhenPreparationFails_DoesNotSendInput()
+    {
+        var fakeSender = new FakeClickSender();
+        var executor = new ClickExecutor(fakeSender);
+
+        bool result = executor.ExecuteDoubleClick(
+            new PixelPoint(100, 100),
+            new PixelRect(0, 0, 1920, 1080),
+            hideOverlaysAction: () => { },
+            prepareClickAction: () => false);
+
+        Assert.False(result);
+        Assert.DoesNotContain("send-double", fakeSender.Calls);
     }
 
     [Fact]

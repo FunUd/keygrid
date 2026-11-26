@@ -84,6 +84,90 @@ public class Win32ClickSenderTests
     }
 
     [Fact]
+    public void SendDoubleClick_EmitsMoveAndTwoLeftClicksAtSamePoint()
+    {
+        UiTestThread.Run(() =>
+        {
+            NativeMethods.INPUT[]? capturedInputs = null;
+            uint capturedCount = 0;
+            var sender = new Win32ClickSender((count, inputs, _) =>
+            {
+                capturedCount = count;
+                capturedInputs = inputs.ToArray();
+                return count;
+            });
+            var virtualScreen = new PixelRect(-1920, -200, 3840, 2160);
+            var target = new PixelPoint(300, 400);
+            var (normalizedX, normalizedY) = CoordinateConverter.ToNormalizedVirtualDesktop(
+                target,
+                virtualScreen);
+
+            bool succeeded = sender.SendDoubleClick(target, virtualScreen);
+
+            Assert.True(succeeded);
+            Assert.Equal(5u, capturedCount);
+            Assert.NotNull(capturedInputs);
+            Assert.Equal(5, capturedInputs.Length);
+
+            uint commonFlags = NativeMethods.MOUSEEVENTF_ABSOLUTE
+                | NativeMethods.MOUSEEVENTF_VIRTUALDESK;
+            Assert.Equal(
+                new[]
+                {
+                    commonFlags | NativeMethods.MOUSEEVENTF_MOVE,
+                    commonFlags | NativeMethods.MOUSEEVENTF_LEFTDOWN,
+                    commonFlags | NativeMethods.MOUSEEVENTF_LEFTUP,
+                    commonFlags | NativeMethods.MOUSEEVENTF_LEFTDOWN,
+                    commonFlags | NativeMethods.MOUSEEVENTF_LEFTUP
+                },
+                capturedInputs.Select(input => input.mi.dwFlags));
+            Assert.All(capturedInputs, input =>
+            {
+                Assert.Equal(NativeMethods.INPUT_MOUSE, input.type);
+                Assert.Equal(normalizedX, input.mi.dx);
+                Assert.Equal(normalizedY, input.mi.dy);
+            });
+        });
+    }
+
+    [Fact]
+    public void SendDoubleClick_WhenSendIsPartial_ReleasesLeftButton()
+    {
+        UiTestThread.Run(() =>
+        {
+            uint firstCount = 0;
+            NativeMethods.INPUT[]? cleanupInputs = null;
+            int callCount = 0;
+            var sender = new Win32ClickSender((count, inputs, _) =>
+            {
+                callCount++;
+                if (callCount == 1)
+                {
+                    firstCount = count;
+                    return count - 1;
+                }
+
+                cleanupInputs = inputs.ToArray();
+                return count;
+            });
+
+            bool succeeded = sender.SendDoubleClick(
+                new PixelPoint(10, 10),
+                new PixelRect(0, 0, 1920, 1080));
+
+            Assert.False(succeeded);
+            Assert.Equal(5u, firstCount);
+            Assert.NotNull(cleanupInputs);
+            Assert.Single(cleanupInputs);
+            Assert.Equal(
+                NativeMethods.MOUSEEVENTF_ABSOLUTE
+                | NativeMethods.MOUSEEVENTF_VIRTUALDESK
+                | NativeMethods.MOUSEEVENTF_LEFTUP,
+                cleanupInputs[0].mi.dwFlags);
+        });
+    }
+
+    [Fact]
     public void SendDrag_EmitsMoveDownInterpolatedMovesAndUp()
     {
         UiTestThread.Run(() =>

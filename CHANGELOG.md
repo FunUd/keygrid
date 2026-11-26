@@ -1,5 +1,11 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+
+- Add `Ctrl+Shift+Enter` in Stage 2 as a double left click at the confirmed coordinate. It follows the same confirmation rules as `Enter` (ignored in Scroll Mode and while a range or drag anchor is active) and shares the normal/continuous-mode completion behavior.
+
 ## [0.5.0] - 2026-11-26
 
 ### Added

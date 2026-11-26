@@ -48,6 +48,26 @@ public class ClickExecutor
     }
 
     /// <summary>
+    /// Executes a double left click with the same hide/render synchronization
+    /// used for a normal click.
+    /// </summary>
+    public bool ExecuteDoubleClick(
+        PixelPoint target,
+        PixelRect virtualScreen,
+        Action hideOverlaysAction,
+        Func<bool>? prepareClickAction = null)
+    {
+        hideOverlaysAction();
+
+        if (prepareClickAction != null && !prepareClickAction())
+        {
+            return false;
+        }
+
+        return _clickSender.SendDoubleClick(target, virtualScreen);
+    }
+
+    /// <summary>
     /// Executes a two-point range selection with the same hide/render synchronization
     /// used for a normal click. The target window validation is supplied by the caller
     /// because it depends on the window hierarchy after the overlays are hidden.

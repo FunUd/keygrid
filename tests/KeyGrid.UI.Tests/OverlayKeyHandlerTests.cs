@@ -406,6 +406,78 @@ public class OverlayKeyHandlerTests
     }
 
     [Fact]
+    public void PrimaryOverlay_CtrlShiftEnterRequestsDoubleClickOnKeyUp()
+    {
+        UiTestThread.Run(() =>
+        {
+            var handler = new OverlayKeyHandler(isPrimary: true);
+            int doubleClickCount = 0;
+            var confirmed = new List<ClickKind>();
+            handler.DoubleClickRequested += () => doubleClickCount++;
+            handler.ConfirmRequested += clickKind => confirmed.Add(clickKind);
+
+            Assert.True(handler.HandleKeyDown(Key.Enter, ModifierKeys.Control | ModifierKeys.Shift, isRepeat: false));
+            Assert.Equal(0, doubleClickCount);
+            // Releasing the modifiers before Enter must not change the chord.
+            Assert.True(handler.HandleKeyUp(Key.Enter, ModifierKeys.None));
+
+            Assert.Equal(1, doubleClickCount);
+            Assert.Empty(confirmed);
+        });
+    }
+
+    [Fact]
+    public void PrimaryOverlay_OtherModifiedEnterDoesNotRequestDoubleClick()
+    {
+        UiTestThread.Run(() =>
+        {
+            var handler = new OverlayKeyHandler(isPrimary: true);
+            int doubleClickCount = 0;
+            handler.DoubleClickRequested += () => doubleClickCount++;
+
+            foreach (var modifiers in new[]
+            {
+                ModifierKeys.Alt | ModifierKeys.Control | ModifierKeys.Shift,
+                ModifierKeys.Alt | ModifierKeys.Shift
+            })
+            {
+                Assert.True(handler.HandleKeyDown(Key.Enter, modifiers, isRepeat: false));
+                Assert.True(handler.HandleKeyUp(Key.Enter, modifiers));
+            }
+
+            // Ctrl+Shift+C keeps the ordinary (ignored) modified-C behavior.
+            handler.AllowContinueConfirm = true;
+            var continued = new List<ClickKind>();
+            handler.ConfirmAndContinueRequested += clickKind => continued.Add(clickKind);
+            Assert.True(handler.HandleKeyDown(Key.C, ModifierKeys.Control | ModifierKeys.Shift, isRepeat: false));
+            Assert.True(handler.HandleKeyUp(Key.C, ModifierKeys.Control | ModifierKeys.Shift));
+
+            Assert.Equal(0, doubleClickCount);
+            Assert.Empty(continued);
+        });
+    }
+
+    [Theory]
+    [InlineData(Key.Escape)]
+    [InlineData(Key.PageUp)]
+    [InlineData(Key.PageDown)]
+    public void PendingDoubleClick_IsClearedByCancelOrPageKeys(Key interveningKey)
+    {
+        UiTestThread.Run(() =>
+        {
+            var handler = new OverlayKeyHandler(isPrimary: true);
+            int doubleClickCount = 0;
+            handler.DoubleClickRequested += () => doubleClickCount++;
+
+            Assert.True(handler.HandleKeyDown(Key.Enter, ModifierKeys.Control | ModifierKeys.Shift, isRepeat: false));
+            Assert.True(handler.HandleKeyDown(interveningKey, ModifierKeys.None, isRepeat: false));
+            Assert.True(handler.HandleKeyUp(Key.Enter, ModifierKeys.Control | ModifierKeys.Shift));
+
+            Assert.Equal(0, doubleClickCount);
+        });
+    }
+
+    [Fact]
     public void PrimaryOverlay_ConsumesRepeatedAndUnmappedKeysWithoutDispatching()
     {
         UiTestThread.Run(() =>

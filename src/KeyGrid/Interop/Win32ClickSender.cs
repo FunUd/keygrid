@@ -96,6 +96,57 @@ public class Win32ClickSender : IClickSender
         return succeeded;
     }
 
+    public bool SendDoubleClick(PixelPoint target, PixelRect virtualScreen)
+    {
+        var (normX, normY) = CoordinateConverter.ToNormalizedVirtualDesktop(target, virtualScreen);
+        uint commonFlags = NativeMethods.MOUSEEVENTF_ABSOLUTE
+            | NativeMethods.MOUSEEVENTF_VIRTUALDESK;
+
+        // Sequence: Move -> Down -> Up -> Down -> Up. Both clicks share the
+        // target coordinate and are dispatched back-to-back, so Windows
+        // resolves them as a double-click at that position.
+        var inputs = new NativeMethods.INPUT[5];
+        inputs[0] = CreateMouseInput(normX, normY, commonFlags | NativeMethods.MOUSEEVENTF_MOVE);
+        inputs[1] = CreateMouseInput(normX, normY, commonFlags | NativeMethods.MOUSEEVENTF_LEFTDOWN);
+        inputs[2] = CreateMouseInput(normX, normY, commonFlags | NativeMethods.MOUSEEVENTF_LEFTUP);
+        inputs[3] = CreateMouseInput(normX, normY, commonFlags | NativeMethods.MOUSEEVENTF_LEFTDOWN);
+        inputs[4] = CreateMouseInput(normX, normY, commonFlags | NativeMethods.MOUSEEVENTF_LEFTUP);
+
+        FileLogger.LogDebug(
+            $"SendInput double-click starting (target=({target.X}, {target.Y})).");
+        uint sent = _sendInput((uint)inputs.Length, inputs, Marshal.SizeOf<NativeMethods.INPUT>());
+        bool succeeded = sent == inputs.Length;
+        if (succeeded)
+        {
+            FileLogger.LogInfo(
+                $"SendInput double-click sequence succeeded (requested={inputs.Length}, sent={sent}).");
+            return true;
+        }
+
+        FileLogger.LogWarning(
+            $"SendInput double-click sequence incomplete (requested={inputs.Length}, sent={sent}, " +
+            $"lastError={Marshal.GetLastWin32Error()}). Releasing synthetic left button.");
+
+        // A partial send can leave the synthetic left button pressed. Release
+        // it at the target so the pointer state cannot stick.
+        var cleanup = new[]
+        {
+            CreateMouseInput(normX, normY, commonFlags | NativeMethods.MOUSEEVENTF_LEFTUP)
+        };
+        uint cleanupSent = _sendInput(
+            (uint)cleanup.Length,
+            cleanup,
+            Marshal.SizeOf<NativeMethods.INPUT>());
+        if (cleanupSent != (uint)cleanup.Length)
+        {
+            FileLogger.LogWarning(
+                $"SendInput double-click cleanup incomplete (requested={cleanup.Length}, " +
+                $"sent={cleanupSent}, lastError={Marshal.GetLastWin32Error()}).");
+        }
+
+        return false;
+    }
+
     public bool SendDrag(PixelPoint start, PixelPoint end, PixelRect virtualScreen)
     {
         if (virtualScreen.IsEmpty)

@@ -18,6 +18,7 @@ public partial class OverlayWindow : Window, IOverlayWindowSurface
     public event Action<char>? KeyPressed;
     public event Action<int, int>? MoveRequested;
     public event Action<ClickKind>? ConfirmRequested;
+    public event Action? DoubleClickRequested;
     public event Action<ClickKind>? ConfirmAndContinueRequested;
     public event Action? BackspacePressed;
     public event Action? CancelRequested;
@@ -48,6 +49,7 @@ public partial class OverlayWindow : Window, IOverlayWindowSurface
         _keyHandler.KeyPressed += key => KeyPressed?.Invoke(key);
         _keyHandler.MoveRequested += (columnDelta, rowDelta) => MoveRequested?.Invoke(columnDelta, rowDelta);
         _keyHandler.ConfirmRequested += clickKind => ConfirmRequested?.Invoke(clickKind);
+        _keyHandler.DoubleClickRequested += () => DoubleClickRequested?.Invoke();
         _keyHandler.ConfirmAndContinueRequested += clickKind => ConfirmAndContinueRequested?.Invoke(clickKind);
         _keyHandler.BackspacePressed += () => BackspacePressed?.Invoke();
         _keyHandler.CancelRequested += () => CancelRequested?.Invoke();

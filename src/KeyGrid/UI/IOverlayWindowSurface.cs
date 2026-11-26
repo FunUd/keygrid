@@ -9,6 +9,7 @@ public interface IOverlayWindowSurface
     event Action<char>? KeyPressed;
     event Action<int, int>? MoveRequested;
     event Action<ClickKind>? ConfirmRequested;
+    event Action? DoubleClickRequested;
     event Action<ClickKind>? ConfirmAndContinueRequested;
     event Action? BackspacePressed;
     event Action? CancelRequested;

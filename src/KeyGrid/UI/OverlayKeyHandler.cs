@@ -7,6 +7,7 @@ internal sealed class OverlayKeyHandler
 {
     private readonly bool _isPrimary;
     private ClickKind? _pendingClickKind;
+    private bool _pendingDoubleClick;
     private Key? _pendingChordKey;
     private Key? _pendingConfirmKey;
     private bool _pendingContinueConfirm;
@@ -42,6 +43,11 @@ internal sealed class OverlayKeyHandler
     public event Action<char>? KeyPressed;
     public event Action<int, int>? MoveRequested;
     public event Action<ClickKind>? ConfirmRequested;
+    /// <summary>
+    /// Raised on key-up of Ctrl+Shift+Enter. Requests a double left click at
+    /// the confirmed target; only the left button has a double-click variant.
+    /// </summary>
+    public event Action? DoubleClickRequested;
     /// <summary>
     /// Raised on key-up of C in eligible Stage 2 state. Confirms like Enter
     /// but also enters continuous mode for the next selection.
@@ -149,6 +155,7 @@ internal sealed class OverlayKeyHandler
                 // A pending Enter or C must not fire after the selection was
                 // cancelled or a sub-mode was exited.
                 _pendingClickKind = null;
+                _pendingDoubleClick = false;
                 _pendingConfirmKey = null;
                 _pendingContinueConfirm = false;
                 CancelRequested?.Invoke();
@@ -160,12 +167,14 @@ internal sealed class OverlayKeyHandler
                 // Page keys can enter Scroll Mode, where Enter is ignored. Drop a
                 // pending confirmation so releasing a held Enter cannot click later.
                 _pendingClickKind = null;
+                _pendingDoubleClick = false;
                 _pendingConfirmKey = null;
                 _pendingContinueConfirm = false;
                 PageScrollRequested?.Invoke(-1);
                 return true;
             case Key.PageDown when modifiers == ModifierKeys.None:
                 _pendingClickKind = null;
+                _pendingDoubleClick = false;
                 _pendingConfirmKey = null;
                 _pendingContinueConfirm = false;
                 PageScrollRequested?.Invoke(1);
@@ -174,7 +183,10 @@ internal sealed class OverlayKeyHandler
                 // Consume the key down so Windows does not deliver it to another window
                 // when the overlay closes. Confirmation runs on key up. Capture the
                 // modifiers now because the user may release a modifier before Enter.
+                // Ctrl+Shift is the double-click chord; other unmapped combinations
+                // stay ignored.
                 _pendingClickKind = MapClickKind(modifiers);
+                _pendingDoubleClick = modifiers == (ModifierKeys.Control | ModifierKeys.Shift);
                 _pendingConfirmKey = Key.Enter;
                 _pendingContinueConfirm = false;
                 return true;
@@ -183,6 +195,7 @@ internal sealed class OverlayKeyHandler
                 // The same modifier-to-click-kind mapping applies; the pending
                 // key is tracked so a held C is not confused with Enter.
                 _pendingClickKind = MapClickKind(modifiers);
+                _pendingDoubleClick = false;
                 _pendingConfirmKey = Key.C;
                 _pendingContinueConfirm = true;
                 return true;
@@ -341,12 +354,18 @@ internal sealed class OverlayKeyHandler
         }
 
         ClickKind? clickKind = _pendingClickKind;
+        bool doubleClick = _pendingDoubleClick;
         bool continueConfirm = _pendingContinueConfirm;
         _pendingClickKind = null;
+        _pendingDoubleClick = false;
         _pendingConfirmKey = null;
         _pendingContinueConfirm = false;
 
-        if (clickKind.HasValue)
+        if (doubleClick)
+        {
+            DoubleClickRequested?.Invoke();
+        }
+        else if (clickKind.HasValue)
         {
             if (continueConfirm)
             {
