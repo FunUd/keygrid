@@ -60,6 +60,8 @@ public class OverlayManager
     private PixelPoint? _rangeStartPoint;
     private PixelPoint? _dragStartPoint;
     private bool _scrollMode;
+    private bool _fineMode;
+    private PixelPoint _fineTarget;
     private RangeDragPhase _rangeDragPhase = RangeDragPhase.None;
     private bool _isInputInProgress;
     private int _selectionGeneration;
@@ -94,6 +96,16 @@ public class OverlayManager
     /// Whether Scroll Mode is active for the current Stage 2 selection.
     /// </summary>
     internal bool IsScrollMode => _scrollMode;
+
+    /// <summary>
+    /// Whether Fine Mode is active for the current Stage 2 selection.
+    /// </summary>
+    internal bool IsFineMode => _fineMode;
+
+    /// <summary>
+    /// The fine adjustment point while Fine Mode is active.
+    /// </summary>
+    internal PixelPoint FineTarget => _fineTarget;
 
     /// <summary>
     /// Whether the composite range-then-drag workflow is active, either while
@@ -156,6 +168,7 @@ public class OverlayManager
         }
 
         ExitScrollMode();
+        ExitFineMode();
         _isInputInProgress = false;
 
         if (!IsActive)
@@ -273,6 +286,7 @@ public class OverlayManager
                 overlay.RangeStartRequested += OnRangeStartRequested;
                 overlay.DragStartRequested += OnDragStartRequested;
                 overlay.RangeDragWorkflowRequested += OnRangeDragWorkflowRequested;
+                overlay.FineModeRequested += OnFineModeRequested;
                 overlay.PageScrollRequested += OnPageScrollRequested;
                 overlay.MonitorSelectRequested += OnMonitorSelectRequested;
                 overlay.MonitorCycleRequested += OnMonitorCycleRequested;
@@ -289,7 +303,9 @@ public class OverlayManager
                 _scrollMode,
                 IsRangeDragWorkflow,
                 _dragStartPoint,
-                MonitorBadgeLabel(i));
+                MonitorBadgeLabel(i),
+                _fineMode,
+                _fineMode ? _fineTarget : null);
         }
 
         if (_primaryOverlay == null || !_primaryOverlay.TryReactivate())
@@ -340,7 +356,7 @@ public class OverlayManager
 
     private void OnKeyPressed(char key)
     {
-        if (_scrollMode)
+        if (_scrollMode || _fineMode)
         {
             FileLogger.LogDebug("Key input ignored while Scroll Mode is active.");
             return;
@@ -360,6 +376,7 @@ public class OverlayManager
             || !IsActive
             || _isInputInProgress
             || _scrollMode
+            || _fineMode
             || _selectionManager.State != SelectionState.Selecting)
         {
             return;
@@ -397,6 +414,7 @@ public class OverlayManager
             || !IsActive
             || _isInputInProgress
             || _scrollMode
+            || _fineMode
             || _selectionManager.State != SelectionState.Selecting)
         {
             return;
@@ -424,12 +442,48 @@ public class OverlayManager
         }
     }
 
+    private void OnFineModeRequested()
+    {
+        if (!CanUseStage2SubMode() || _fineMode)
+        {
+            return;
+        }
+
+        if (!_selectionManager.TryGetStage2Target(out var target))
+        {
+            return;
+        }
+
+        _fineMode = true;
+        _fineTarget = target;
+        FileLogger.LogInfo($"Fine Mode entered at ({target.X}, {target.Y}).");
+        UpdateAllOverlays();
+    }
+
+    /// <summary>
+    /// Shared eligibility for Stage 2 sub-modes (Scroll Mode, Fine Mode): an
+    /// active selection in Stage 2 with no range/drag anchor and no workflow.
+    /// </summary>
+    private bool CanUseStage2SubMode()
+    {
+        return !IsClosing
+            && IsActive
+            && !_isInputInProgress
+            && !_scrollMode
+            && _rangeDragPhase == RangeDragPhase.None
+            && !_rangeStartPoint.HasValue
+            && !_dragStartPoint.HasValue
+            && _selectionManager.State == SelectionState.Selecting
+            && _selectionManager.CurrentStage == 2;
+    }
+
     private void OnRangeDragWorkflowRequested()
     {
         if (IsClosing
             || !IsActive
             || _isInputInProgress
             || _scrollMode
+            || _fineMode
             || _rangeDragPhase != RangeDragPhase.None
             || _rangeStartPoint.HasValue
             || _dragStartPoint.HasValue
@@ -469,6 +523,13 @@ public class OverlayManager
 
     private void OnMoveRequested(int columnDelta, int rowDelta)
     {
+        if (_fineMode)
+        {
+            int step = FineStepPixels();
+            MoveFineTarget(columnDelta * step, rowDelta * step);
+            return;
+        }
+
         if (_scrollMode)
         {
             if (columnDelta != 0)
@@ -492,6 +553,14 @@ public class OverlayManager
 
     private void OnPageScrollRequested(int direction)
     {
+        if (_fineMode)
+        {
+            // PageUp (-1) moves the fine point up, PageDown (+1) moves it down
+            // by one Stage 2 cell.
+            MoveFineTarget(0, direction * FineCellStepPixels());
+            return;
+        }
+
         if (!CanScrollCurrentTarget())
         {
             return;
@@ -522,6 +591,36 @@ public class OverlayManager
             && _selectionManager.TryGetStage2Target(out _);
     }
 
+    /// <summary>
+    /// Fine Mode arrow step: one quarter of a Stage 2 cell (5 DIP) in physical
+    /// pixels, derived from the active monitor's DPI scale.
+    /// </summary>
+    private int FineStepPixels() =>
+        Math.Max(1, (int)Math.Round(5.0 * _selectionManager.DpiReferenceScale));
+
+    /// <summary>
+    /// Fine Mode Page-key step: one full Stage 2 cell (20 DIP) in physical pixels.
+    /// </summary>
+    private int FineCellStepPixels() =>
+        Math.Max(1, (int)Math.Round(20.0 * _selectionManager.DpiReferenceScale));
+
+    /// <summary>
+    /// Moves the fine point by the given physical-pixel delta. Moves that would
+    /// leave every monitor display area are ignored so the point always stays
+    /// clickable.
+    /// </summary>
+    private void MoveFineTarget(int deltaX, int deltaY)
+    {
+        var candidate = new PixelPoint(_fineTarget.X + deltaX, _fineTarget.Y + deltaY);
+        if (!_activeMonitorRects.Any(rect => rect.Contains(candidate)))
+        {
+            return;
+        }
+
+        _fineTarget = candidate;
+        UpdateAllOverlays();
+    }
+
     private void ScrollCurrentTarget(int notches, bool horizontal)
     {
         if (!_selectionManager.TryGetStage2Target(out var target))
@@ -550,6 +649,7 @@ public class OverlayManager
             && IsActive
             && !_isInputInProgress
             && !_scrollMode
+            && !_fineMode
             && _selectionManager.State == SelectionState.Selecting;
     }
 
@@ -607,6 +707,7 @@ public class OverlayManager
         if (IsClosing
             || !IsActive
             || _scrollMode
+            || _fineMode
             || IsRangeDragWorkflow
             || _rangeStartPoint.HasValue
             || _dragStartPoint.HasValue
@@ -647,7 +748,7 @@ public class OverlayManager
             return;
         }
 
-        if (!_selectionManager.ProcessEnter())
+        if (!_selectionManager.ProcessEnter(_fineMode ? _fineTarget : null))
         {
             FileLogger.LogDebug($"Double-click confirmation #{attempt} ignored because the selection is not confirmable.");
             return;
@@ -712,7 +813,7 @@ public class OverlayManager
             return;
         }
 
-        if (!_selectionManager.ProcessEnter())
+        if (!_selectionManager.ProcessEnter(_fineMode ? _fineTarget : null))
         {
             FileLogger.LogDebug($"Confirmation #{attempt} ignored because the selection is not confirmable.");
             return;
@@ -732,7 +833,7 @@ public class OverlayManager
 
     private void OnBackspacePressed()
     {
-        if (_scrollMode)
+        if (_scrollMode || _fineMode)
         {
             return;
         }
@@ -752,6 +853,14 @@ public class OverlayManager
         {
             ExitScrollMode();
             FileLogger.LogInfo("Scroll Mode exited by Esc; Stage 2 selection remains active.");
+            UpdateAllOverlays();
+            return;
+        }
+
+        if (_fineMode)
+        {
+            ExitFineMode();
+            FileLogger.LogInfo("Fine Mode exited by Esc; Stage 2 selection remains active.");
             UpdateAllOverlays();
             return;
         }
@@ -1007,7 +1116,9 @@ public class OverlayManager
                 _scrollMode,
                 IsRangeDragWorkflow,
                 _dragStartPoint,
-                MonitorBadgeLabel(i));
+                MonitorBadgeLabel(i),
+                _fineMode,
+                _fineMode ? _fineTarget : null);
         }
     }
 
@@ -1123,6 +1234,7 @@ public class OverlayManager
         }
 
         _selectionManager.CompleteClick();
+        ExitFineMode();
         if (continueSelection)
         {
             // Rebuild the overlay session from Stage 1. The click target remains
@@ -1731,6 +1843,16 @@ public class OverlayManager
         _scrollHookPassedKeys.Clear();
     }
 
+    /// <summary>
+    /// Clears Fine Mode state. Does not touch the overlay surfaces; callers
+    /// decide whether to restore or close them.
+    /// </summary>
+    private void ExitFineMode()
+    {
+        _fineMode = false;
+        _fineTarget = default;
+    }
+
     private void RestartScrollIdleTimer()
     {
         if (_scrollIdleTimer == null)
@@ -1813,6 +1935,7 @@ public class OverlayManager
             _continuousMode = false;
             _rangeStartPoint = null;
             ExitScrollMode();
+            ExitFineMode();
             _rangeDragPhase = RangeDragPhase.None;
             _selectionManager.Cancel();
             CloseOverlaysWithoutRestore();
@@ -1833,6 +1956,7 @@ public class OverlayManager
         _rangeStartPoint = null;
         _dragStartPoint = null;
         ExitScrollMode();
+        ExitFineMode();
         _rangeDragPhase = RangeDragPhase.None;
         _isInputInProgress = false;
         CloseOverlaysWithoutRestore();

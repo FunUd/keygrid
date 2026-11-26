@@ -40,6 +40,13 @@ internal sealed class OverlayKeyHandler
     /// </summary>
     public bool AllowContinueConfirm { get; set; }
 
+    /// <summary>
+    /// Whether F should request Fine Mode entry. Enabled only for an eligible
+    /// Stage 2 target that is not already in a sub-mode; while disabled, F
+    /// remains an ordinary Stage 1 column key.
+    /// </summary>
+    public bool AllowFineMode { get; set; }
+
     public event Action<char>? KeyPressed;
     public event Action<int, int>? MoveRequested;
     public event Action<ClickKind>? ConfirmRequested;
@@ -63,6 +70,11 @@ internal sealed class OverlayKeyHandler
     /// individual range nor drag action is dispatched for the chord.
     /// </summary>
     public event Action? RangeDragWorkflowRequested;
+    /// <summary>
+    /// Raised for an unmodified F in eligible Stage 2 state. Requests entry
+    /// into Fine Mode for sub-cell adjustment of the click target.
+    /// </summary>
+    public event Action? FineModeRequested;
     /// <summary>
     /// Raised for plain PageUp (-1) or PageDown (+1). The manager decides whether
     /// the key enters Scroll Mode or scrolls an already active session.
@@ -256,12 +268,15 @@ internal sealed class OverlayKeyHandler
             case Key.D:
                 // Consume modified D so it cannot become a Stage 1 column key.
                 return true;
-            case Key.F when modifiers == ModifierKeys.None && AllowRangeDragChord:
-                // F is unused in Stage 2. It is a more reliable trigger for the
-                // composite workflow than the R+D chord; Stage 1 keeps it as an
-                // ordinary column key because AllowRangeDragChord is only set
-                // for an eligible Stage 2 target.
+            case Key.S when modifiers == ModifierKeys.None && AllowRangeDragChord:
+                // S triggers the range-then-drag workflow directly; F now
+                // enters Fine Mode instead. Stage 1 keeps S as a column key
+                // because AllowRangeDragChord is only set for an eligible
+                // Stage 2 target.
                 RangeDragWorkflowRequested?.Invoke();
+                return true;
+            case Key.F when modifiers == ModifierKeys.None && AllowFineMode:
+                FineModeRequested?.Invoke();
                 return true;
             default:
                 if (key >= Key.A && key <= Key.Z)

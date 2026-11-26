@@ -22,6 +22,8 @@ public class OverlayRenderElement : FrameworkElement
     private PixelPoint? _rangeStartPoint;
     private PixelPoint? _dragStartPoint;
     private bool _isScrollMode;
+    private bool _isFineMode;
+    private PixelPoint? _fineTargetPoint;
     private bool _isRangeDragWorkflow;
     private string? _monitorBadgeLabel;
 
@@ -62,6 +64,12 @@ public class OverlayRenderElement : FrameworkElement
     private readonly Pen _rangeStartPen = new(new SolidColorBrush(Color.FromRgb(80, 255, 160)), 2.0);
     private readonly Pen _rangeStartHaloPen = new(new SolidColorBrush(Color.FromArgb(220, 0, 0, 0)), 4.0);
 
+    // The fine-mode marker uses a warm color so it stays distinct from the
+    // green range/drag anchors and the red cursor cell.
+    private readonly Brush _finePointFillBrush = new SolidColorBrush(Color.FromArgb(90, 255, 200, 80));
+    private readonly Pen _finePointPen = new(new SolidColorBrush(Color.FromRgb(255, 200, 80)), 2.0);
+    private readonly Pen _finePointHaloPen = new(new SolidColorBrush(Color.FromArgb(220, 0, 0, 0)), 4.0);
+
     private readonly Typeface _labelTypeface = new(new FontFamily("Segoe UI"), FontStyles.Normal, FontWeights.Bold, FontStretches.Normal);
     private readonly Typeface _cellTypeface = new(new FontFamily("Segoe UI"), FontStyles.Normal, FontWeights.Normal, FontStretches.Normal);
 
@@ -93,6 +101,9 @@ public class OverlayRenderElement : FrameworkElement
         _rangeStartFillBrush.Freeze();
         _rangeStartPen.Freeze();
         _rangeStartHaloPen.Freeze();
+        _finePointFillBrush.Freeze();
+        _finePointPen.Freeze();
+        _finePointHaloPen.Freeze();
     }
 
     public void UpdateState(
@@ -105,7 +116,9 @@ public class OverlayRenderElement : FrameworkElement
         bool isScrollMode = false,
         bool isRangeDragWorkflow = false,
         PixelPoint? dragStartPoint = null,
-        string? monitorBadgeLabel = null)
+        string? monitorBadgeLabel = null,
+        bool isFineMode = false,
+        PixelPoint? fineTargetPoint = null)
     {
         _monitorRect = monitorRect;
         _monitorRects = monitorRects;
@@ -115,6 +128,8 @@ public class OverlayRenderElement : FrameworkElement
         _rangeStartPoint = rangeStartPoint;
         _dragStartPoint = dragStartPoint;
         _isScrollMode = isScrollMode;
+        _isFineMode = isFineMode;
+        _fineTargetPoint = fineTargetPoint;
         _isRangeDragWorkflow = isRangeDragWorkflow;
         _monitorBadgeLabel = monitorBadgeLabel;
         InvalidateVisual();
@@ -281,6 +296,13 @@ public class OverlayRenderElement : FrameworkElement
             DrawRangeStartMarker(dc, dragStart, dpiX, dpiY);
         }
 
+        // 6b. Draw the Fine Mode adjustment point at its exact screen coordinate.
+        if (_isFineMode && _fineTargetPoint is { } fineTarget
+            && _selectionManager.State == SelectionState.Selecting)
+        {
+            DrawFinePointMarker(dc, fineTarget, dpiX, dpiY);
+        }
+
         // 7. Draw status badges on the primary overlay only.
         if (_isPrimary && _selectionManager.State == SelectionState.Selecting)
         {
@@ -359,6 +381,11 @@ public class OverlayRenderElement : FrameworkElement
             top = DrawStatusBadge(dc, "Scroll Mode", top) + 4.0;
         }
 
+        if (_isFineMode)
+        {
+            top = DrawStatusBadge(dc, "Fine Mode", top) + 4.0;
+        }
+
         if (_isContinuousMode)
         {
             DrawStatusBadge(dc, "Continuous Mode", top);
@@ -422,6 +449,36 @@ public class OverlayRenderElement : FrameworkElement
         dc.DrawLine(_rangeStartPen, new Point(x + crosshairInner, y), new Point(x + crosshairOuter, y));
         dc.DrawLine(_rangeStartPen, new Point(x, y - crosshairOuter), new Point(x, y - crosshairInner));
         dc.DrawLine(_rangeStartPen, new Point(x, y + crosshairInner), new Point(x, y + crosshairOuter));
+    }
+
+    /// <summary>
+    /// Draws the Fine Mode adjustment point with the same ring-and-crosshair
+    /// treatment as the range anchor but in a distinct warm color.
+    /// </summary>
+    private void DrawFinePointMarker(
+        DrawingContext dc,
+        PixelPoint point,
+        double dpiX,
+        double dpiY)
+    {
+        if (!_monitorRect.Contains(point))
+        {
+            return;
+        }
+
+        double x = (point.X - _monitorRect.Left) / dpiX;
+        double y = (point.Y - _monitorRect.Top) / dpiY;
+        var center = new Point(x, y);
+        const double ringRadius = 7.0;
+        const double crosshairInner = 10.0;
+        const double crosshairOuter = 15.0;
+
+        dc.DrawEllipse(null, _finePointHaloPen, center, ringRadius + 1.5, ringRadius + 1.5);
+        dc.DrawEllipse(_finePointFillBrush, _finePointPen, center, ringRadius, ringRadius);
+        dc.DrawLine(_finePointPen, new Point(x - crosshairOuter, y), new Point(x - crosshairInner, y));
+        dc.DrawLine(_finePointPen, new Point(x + crosshairInner, y), new Point(x + crosshairOuter, y));
+        dc.DrawLine(_finePointPen, new Point(x, y - crosshairOuter), new Point(x, y - crosshairInner));
+        dc.DrawLine(_finePointPen, new Point(x, y + crosshairInner), new Point(x, y + crosshairOuter));
     }
 
     /// <summary>

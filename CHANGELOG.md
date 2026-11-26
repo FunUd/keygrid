@@ -5,6 +5,8 @@
 ### Added
 
 - Add `Ctrl+Shift+Enter` in Stage 2 as a double left click at the confirmed coordinate. It follows the same confirmation rules as `Enter` (ignored in Scroll Mode and while a range or drag anchor is active) and shares the normal/continuous-mode completion behavior.
+- Add Fine Mode in Stage 2, entered with `F`: arrow keys move a fine adjustment point by 5 DIP and Page keys by one Stage 2 cell (20 DIP), and all confirmation keys click the fine point. `Esc` returns to Stage 2. The point is drawn as a crosshair marker and never leaves the monitor display areas.
+- Add `S` in Stage 2 as a direct trigger for the range-then-drag workflow (previously reachable only via the overlapping `R`+`D` chord, which still works). `S` remains a Stage 1 column key.
 
 ## [0.5.0] - 2026-11-26
 

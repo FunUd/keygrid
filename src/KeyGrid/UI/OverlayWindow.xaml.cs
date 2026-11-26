@@ -26,6 +26,7 @@ public partial class OverlayWindow : Window, IOverlayWindowSurface
     public event Action? RangeStartRequested;
     public event Action? DragStartRequested;
     public event Action? RangeDragWorkflowRequested;
+    public event Action? FineModeRequested;
     public event Action<int>? PageScrollRequested;
     public event Action<int>? MonitorSelectRequested;
     public event Action<int>? MonitorCycleRequested;
@@ -57,6 +58,7 @@ public partial class OverlayWindow : Window, IOverlayWindowSurface
         _keyHandler.RangeStartRequested += () => RangeStartRequested?.Invoke();
         _keyHandler.DragStartRequested += () => DragStartRequested?.Invoke();
         _keyHandler.RangeDragWorkflowRequested += () => RangeDragWorkflowRequested?.Invoke();
+        _keyHandler.FineModeRequested += () => FineModeRequested?.Invoke();
         _keyHandler.PageScrollRequested += direction => PageScrollRequested?.Invoke(direction);
         _keyHandler.MonitorSelectRequested += number => MonitorSelectRequested?.Invoke(number);
         _keyHandler.MonitorCycleRequested += direction => MonitorCycleRequested?.Invoke(direction);
@@ -113,15 +115,18 @@ public partial class OverlayWindow : Window, IOverlayWindowSurface
         bool isScrollMode = false,
         bool isRangeDragWorkflow = false,
         PixelPoint? dragStartPoint = null,
-        string? monitorBadgeLabel = null)
+        string? monitorBadgeLabel = null,
+        bool isFineMode = false,
+        PixelPoint? fineTargetPoint = null)
     {
         // Holding an arrow key repeats cursor movement in Stage 2 and wheel
         // input in Scroll Mode. Repeats stay ignored in Stage 1.
         _keyHandler.AllowArrowKeyRepeat = selectionManager.CurrentStage == 2;
 
-        // Holding a Page key repeats the five-notch scroll only inside Scroll
-        // Mode; Page repeats are still ignored when entering it.
-        _keyHandler.AllowPageScrollRepeat = isScrollMode;
+        // Holding a Page key repeats the five-notch scroll inside Scroll Mode
+        // and the cell step inside Fine Mode; Page repeats are still ignored
+        // when entering either sub-mode.
+        _keyHandler.AllowPageScrollRepeat = isScrollMode || isFineMode;
 
         // The R+D chord and the C continue-confirm are eligible only for a
         // plain Stage 2 target with no anchor or Scroll Mode active. Stage 1
@@ -132,8 +137,9 @@ public partial class OverlayWindow : Window, IOverlayWindowSurface
             && !isRangeDragWorkflow
             && rangeStartPoint is null
             && dragStartPoint is null;
-        _keyHandler.AllowRangeDragChord = stage2TargetEligible;
+        _keyHandler.AllowRangeDragChord = stage2TargetEligible && !isFineMode;
         _keyHandler.AllowContinueConfirm = stage2TargetEligible;
+        _keyHandler.AllowFineMode = stage2TargetEligible && !isFineMode;
 
         RenderElement.UpdateState(
             MonitorRect,
@@ -145,7 +151,9 @@ public partial class OverlayWindow : Window, IOverlayWindowSurface
             isScrollMode,
             isRangeDragWorkflow,
             dragStartPoint,
-            monitorBadgeLabel);
+            monitorBadgeLabel,
+            isFineMode,
+            fineTargetPoint);
     }
 
     /// <summary>

@@ -1,6 +1,6 @@
-# KeyGrid Specification v1.17
+# KeyGrid Specification v1.18
 
-**Version:** 1.17
+**Version:** 1.18
 **対象OS:** Windows 11（x64）
 **アプリケーション名:** KeyGrid
 **実装言語:** C#
@@ -36,6 +36,8 @@
 | Range selection | A two-point selection started with `R` in Stage 2. The first point becomes the anchor, then selection returns to Stage 1 to choose the endpoint region. In Stage 2, `Enter` performs a left click at the anchor and a Shift+left click at the endpoint |
 | Range anchor | The physical-pixel screen coordinate captured when range selection starts. It remains fixed while the Stage 2 cursor or Stage 1 region changes |
 | Scroll Mode | A Stage 2 sub-mode entered with `PageUp` or `PageDown`. Arrow and Page keys send mouse wheel input to the current target; `Esc` returns to Stage 2 |
+| Fine Mode | A Stage 2 sub-mode entered with `F`. Arrow keys move a fine adjustment point in 5 DIP steps and Page keys move it by one Stage 2 cell; confirmation keys click the fine point; `Esc` returns to Stage 2 |
+| Fine point | The physical-pixel coordinate adjusted in Fine Mode. It starts at the Stage 2 resolved target and moves independently of the 25×25 cursor cell |
 | Scroll target | The current Stage 2 target coordinate, recalculated from the selection when each scroll input is dispatched |
 | 主オーバーレイ | キーボード入力を受け取るオーバーレイウィンドウ（1つ）。プライマリモニター上に配置される |
 | 表示専用オーバーレイ | 主オーバーレイ以外。マウス入力を遮断し、描画のみ行う |
@@ -46,7 +48,7 @@
 
 KeyGrid is a resident utility for left-, right-, and middle-clicking accessible screen locations using only the keyboard.
 
-It displays column and row labels across the virtual screen on every monitor. On monitors where the 26-key Stage 1 budget cannot keep cells near the target size, an optional Stage 0 coarse grid first narrows the monitor to one region. The user then narrows the target area with one column key and one row key, and moves a cursor through a 25×25 focus-plus-context grid with the arrow keys. Stage 0 targets a coarse split chosen by 4.1; Stage 1 targets approximately 112 DIP cells; Stage 2 centers a fixed 500 DIP window (25×25 cells of 20 DIP each) around the Stage 1 cell's reference point, outlining the selected Stage 1 cell while the context margin provides nearby correction. `Enter` performs a left click; `Shift+Enter` performs a right click; `Ctrl+Enter` performs a middle (wheel) click; `Ctrl+Shift+Enter` performs a double left click. In Stage 2, `R` starts a two-point range selection and `D` starts a drag; each captures the first point and returns to Stage 1 so the user can select the second point's region.
+It displays column and row labels across the virtual screen on every monitor. On monitors where the 26-key Stage 1 budget cannot keep cells near the target size, an optional Stage 0 coarse grid first narrows the monitor to one region. The user then narrows the target area with one column key and one row key, and moves a cursor through a 25×25 focus-plus-context grid with the arrow keys. Stage 0 targets a coarse split chosen by 4.1; Stage 1 targets approximately 112 DIP cells; Stage 2 centers a fixed 500 DIP window (25×25 cells of 20 DIP each) around the Stage 1 cell's reference point, outlining the selected Stage 1 cell while the context margin provides nearby correction. `Enter` performs a left click; `Shift+Enter` performs a right click; `Ctrl+Enter` performs a middle (wheel) click; `Ctrl+Shift+Enter` performs a double left click. In Stage 2, `R` starts a two-point range selection, `D` starts a drag, `S` starts the range-then-drag workflow, and `F` enters Fine Mode for sub-cell adjustment; each captures the first point or enters its sub-mode and returns to Stage 1 or Stage 2 as appropriate.
 
 ### 基本方針
 
@@ -116,7 +118,7 @@ selection. Drag endpoints may belong to different top-level
 windows or monitors. The drag start window is activated independently and verified at the
 anchor coordinate; the drop target is not required to belong to the same window.
 
-The range-then-drag workflow combines both actions. Pressing `F` without modifiers in
+The range-then-drag workflow combines both actions. Pressing `S` without modifiers in
 eligible Stage 2 state starts it directly; pressing and holding `R` and `D` so their
 key-down events overlap also starts it. The current target becomes the range anchor and
 KeyGrid returns to the full Stage 1 grid. After the range is confirmed successfully, the
@@ -125,8 +127,30 @@ the workflow. The user then selects the drop-target region and confirms with pla
 `Enter`. The workflow state is cleared after the drag completes, is cancelled, or fails.
 Single `R` and `D` presses keep their existing behavior: when there is no overlapping
 key-down, the pending single-key action is dispatched on key-up. Both triggers are
-recognized only in eligible Stage 2 state; Stage 1 `R`, `D`, and `F` remain ordinary
+recognized only in eligible Stage 2 state; Stage 1 `R`, `D`, `S`, and `F` remain ordinary
 selection keys and do not participate.
+
+Fine Mode is a Stage 2 sub-mode entered with an unmodified `F` press in eligible Stage 2
+state (no range or drag anchor, no Scroll Mode, no active workflow). On entry the fine
+point is initialized to the resolved Stage 2 target coordinate. While Fine Mode is
+active:
+
+- Arrow keys move the fine point by one quarter of a Stage 2 cell (5 DIP, converted to
+  physical pixels with the active monitor's DPI scale, minimum 1 px). Holding an arrow
+  key repeats the movement at the OS key-repeat rate.
+- `PageUp` and `PageDown` move the fine point vertically by one Stage 2 cell (20 DIP).
+  Holding a Page key repeats the movement.
+- A move that would leave every monitor display area is ignored; the fine point always
+  stays inside at least one monitor.
+- `Enter`, `Shift+Enter`, `Ctrl+Enter`, `Ctrl+Shift+Enter`, and `C` confirm at the fine
+  point with their usual click kind and completion rules. `C` also enters continuous
+  mode afterwards.
+- `Esc` exits Fine Mode and returns to Stage 2; the Stage 2 cursor cell is unchanged.
+- `R`, `D`, `S`, `F`, `Tab`, digit keys, `;`, `Backspace`, and letter keys are ignored.
+  Scroll Mode cannot be entered from Fine Mode because Page keys move the fine point.
+- Range, drag, Scroll Mode, and Fine Mode are mutually exclusive. `F` is ignored while
+  any of them is active, and `R`, `D`, `S`, and Page keys cannot start their actions
+  while Fine Mode is active.
 
 ### 3.3 選択キー
 
@@ -170,6 +194,7 @@ selection keys and do not participate.
 - Pressing `R` or `D` again in Stage 2 while an anchor is active is ignored; the anchor changes only after `Esc` clears it.
 - Scroll Mode delivers wheel input to the current Stage 2 target. The first scroll input of a burst hides the overlays and activates the target window once; while the burst is active a low-level keyboard hook keeps receiving scroll keys and each input sends wheel input directly without another hide/show cycle. When scroll input pauses, `Esc` exits, or the target becomes invalid, the same Stage 2 selection is restored.
 - Scroll Mode uses one notch for arrow keys and five notches for Page keys. Positive vertical notches scroll up and positive horizontal notches scroll right; the key mapping follows the arrow direction.
+- Fine Mode uses one quarter of a Stage 2 cell (5 DIP) per arrow-key step and one full Stage 2 cell (20 DIP) per Page-key step, converted to physical pixels with the active monitor's DPI scale. The fine point is displayed as a crosshair marker at its exact coordinate and never leaves the union of monitor display areas.
 - `Esc` exits Scroll Mode and returns to Stage 2. A second `Esc` exits selection mode. Scroll Mode does not complete the click or change continuous mode.
 - Scroll Mode is ignored while a range anchor is active. `R`, Tab, `;`, `C`, `Backspace`, and confirmation keys are ignored while Scroll Mode is active.
 - If the scroll target cannot be resolved or activated, no wheel input is sent; Scroll Mode is cancelled, Stage 2 is restored, and an error is reported.
@@ -191,12 +216,13 @@ selection keys and do not participate.
 | `C` (Stage 2) | Confirm like Enter (unmodified = left, `Shift+C` = right, `Ctrl+C` = middle click) and enter continuous mode afterwards. Accepted only in eligible Stage 2 state with no range/drag anchor or Scroll Mode; ignored otherwise. `C` remains a Stage 1 column key |
 | `R` (Stage 2) | Set the range anchor at the current target and return to Stage 1. Only an unmodified press is accepted; ignored while an anchor is already active or Scroll Mode is active |
 | `D` (Stage 2) | Set the drag anchor at the current target and return to Stage 1. Only an unmodified, non-repeat press is accepted; D remains a Stage 1 column key |
-| `F` (Stage 2) | Start the range-then-drag workflow at the current target. Only an unmodified press in eligible Stage 2 state is accepted; F remains a Stage 1 column key |
+| `F` (Stage 2) | Enter Fine Mode for sub-cell adjustment at the current target. Only an unmodified press in eligible Stage 2 state is accepted; F remains a Stage 1 column key |
+| `S` (Stage 2) | Start the range-then-drag workflow at the current target. Only an unmodified press in eligible Stage 2 state is accepted; S remains a Stage 1 column key |
 | `R`+`D` chord (Stage 2) | Press and hold `R` and `D` so their key-down events overlap to start the range-then-drag workflow. Accepted only with no modifiers, no repeats, and no active range, drag, or Scroll Mode; a lone `R` or `D` still performs its existing action on key-up |
 | `Enter` while a range anchor is active | Execute the range: left click at the anchor, then Shift+left click at the current target. In the range-then-drag workflow, the endpoint then becomes the drag anchor |
 | `Enter` while a drag anchor is active | Execute drag: left-button down at the anchor, move to the current target, then left-button up |
-| `PageUp` / `PageDown` (Stage 2) | Enter Scroll Mode and scroll vertically by five wheel notches. In Scroll Mode, scroll vertically by five wheel notches; holding a key repeats the scroll |
-| `Esc` | Exit Scroll Mode first; then clear an active range or drag anchor; when neither sub-mode is active, discard the selection and exit, including continuous mode |
+| `PageUp` / `PageDown` (Stage 2) | Enter Scroll Mode and scroll vertically by five wheel notches. In Scroll Mode, scroll vertically by five wheel notches; holding a key repeats the scroll. In Fine Mode, move the fine point up/down by one Stage 2 cell |
+| `Esc` | Exit Scroll Mode or Fine Mode first; then clear an active range or drag anchor; when no sub-mode or anchor is active, discard the selection and exit, including continuous mode |
 
 Backspace undoes one Stage 1 keystroke. In Stage 2 it removes the Stage 1 row key and returns to Stage 1. After setting a range or drag anchor, the Stage 1 history is reset so the second-point region can be selected from the full grid. Arrow movement is not recorded in the history. Anchors are independent of the history and remain at their captured screen coordinate. Scroll Mode never moves the Stage 2 cursor.
 
@@ -330,6 +356,7 @@ totalDeviation = |cellWidthPx - targetPx| + |cellHeightPx - targetPx|
 - While a range anchor is active, a high-contrast green ring and crosshair are drawn at the anchor's exact physical-pixel coordinate. The marker is drawn by the monitor that contains the point, including when it is not the primary monitor.
 - While a range anchor is active, the primary overlay shows the status badge `Range: Enter to select`. During the range phase of the range-then-drag workflow the badge reads `Range-to-Drag: Enter to select` instead. Status badges stack without overlapping, and an active continuous mode is shown below the range badge.
 - While Scroll Mode is active, the primary overlay shows the status badge `Scroll Mode`. Continuous mode remains visible below it when enabled.
+- While Fine Mode is active, the primary overlay shows the status badge `Fine Mode`, and the fine point is drawn as a crosshair marker at its exact physical-pixel coordinate on the monitor that contains it.
 - While Scroll Mode is active, the full-screen dim mask and the entire 25×25 grid (grid lines, context window border, and focus border) are not drawn, so the window being scrolled stays fully visible and only the red cursor cell highlight and the status badges remain.
 - 色・透明度は初期バージョンでは固定値とする。背景色に応じた自動色変更は行わない。
 
@@ -416,6 +443,8 @@ For Scroll Mode input, steps 2-4 of the normal click flow are applied to the scr
 - The `R`+`D` chord is recognized only while the primary overlay is in eligible Stage 2 state. The first of the pair is deferred to key-up; if the other key's key-down arrives first, the chord fires and neither single-key action is dispatched. Repeats and modified presses do not participate, and pending chord state is cleared on `Esc`, focus loss, and overlay teardown.
 - Plain `PageUp` and `PageDown` enter Scroll Mode in Stage 2 and scroll by five notches. Modified Page keys are consumed without entering or scrolling. In Scroll Mode, unmodified arrow keys are interpreted as scroll commands instead of cursor movement.
 - While Scroll Mode is active, letter keys, Tab, `;`, Backspace, R, and confirmation keys are ignored. Esc exits Scroll Mode before the normal cancellation behavior runs.
+- `F` enters Fine Mode only in eligible Stage 2 state with no modifiers; it is consumed but ignored otherwise in Stage 2 and remains an ordinary column key in Stage 1. `S` starts the range-then-drag workflow under the same eligibility rule and likewise remains a Stage 1 column key.
+- While Fine Mode is active, unmodified arrow keys move the fine point by one quarter Stage 2 cell and unmodified Page keys move it by one Stage 2 cell, with key repeat. All confirmation keys resolve to the fine point. Letter keys, Tab, digit keys, `;`, Backspace, and `R`/`D`/`S`/`F` are ignored; Esc exits Fine Mode before the normal cancellation behavior runs.
 
 ### 7.2 ホットキー
 
@@ -437,6 +466,7 @@ For Scroll Mode input, steps 2-4 of the normal click flow are applied to the scr
 - **範囲選択中**：選択中のセッション単位のフラグ。Stage 2で`R`を押した後にONになり、固定されたアンカー座標を保持する。`Enter`で範囲を実行するか、`Esc`でアンカーを消すまで継続する。
 - **ドラッグ選択中**：選択中のセッション単位のフラグ。Stage 2でDを押した後にONになり、固定された開始座標を保持する。`Enter`でドラッグを実行するか、`Esc`でアンカーを消すまで継続する。
 - **Scroll Mode**：A Stage 2 sub-mode entered with `PageUp` or `PageDown`. Arrow and Page keys send wheel input to the current target. While a scroll burst keeps the overlays hidden, a low-level keyboard hook supplies the keys; the Stage 2 grid returns when input pauses. `Esc` exits to Stage 2; continuous mode is retained.
+- **Fine Mode**：A Stage 2 sub-mode entered with `F`. It holds a fine point (physical pixels) initialized from the Stage 2 target; arrows move it by 5 DIP and Page keys by one Stage 2 cell. Confirmation keys click the fine point; `Esc` exits to Stage 2.
 - **Range-then-drag workflow**：A session flag started by the overlapping `R`+`D` chord in eligible Stage 2 state. It has a range phase (the range anchor is active) and a drag phase (the range endpoint is reused as the drag anchor). It is cleared by drag completion, `Esc`, failure, focus loss, or display changes.
 - **クリック実行中**：第2段階または第1段階後の確定キーで確定座標を決めた後。オーバーレイ非表示からクリック送信までの間。
 
@@ -469,6 +499,13 @@ For Scroll Mode input, steps 2-4 of the normal click flow are applied to the scr
 | Selecting (history length 2, no range anchor) | `R` (no modifiers) | Selecting (range active, history length 0) | Capture the current target as the range anchor and return to Stage 1 |
 | Selecting (history length 2, no drag anchor) | `D` (no modifiers) | Selecting (drag active, history length 0) | Capture the current target as the drag anchor and return to Stage 1 |
 | Selecting (history length 2, no anchors, no Scroll Mode) | `R`+`D` overlapping key-downs | Selecting (range-drag workflow, range phase, history length 0) | Capture the current target as the range anchor, enter the workflow, and return to Stage 1; neither single-key action fires |
+| Selecting (history length 2, eligible Stage 2) | `S` (no modifiers) | Selecting (range-drag workflow, range phase, history length 0) | Same as the `R`+`D` chord trigger |
+| Selecting (history length 2, eligible Stage 2) | `F` (no modifiers) | Selecting (fine mode) | Initialize the fine point at the Stage 2 target and enter Fine Mode |
+| Selecting (fine mode) | Arrow keys | Selecting (fine mode) | Move the fine point by one quarter Stage 2 cell per press or repeat; moves leaving all monitor areas are ignored |
+| Selecting (fine mode) | `PageUp` / `PageDown` | Selecting (fine mode) | Move the fine point vertically by one Stage 2 cell per press or repeat |
+| Selecting (fine mode) | `Enter` / `Shift+Enter` / `Ctrl+Enter` / `Ctrl+Shift+Enter` / `C` | Executing click | Confirm at the fine point with the usual click kind and completion rules |
+| Selecting (fine mode) | `Esc` | Selecting (Stage 2, no fine mode) | Exit Fine Mode and keep the selection session open |
+| Selecting (fine mode) | `R`, `D`, `S`, `F`, Tab, digits, `;`, `Backspace`, letter keys | Selecting (fine mode) | Ignore |
 | Selecting (history length 2, eligible Stage 2) | Lone `R` or `D` key-up | Selecting (range/drag active, history length 0) | Dispatch the deferred single-key action on key-up when no chord completed |
 | Selecting (range-drag workflow, range phase, history length 2) | `Enter` | Selecting (range-drag workflow, drag phase, history length 0) | Execute the range, reuse the exact endpoint as the drag anchor, and reopen Stage 1 |
 | Selecting (range-drag workflow, drag phase, history length 2) | `Enter` | Executing drag | Execute the drag, then clear the workflow and apply the normal/continuous completion rule |
@@ -547,14 +584,15 @@ For Scroll Mode input, steps 2-4 of the normal click flow are applied to the scr
 | 段階数 | 2（固定。段階0は条件付きの前段階） |
 | 列数・行数 | 第1段階は112 DIP目標で自動算出、段階0が有効な場合はその領域内で再算出（4.1）、第2段階は固定25×25（セル20 DIP、ウィンドウ500 DIP） |
 | 選択キー | 3.3の割り当て規則に従い、列キーと行キーを重複なく割り当てる（最大26キー） |
-| Confirmation keys | `Enter` for left click; `Shift+Enter` for right click; `Ctrl+Enter` for middle (wheel) click |
+| Confirmation keys | `Enter` for left click; `Shift+Enter` for right click; `Ctrl+Enter` for middle (wheel) click; `Ctrl+Shift+Enter` for double left click |
 | カーソル移動 | 第2段階で矢印キー。有効セルを順に移動 |
+| Fine Mode | Stage 2で`F`。矢印で5 DIP、Pageで1セルずつ微調整し、確定キーで微調整点をクリック。EscでStage 2へ戻る |
 | 戻るキー | Backspace（第1段階の打鍵履歴を戻す） |
-| キャンセルキー | Esc（Scroll Modeと範囲アンカーを先に解除し、連続モードでも終了） |
+| キャンセルキー | Esc（Scroll Mode・Fine Modeと範囲アンカーを先に解除し、連続モードでも終了） |
 | 連続モード | 初期値OFF。グリッド表示中に`;`でON/OFF。Stage 2の`C`確定でもONになる。ONの間は確定後も第1段階へ戻る |
 | Click kinds | Left, right, and middle (wheel) clicks |
 | Range selection | Stage 2で`R`。アンカーは固定し、`Enter`で左クリック＋Shift+左クリック。Escでアンカーを解除 |
-| Range-then-drag | Stage 2で`F`(または`R`+`D`同時押し)。範囲確定後に範囲終点をドラッグアンカーとしてStage 1を再表示し、ドロップ先を選んで`Enter` |
+| Range-then-drag | Stage 2で`S`(または`R`+`D`同時押し)。範囲確定後に範囲終点をドラッグアンカーとしてStage 1を再表示し、ドロップ先を選んで`Enter` |
 | Scroll Mode | Stage 2でPageUp/PageDown。矢印は1ノッチ、Pageは5ノッチ。EscでStage 2へ戻る |
 | 確定後の動作 | 通常モードはオーバーレイ終了。連続モードは第1段階へ戻る。カーソルは元の位置に戻さない |
 
@@ -564,7 +602,6 @@ For Scroll Mode input, steps 2-4 of the normal click flow are applied to the scr
 - 段階数の変更（段階0の多段化など）
 - 選択キー配置の変更（ホームポジション寄りの配置など）
 - 第2段階グリッドサイズの変更
-- Double-click
 - ドラッグ操作
 - スクロール操作
 - 表示デザインの変更

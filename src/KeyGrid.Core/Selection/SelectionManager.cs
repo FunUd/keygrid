@@ -446,8 +446,10 @@ public class SelectionManager
 
     /// <summary>
     /// Confirms the Stage 2 cursor position and resolves its click coordinate.
+    /// When <paramref name="explicitTarget"/> is supplied (Fine Mode), it is used
+    /// as the click coordinate instead of the cell-resolved point.
     /// </summary>
-    public bool ProcessEnter()
+    public bool ProcessEnter(PixelPoint? explicitTarget = null)
     {
         if (State == SelectionState.Selecting
             && _history.Count == Stage1KeyCount
@@ -461,7 +463,8 @@ public class SelectionManager
                 SelectedRowIndex);
             CurrentSelection = GridCalculator.IntersectCellWithSelection(selectedCell, CurrentSelection);
             CurrentBoundingBox = PixelRect.BoundingBox(CurrentSelection);
-            TargetCoordinate = GridCalculator.ResolveTargetCoordinate(CurrentBoundingBox, CurrentSelection);
+            TargetCoordinate = explicitTarget
+                ?? GridCalculator.ResolveTargetCoordinate(CurrentBoundingBox, CurrentSelection);
             State = SelectionState.ExecutingClick;
             return true;
         }

@@ -17,6 +17,7 @@ public interface IOverlayWindowSurface
     event Action? RangeStartRequested;
     event Action? DragStartRequested;
     event Action? RangeDragWorkflowRequested;
+    event Action? FineModeRequested;
     event Action<int>? PageScrollRequested;
     event Action<int>? MonitorSelectRequested;
     event Action<int>? MonitorCycleRequested;
@@ -33,7 +34,9 @@ public interface IOverlayWindowSurface
         bool isScrollMode = false,
         bool isRangeDragWorkflow = false,
         PixelPoint? dragStartPoint = null,
-        string? monitorBadgeLabel = null);
+        string? monitorBadgeLabel = null,
+        bool isFineMode = false,
+        PixelPoint? fineTargetPoint = null);
     void RefreshExpectedDpi();
     void EnableDpiChangeNotifications();
     void Show();
