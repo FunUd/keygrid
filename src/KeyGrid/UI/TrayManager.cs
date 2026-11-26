@@ -1,3 +1,4 @@
+using System.IO;
 using System.Runtime.InteropServices;
 using KeyGrid.Interop;
 using KeyGrid.Services;
@@ -46,28 +47,44 @@ public class TrayManager : IDisposable
         nid.szTip = "KeyGrid";
 
         _iconCreated = NativeMethods.Shell_NotifyIcon(NativeMethods.NIM_ADD, ref nid);
+        if (_iconCreated)
+        {
+            FileLogger.LogInfo(
+                $"Tray icon added (hwnd=0x{_hWnd.ToInt64():X}, icon=0x{nid.hIcon.ToInt64():X}).");
+        }
+        else
+        {
+            FileLogger.LogError(
+                $"Shell_NotifyIcon(NIM_ADD) failed for hwnd=0x{_hWnd.ToInt64():X} " +
+                $"(icon=0x{nid.hIcon.ToInt64():X}, win32Error={Marshal.GetLastWin32Error()}).");
+        }
     }
 
     /// <summary>
-    /// Loads the icon embedded in the executable (via ApplicationIcon) at the
-    /// system tray size. Returns Zero when unavailable so the caller can fall
-    /// back to the generic application icon.
+    /// Loads the application icon at the system tray size. The .ico file is
+    /// copied next to the executable because LoadImage cannot resolve the
+    /// icon embedded in the .NET apphost exe (it has RT_ICON entries but no
+    /// RT_GROUP_ICON directory). Returns Zero when unavailable so the caller
+    /// can fall back to the generic application icon.
     /// </summary>
     private static nint LoadApplicationIcon()
     {
-        string? exePath = Environment.ProcessPath;
-        if (string.IsNullOrEmpty(exePath))
-        {
-            return nint.Zero;
-        }
-
         int cx = NativeMethods.GetSystemMetrics(NativeMethods.SM_CXSMICON);
         int cy = NativeMethods.GetSystemMetrics(NativeMethods.SM_CYSMICON);
         if (cx <= 0) cx = 16;
         if (cy <= 0) cy = 16;
 
-        return NativeMethods.LoadImage(
-            nint.Zero, exePath, NativeMethods.IMAGE_ICON, cx, cy, NativeMethods.LR_LOADFROMFILE);
+        string iconPath = Path.Combine(AppContext.BaseDirectory, "icon.ico");
+        nint icon = NativeMethods.LoadImage(
+            nint.Zero, iconPath, NativeMethods.IMAGE_ICON, cx, cy, NativeMethods.LR_LOADFROMFILE);
+        if (icon == nint.Zero)
+        {
+            FileLogger.LogWarning(
+                $"LoadImage could not load '{iconPath}' " +
+                $"(win32Error={Marshal.GetLastWin32Error()}); using the generic icon.");
+        }
+
+        return icon;
     }
 
     public void UpdateTooltip(string tooltip)

@@ -10,6 +10,12 @@
           Link="LICENSE"
           CopyToOutputDirectory="PreserveNewest"
           CopyToPublishDirectory="PreserveNewest" />
+    <!-- The tray loads this file directly: the apphost exe has no
+         RT_GROUP_ICON resource for LoadImage to resolve. -->
+    <None Include="..\..\assets\icon.ico"
+          Link="icon.ico"
+          CopyToOutputDirectory="PreserveNewest"
+          CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 
   <PropertyGroup>
