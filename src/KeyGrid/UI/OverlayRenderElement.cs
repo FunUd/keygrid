@@ -73,7 +73,9 @@ public class OverlayRenderElement : FrameworkElement
     private readonly Brush _fineAccentFillBrush = new SolidColorBrush(Color.FromRgb(255, 200, 80));
 
     private readonly Typeface _labelTypeface = new(new FontFamily("Segoe UI"), FontStyles.Normal, FontWeights.Bold, FontStretches.Normal);
-    private readonly Typeface _cellTypeface = new(new FontFamily("Segoe UI"), FontStyles.Normal, FontWeights.Normal, FontStretches.Normal);
+    // SemiBold keeps the dense Stage 0/1 key labels readable at small sizes
+    // where Normal-weight strokes thin out over busy backgrounds.
+    private readonly Typeface _cellTypeface = new(new FontFamily("Segoe UI"), FontStyles.Normal, FontWeights.SemiBold, FontStretches.Normal);
 
     // Reuse glyph layouts across labels and renders. The key includes DPI because
     // FormattedText stores a pixelsPerDip value that changes with per-monitor DPI.

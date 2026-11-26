@@ -14,6 +14,7 @@
 ### Changed
 
 - Raise the Stage 0/1 cell-badge fill opacity so the key labels stay legible over white backgrounds: the pill now composites to a dark surface instead of mid-gray, with a slightly stronger border and more opaque active state.
+- Switch the Stage 0/1 cell key labels to Semibold so the glyphs keep enough stroke weight at small sizes.
 - Redraw the range/drag anchor and Fine Mode target markers as a minimal reticle: a thin ring-and-crosshair with a center dot, rendered as a dark silhouette under a bright accent (green for anchors, amber for the fine point) — the same double-stroke approach as the grid lines, replacing the previous filled halo marker.
 
 ## [0.5.0] - 2026-11-26
