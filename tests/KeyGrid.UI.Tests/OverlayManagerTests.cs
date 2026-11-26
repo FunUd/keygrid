@@ -2151,7 +2151,7 @@ public class OverlayManagerTests
     }
 
     [Fact]
-    public void FineMode_IgnoredWhileAnchorOrWorkflowIsActive()
+    public void FineMode_IgnoredInStage1AndScrollMode()
     {
         UiTestThread.Run(() =>
         {
@@ -2169,16 +2169,157 @@ public class OverlayManagerTests
 
             primary.RaiseKey(manager.SelectionManager.ColumnKeys[0]);
             primary.RaiseKey(manager.SelectionManager.RowKeys[0]);
+
+            // Scroll Mode conflicts with Fine Mode because Page keys move the
+            // fine point instead of scrolling.
+            primary.RaisePageScroll(1);
+            Assert.True(primary.LastScrollMode);
+            primary.RaiseFineMode();
+            Assert.False(manager.IsFineMode);
+
+            // The scroll burst keeps the overlays hidden, so Esc arrives
+            // through the scroll keyboard hook.
+            Assert.True(manager.ScrollKeyHook.RaiseKey(NativeMethods.VK_ESCAPE));
+            Assert.False(manager.IsScrollMode);
+            Assert.False(primary.LastScrollMode);
+
+            // Back in plain Stage 2, Fine Mode is available again — including
+            // while a range anchor is active for endpoint adjustment.
             primary.RaiseRangeStart();
             Assert.True(manager.HasRangeSelection);
-            Assert.Equal(1, manager.SelectionManager.CurrentStage);
-
-            // Returning to Stage 2 with an anchor active must not allow Fine Mode.
             primary.RaiseKey(manager.SelectionManager.ColumnKeys[0]);
             primary.RaiseKey(manager.SelectionManager.RowKeys[0]);
             Assert.Equal(2, manager.SelectionManager.CurrentStage);
             primary.RaiseFineMode();
+            Assert.True(manager.IsFineMode);
+            Assert.True(manager.HasRangeSelection);
+
+            manager.CloseOverlays();
+        });
+    }
+
+    [Fact]
+    public void FineMode_RangeEndpointUsesFinePoint()
+    {
+        UiTestThread.Run(() =>
+        {
+            var factory = new FakeOverlayFactory();
+            var focus = new FakeWindowFocusService { ForegroundWindow = new nint(71) };
+            var clickSender = new FakeClickSender();
+            var manager = CreateManager(SingleMonitorProvider(), factory, focus, clickSender);
+            manager.ShowOverlays();
+            UiTestThread.DrainDispatcher();
+            var primary = Assert.Single(factory.Windows);
+
+            primary.RaiseKey(manager.SelectionManager.ColumnKeys[0]);
+            primary.RaiseKey(manager.SelectionManager.RowKeys[0]);
+            Assert.True(manager.SelectionManager.TryGetStage2Target(out var rangeStart));
+            primary.RaiseRangeStart();
+            Assert.True(manager.HasRangeSelection);
+
+            // Select the endpoint region, then fine-adjust it in Stage 2.
+            primary.RaiseKey(manager.SelectionManager.ColumnKeys[0]);
+            primary.RaiseKey(manager.SelectionManager.RowKeys[0]);
+            Assert.Equal(2, manager.SelectionManager.CurrentStage);
+            primary.RaiseFineMode();
+            Assert.True(manager.IsFineMode);
+            Assert.True(manager.HasRangeSelection);
+
+            primary.RaiseMove(1, 0);
+            primary.RaiseMove(0, 1);
+            var fineEnd = new PixelPoint(manager.FineTarget.X, manager.FineTarget.Y);
+
+            primary.RaiseConfirm(ClickKind.Left);
+
+            Assert.Equal(1, clickSender.RangeCallCount);
+            Assert.Equal(rangeStart, clickSender.LastRangeStart);
+            Assert.Equal(fineEnd, clickSender.LastRangeEnd);
             Assert.False(manager.IsFineMode);
+            Assert.False(manager.IsActive);
+
+            manager.CloseOverlays();
+        });
+    }
+
+    [Fact]
+    public void FineMode_DragEndpointUsesFinePoint()
+    {
+        UiTestThread.Run(() =>
+        {
+            var factory = new FakeOverlayFactory();
+            var focus = new FakeWindowFocusService { ForegroundWindow = new nint(71) };
+            var clickSender = new FakeClickSender();
+            var manager = CreateManager(SingleMonitorProvider(), factory, focus, clickSender);
+            manager.ShowOverlays();
+            UiTestThread.DrainDispatcher();
+            var primary = Assert.Single(factory.Windows);
+
+            primary.RaiseKey(manager.SelectionManager.ColumnKeys[0]);
+            primary.RaiseKey(manager.SelectionManager.RowKeys[0]);
+            Assert.True(manager.SelectionManager.TryGetStage2Target(out var dragStart));
+            primary.RaiseDragStart();
+            Assert.True(manager.HasDragSelection);
+
+            primary.RaiseKey(manager.SelectionManager.ColumnKeys[0]);
+            primary.RaiseKey(manager.SelectionManager.RowKeys[0]);
+            Assert.Equal(2, manager.SelectionManager.CurrentStage);
+            primary.RaiseFineMode();
+            Assert.True(manager.IsFineMode);
+            Assert.True(manager.HasDragSelection);
+
+            primary.RaiseMove(-1, 0);
+            var fineEnd = new PixelPoint(manager.FineTarget.X, manager.FineTarget.Y);
+
+            primary.RaiseConfirm(ClickKind.Left);
+
+            Assert.Equal(1, clickSender.DragCallCount);
+            Assert.Equal(dragStart, clickSender.LastDragStart);
+            Assert.Equal(fineEnd, clickSender.LastDragEnd);
+            Assert.False(manager.IsFineMode);
+            Assert.False(manager.IsActive);
+
+            manager.CloseOverlays();
+        });
+    }
+
+    [Fact]
+    public void FineMode_WorkflowRangeEndpointBecomesDragAnchor()
+    {
+        UiTestThread.Run(() =>
+        {
+            var factory = new FakeOverlayFactory();
+            var focus = new FakeWindowFocusService { ForegroundWindow = new nint(71) };
+            var clickSender = new FakeClickSender();
+            var manager = CreateManager(SingleMonitorProvider(), factory, focus, clickSender);
+            manager.ShowOverlays();
+            UiTestThread.DrainDispatcher();
+            var firstPrimary = Assert.Single(factory.Windows);
+
+            firstPrimary.RaiseKey(manager.SelectionManager.ColumnKeys[0]);
+            firstPrimary.RaiseKey(manager.SelectionManager.RowKeys[0]);
+            Assert.True(manager.SelectionManager.TryGetStage2Target(out var rangeStart));
+            firstPrimary.RaiseRangeDragWorkflow();
+            Assert.True(manager.IsRangeDragWorkflow);
+
+            firstPrimary.RaiseKey(manager.SelectionManager.ColumnKeys[0]);
+            firstPrimary.RaiseKey(manager.SelectionManager.RowKeys[0]);
+            firstPrimary.RaiseFineMode();
+            Assert.True(manager.IsFineMode);
+            firstPrimary.RaiseMove(0, 1);
+            var fineEnd = new PixelPoint(manager.FineTarget.X, manager.FineTarget.Y);
+
+            firstPrimary.RaiseConfirm(ClickKind.Left);
+
+            Assert.Equal(1, clickSender.RangeCallCount);
+            Assert.Equal(rangeStart, clickSender.LastRangeStart);
+            Assert.Equal(fineEnd, clickSender.LastRangeEnd);
+            Assert.True(manager.IsRangeDragWorkflow);
+            Assert.True(manager.HasDragSelection);
+
+            // The fine-adjusted endpoint becomes the drag anchor for the drop
+            // point selection in the reopened Stage 1.
+            var secondPrimary = factory.Windows[1];
+            Assert.Equal(fineEnd, secondPrimary.LastDragStartPoint);
 
             manager.CloseOverlays();
         });
@@ -2480,7 +2621,10 @@ public class OverlayManagerTests
                 && dragStartPoint is null;
             LastAllowRangeDragChord = stage2TargetEligible;
             LastAllowContinueConfirm = stage2TargetEligible;
-            LastAllowFineMode = stage2TargetEligible && !isFineMode;
+            LastAllowFineMode = IsPrimary
+                && selectionManager.CurrentStage == 2
+                && !isScrollMode
+                && !isFineMode;
             LastMonitorBadgeLabel = monitorBadgeLabel;
             RenderUpdateCount++;
         }

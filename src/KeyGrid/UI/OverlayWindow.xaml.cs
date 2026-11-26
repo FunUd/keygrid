@@ -142,7 +142,14 @@ public partial class OverlayWindow : Window, IOverlayWindowSurface
             && dragStartPoint is null;
         _keyHandler.AllowRangeDragChord = stage2TargetEligible;
         _keyHandler.AllowContinueConfirm = stage2TargetEligible;
-        _keyHandler.AllowFineMode = stage2TargetEligible && !isFineMode;
+
+        // Fine Mode is available wherever Stage 2 resolves a point: plain
+        // targets and range/drag endpoint selection alike. Only Scroll Mode
+        // conflicts because its Page keys move the fine point instead.
+        _keyHandler.AllowFineMode = IsPrimary
+            && selectionManager.CurrentStage == 2
+            && !isScrollMode
+            && !isFineMode;
 
         RenderElement.UpdateState(
             MonitorRect,

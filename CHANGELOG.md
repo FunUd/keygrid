@@ -8,7 +8,7 @@
 - Add Fine Mode in Stage 2, entered with `F`: arrow keys move a fine adjustment point by 5 DIP and Page keys by one Stage 2 cell (20 DIP), and all confirmation keys click the fine point. `Esc` returns to Stage 2. The point is drawn as a crosshair marker and never leaves the monitor display areas.
 - Add `S` in Stage 2 as a direct trigger for the range-then-drag workflow (previously reachable only via the overlapping `R`+`D` chord, which still works). `S` remains a Stage 1 column key.
 - Allow `R`, `D`, `S`, and the `R`+`D` chord inside Fine Mode to start a range, drag, or range-then-drag workflow anchored at the fine-adjusted point, then return to Stage 1.
-- Replace the application icon with a brighter 3×3 grid design (cyan cells, red center) so it stays recognizable at tray size.
+- Allow Fine Mode (`F`) during range/drag endpoint selection, including both phases of the range-then-drag workflow: the fine point becomes the selection endpoint on `Enter`, and in the workflow it also becomes the drag anchor.
 
 ### Changed
 

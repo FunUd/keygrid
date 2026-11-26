@@ -462,7 +462,7 @@ public class OverlayManager
 
     private void OnFineModeRequested()
     {
-        if (!CanUseStage2SubMode() || _fineMode)
+        if (!CanEnterFineMode())
         {
             return;
         }
@@ -479,18 +479,18 @@ public class OverlayManager
     }
 
     /// <summary>
-    /// Shared eligibility for Stage 2 sub-modes (Scroll Mode, Fine Mode): an
-    /// active selection in Stage 2 with no range/drag anchor and no workflow.
+    /// Eligibility for entering Fine Mode: an active Stage 2 selection without
+    /// Scroll Mode or an input operation in progress. Range/drag anchors and
+    /// the range-drag workflow do not block entry because Fine Mode is also
+    /// how the second point of those selections is adjusted.
     /// </summary>
-    private bool CanUseStage2SubMode()
+    private bool CanEnterFineMode()
     {
         return !IsClosing
             && IsActive
             && !_isInputInProgress
             && !_scrollMode
-            && _rangeDragPhase == RangeDragPhase.None
-            && !_rangeStartPoint.HasValue
-            && !_dragStartPoint.HasValue
+            && !_fineMode
             && _selectionManager.State == SelectionState.Selecting
             && _selectionManager.CurrentStage == 2;
     }
@@ -1295,11 +1295,20 @@ public class OverlayManager
 
     private void ExecuteDragSelection(int attempt)
     {
-        if (!_selectionManager.TryGetStage2Target(out var end))
+        // In Fine Mode the drop point is the adjusted fine point rather than
+        // the cell-resolved Stage 2 target.
+        PixelPoint end;
+        if (_fineMode)
+        {
+            end = _fineTarget;
+        }
+        else if (!_selectionManager.TryGetStage2Target(out end))
         {
             FileLogger.LogDebug($"Drag #{attempt} ignored because the Stage 2 target is not confirmable.");
             return;
         }
+
+        ExitFineMode();
 
         var start = _dragStartPoint!.Value;
         var virtualScreen = _virtualScreenBounds;
@@ -1445,11 +1454,20 @@ public class OverlayManager
 
     private void ExecuteRangeSelection(int attempt)
     {
-        if (!_selectionManager.TryGetStage2Target(out var end))
+        // In Fine Mode the range endpoint is the adjusted fine point rather
+        // than the cell-resolved Stage 2 target.
+        PixelPoint end;
+        if (_fineMode)
+        {
+            end = _fineTarget;
+        }
+        else if (!_selectionManager.TryGetStage2Target(out end))
         {
             FileLogger.LogDebug($"Range #{attempt} ignored because the Stage 2 target is not confirmable.");
             return;
         }
+
+        ExitFineMode();
 
         var start = _rangeStartPoint!.Value;
         var virtualScreen = _virtualScreenBounds;
