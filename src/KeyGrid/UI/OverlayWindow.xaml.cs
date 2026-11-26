@@ -128,16 +128,19 @@ public partial class OverlayWindow : Window, IOverlayWindowSurface
         // when entering either sub-mode.
         _keyHandler.AllowPageScrollRepeat = isScrollMode || isFineMode;
 
-        // The R+D chord and the C continue-confirm are eligible only for a
-        // plain Stage 2 target with no anchor or Scroll Mode active. Stage 1
-        // letters stay immediate keys.
+        // The R+D chord, the S workflow key, and the C continue-confirm are
+        // eligible for a plain Stage 2 target with no anchor or Scroll Mode.
+        // Fine Mode keeps them enabled so R/D/S can start a range, drag, or
+        // workflow anchored at the fine-adjusted point; only F itself is
+        // disabled while Fine Mode is already active. Stage 1 letters stay
+        // immediate keys.
         bool stage2TargetEligible = IsPrimary
             && selectionManager.CurrentStage == 2
             && !isScrollMode
             && !isRangeDragWorkflow
             && rangeStartPoint is null
             && dragStartPoint is null;
-        _keyHandler.AllowRangeDragChord = stage2TargetEligible && !isFineMode;
+        _keyHandler.AllowRangeDragChord = stage2TargetEligible;
         _keyHandler.AllowContinueConfirm = stage2TargetEligible;
         _keyHandler.AllowFineMode = stage2TargetEligible && !isFineMode;
 

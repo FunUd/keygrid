@@ -27,9 +27,11 @@ internal sealed class OverlayKeyHandler
     public bool AllowPageScrollRepeat { get; set; }
 
     /// <summary>
-    /// Whether an overlapping R+D key-down pair requests the range-then-drag
-    /// workflow. Enabled only in eligible Stage 2 state; while enabled, a lone
-    /// R or D is deferred to key-up so the chord can be recognized first.
+    /// Whether overlapping R+D key-downs request the range-then-drag workflow
+    /// and whether S requests it directly. Enabled for an eligible Stage 2
+    /// target, including inside Fine Mode where the actions anchor at the
+    /// fine-adjusted point; while enabled, a lone R or D is deferred to
+    /// key-up so the chord can be recognized first.
     /// </summary>
     public bool AllowRangeDragChord { get; set; }
 

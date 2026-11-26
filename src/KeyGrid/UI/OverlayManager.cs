@@ -376,7 +376,6 @@ public class OverlayManager
             || !IsActive
             || _isInputInProgress
             || _scrollMode
-            || _fineMode
             || _selectionManager.State != SelectionState.Selecting)
         {
             return;
@@ -386,14 +385,24 @@ public class OverlayManager
         {
             // R is unused in Stage 2. Set the anchor once; Esc clears it. Repeating
             // R must not silently move an anchor that the user may already be relying on.
-            if (_rangeStartPoint.HasValue
-                || _dragStartPoint.HasValue
-                || !_selectionManager.TryGetStage2Target(out var startPoint))
+            // In Fine Mode the anchor is the adjusted point, not the cell target.
+            PixelPoint startPoint;
+            if (_fineMode)
+            {
+                startPoint = _fineTarget;
+            }
+            else if (!_selectionManager.TryGetStage2Target(out startPoint))
+            {
+                return;
+            }
+
+            if (_rangeStartPoint.HasValue || _dragStartPoint.HasValue)
             {
                 return;
             }
 
             _rangeStartPoint = startPoint;
+            ExitFineMode();
             ReturnToStage1();
             FileLogger.LogDebug($"Range start set at ({startPoint.X}, {startPoint.Y}).");
             UpdateAllOverlays();
@@ -414,7 +423,6 @@ public class OverlayManager
             || !IsActive
             || _isInputInProgress
             || _scrollMode
-            || _fineMode
             || _selectionManager.State != SelectionState.Selecting)
         {
             return;
@@ -422,14 +430,24 @@ public class OverlayManager
 
         if (_selectionManager.CurrentStage == 2)
         {
-            if (_dragStartPoint.HasValue
-                || _rangeStartPoint.HasValue
-                || !_selectionManager.TryGetStage2Target(out var startPoint))
+            // In Fine Mode the anchor is the adjusted point, not the cell target.
+            PixelPoint startPoint;
+            if (_fineMode)
+            {
+                startPoint = _fineTarget;
+            }
+            else if (!_selectionManager.TryGetStage2Target(out startPoint))
+            {
+                return;
+            }
+
+            if (_dragStartPoint.HasValue || _rangeStartPoint.HasValue)
             {
                 return;
             }
 
             _dragStartPoint = startPoint;
+            ExitFineMode();
             ReturnToStage1();
             FileLogger.LogDebug($"Drag start set at ({startPoint.X}, {startPoint.Y}).");
             UpdateAllOverlays();
@@ -483,20 +501,29 @@ public class OverlayManager
             || !IsActive
             || _isInputInProgress
             || _scrollMode
-            || _fineMode
             || _rangeDragPhase != RangeDragPhase.None
             || _rangeStartPoint.HasValue
             || _dragStartPoint.HasValue
             || _selectionManager.State != SelectionState.Selecting
-            || _selectionManager.CurrentStage != 2
-            || !_selectionManager.TryGetStage2Target(out var startPoint))
+            || _selectionManager.CurrentStage != 2)
         {
             FileLogger.LogInfo(
                 "Range-drag chord ignored (closing=" + IsClosing
                 + $", active={IsActive}, inputInProgress={_isInputInProgress}, scrollMode={_scrollMode}"
-                + $", phase={_rangeDragPhase}, rangeAnchor={_rangeStartPoint.HasValue}"
+                + $", fineMode={_fineMode}, phase={_rangeDragPhase}, rangeAnchor={_rangeStartPoint.HasValue}"
                 + $", dragAnchor={_dragStartPoint.HasValue}, state={_selectionManager.State}"
                 + $", stage={_selectionManager.CurrentStage}).");
+            return;
+        }
+
+        // In Fine Mode the range anchor is the adjusted point, not the cell target.
+        PixelPoint startPoint;
+        if (_fineMode)
+        {
+            startPoint = _fineTarget;
+        }
+        else if (!_selectionManager.TryGetStage2Target(out startPoint))
+        {
             return;
         }
 
@@ -505,6 +532,7 @@ public class OverlayManager
         // anchor once the range selection succeeds.
         _rangeStartPoint = startPoint;
         _rangeDragPhase = RangeDragPhase.Range;
+        ExitFineMode();
         ReturnToStage1();
         FileLogger.LogInfo($"Range-drag workflow started; range anchor at ({startPoint.X}, {startPoint.Y}).");
         UpdateAllOverlays();
