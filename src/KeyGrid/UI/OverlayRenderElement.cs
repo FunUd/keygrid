@@ -58,17 +58,16 @@ public class OverlayRenderElement : FrameworkElement
     private readonly Brush _statusBackgroundBrush = new SolidColorBrush(Color.FromArgb(225, 12, 16, 24));
     private readonly Pen _statusBorderPen = new(new SolidColorBrush(Color.FromRgb(0, 229, 255)), 1.0);
 
-    // The range start marker needs to remain legible over arbitrary content, so a
-    // dark halo is drawn under a bright green ring and crosshair.
-    private readonly Brush _rangeStartFillBrush = new SolidColorBrush(Color.FromArgb(90, 80, 255, 160));
-    private readonly Pen _rangeStartPen = new(new SolidColorBrush(Color.FromRgb(80, 255, 160)), 2.0);
-    private readonly Pen _rangeStartHaloPen = new(new SolidColorBrush(Color.FromArgb(220, 0, 0, 0)), 4.0);
-
-    // The fine-mode marker uses a warm color so it stays distinct from the
-    // green range/drag anchors and the red cursor cell.
-    private readonly Brush _finePointFillBrush = new SolidColorBrush(Color.FromArgb(90, 255, 200, 80));
-    private readonly Pen _finePointPen = new(new SolidColorBrush(Color.FromRgb(255, 200, 80)), 2.0);
-    private readonly Pen _finePointHaloPen = new(new SolidColorBrush(Color.FromArgb(220, 0, 0, 0)), 4.0);
+    // Target markers (range/drag anchors and the Fine Mode point) use the same
+    // double-stroke trick as the grid lines: a dark silhouette is drawn under a
+    // thin bright accent so the marker stays legible over arbitrary content
+    // without a heavy halo. Green marks range/drag anchors; warm amber marks
+    // the fine point so it stays distinct from the anchors and the red cursor.
+    private readonly Pen _markerSilhouettePen = new(new SolidColorBrush(Color.FromArgb(210, 0, 0, 0)), 3.0);
+    private readonly Pen _rangeAccentPen = new(new SolidColorBrush(Color.FromRgb(80, 255, 160)), 1.25);
+    private readonly Brush _rangeAccentFillBrush = new SolidColorBrush(Color.FromRgb(80, 255, 160));
+    private readonly Pen _fineAccentPen = new(new SolidColorBrush(Color.FromRgb(255, 200, 80)), 1.25);
+    private readonly Brush _fineAccentFillBrush = new SolidColorBrush(Color.FromRgb(255, 200, 80));
 
     private readonly Typeface _labelTypeface = new(new FontFamily("Segoe UI"), FontStyles.Normal, FontWeights.Bold, FontStretches.Normal);
     private readonly Typeface _cellTypeface = new(new FontFamily("Segoe UI"), FontStyles.Normal, FontWeights.Normal, FontStretches.Normal);
@@ -98,12 +97,11 @@ public class OverlayRenderElement : FrameworkElement
         _statusTextBrush.Freeze();
         _statusBackgroundBrush.Freeze();
         _statusBorderPen.Freeze();
-        _rangeStartFillBrush.Freeze();
-        _rangeStartPen.Freeze();
-        _rangeStartHaloPen.Freeze();
-        _finePointFillBrush.Freeze();
-        _finePointPen.Freeze();
-        _finePointHaloPen.Freeze();
+        _markerSilhouettePen.Freeze();
+        _rangeAccentPen.Freeze();
+        _rangeAccentFillBrush.Freeze();
+        _fineAccentPen.Freeze();
+        _fineAccentFillBrush.Freeze();
     }
 
     public void UpdateState(
@@ -431,35 +429,35 @@ public class OverlayRenderElement : FrameworkElement
         double dpiX,
         double dpiY)
     {
-        if (!_monitorRect.Contains(point))
-        {
-            return;
-        }
-
-        double x = (point.X - _monitorRect.Left) / dpiX;
-        double y = (point.Y - _monitorRect.Top) / dpiY;
-        var center = new Point(x, y);
-        const double ringRadius = 7.0;
-        const double crosshairInner = 10.0;
-        const double crosshairOuter = 15.0;
-
-        dc.DrawEllipse(null, _rangeStartHaloPen, center, ringRadius + 1.5, ringRadius + 1.5);
-        dc.DrawEllipse(_rangeStartFillBrush, _rangeStartPen, center, ringRadius, ringRadius);
-        dc.DrawLine(_rangeStartPen, new Point(x - crosshairOuter, y), new Point(x - crosshairInner, y));
-        dc.DrawLine(_rangeStartPen, new Point(x + crosshairInner, y), new Point(x + crosshairOuter, y));
-        dc.DrawLine(_rangeStartPen, new Point(x, y - crosshairOuter), new Point(x, y - crosshairInner));
-        dc.DrawLine(_rangeStartPen, new Point(x, y + crosshairInner), new Point(x, y + crosshairOuter));
+        DrawTargetMarker(dc, point, dpiX, dpiY, _rangeAccentPen, _rangeAccentFillBrush);
     }
 
     /// <summary>
-    /// Draws the Fine Mode adjustment point with the same ring-and-crosshair
-    /// treatment as the range anchor but in a distinct warm color.
+    /// Draws a minimal reticle for the Fine Mode adjustment point: a thin ring
+    /// and crosshair in warm amber with a dark silhouette for legibility.
     /// </summary>
     private void DrawFinePointMarker(
         DrawingContext dc,
         PixelPoint point,
         double dpiX,
         double dpiY)
+    {
+        DrawTargetMarker(dc, point, dpiX, dpiY, _fineAccentPen, _fineAccentFillBrush);
+    }
+
+    /// <summary>
+    /// Draws the shared target reticle: a small ring, four short crosshair
+    /// arms, and a center dot. Every element is stroked twice — a wide dark
+    /// silhouette under a thin accent — matching the dual-tone grid lines so
+    /// the marker reads on both light and dark content.
+    /// </summary>
+    private void DrawTargetMarker(
+        DrawingContext dc,
+        PixelPoint point,
+        double dpiX,
+        double dpiY,
+        Pen accentPen,
+        Brush accentFill)
     {
         if (!_monitorRect.Contains(point))
         {
@@ -469,16 +467,25 @@ public class OverlayRenderElement : FrameworkElement
         double x = (point.X - _monitorRect.Left) / dpiX;
         double y = (point.Y - _monitorRect.Top) / dpiY;
         var center = new Point(x, y);
-        const double ringRadius = 7.0;
-        const double crosshairInner = 10.0;
-        const double crosshairOuter = 15.0;
+        const double ringRadius = 5.0;
+        const double crosshairInner = 6.5;
+        const double crosshairOuter = 14.0;
+        const double dotRadius = 1.6;
 
-        dc.DrawEllipse(null, _finePointHaloPen, center, ringRadius + 1.5, ringRadius + 1.5);
-        dc.DrawEllipse(_finePointFillBrush, _finePointPen, center, ringRadius, ringRadius);
-        dc.DrawLine(_finePointPen, new Point(x - crosshairOuter, y), new Point(x - crosshairInner, y));
-        dc.DrawLine(_finePointPen, new Point(x + crosshairInner, y), new Point(x + crosshairOuter, y));
-        dc.DrawLine(_finePointPen, new Point(x, y - crosshairOuter), new Point(x, y - crosshairInner));
-        dc.DrawLine(_finePointPen, new Point(x, y + crosshairInner), new Point(x, y + crosshairOuter));
+        // Silhouette pass.
+        dc.DrawEllipse(null, _markerSilhouettePen, center, ringRadius, ringRadius);
+        dc.DrawLine(_markerSilhouettePen, new Point(x - crosshairOuter, y), new Point(x - crosshairInner, y));
+        dc.DrawLine(_markerSilhouettePen, new Point(x + crosshairInner, y), new Point(x + crosshairOuter, y));
+        dc.DrawLine(_markerSilhouettePen, new Point(x, y - crosshairOuter), new Point(x, y - crosshairInner));
+        dc.DrawLine(_markerSilhouettePen, new Point(x, y + crosshairInner), new Point(x, y + crosshairOuter));
+
+        // Accent pass.
+        dc.DrawEllipse(null, accentPen, center, ringRadius, ringRadius);
+        dc.DrawLine(accentPen, new Point(x - crosshairOuter, y), new Point(x - crosshairInner, y));
+        dc.DrawLine(accentPen, new Point(x + crosshairInner, y), new Point(x + crosshairOuter, y));
+        dc.DrawLine(accentPen, new Point(x, y - crosshairOuter), new Point(x, y - crosshairInner));
+        dc.DrawLine(accentPen, new Point(x, y + crosshairInner), new Point(x, y + crosshairOuter));
+        dc.DrawEllipse(accentFill, null, center, dotRadius, dotRadius);
     }
 
     /// <summary>

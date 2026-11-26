@@ -101,14 +101,15 @@ public class OverlayRenderElementTests
         var leftDrawings = RenderDrawings(LeftMonitor, selection, rangeStartPoint: anchor);
         var rightDrawings = RenderDrawings(RightMonitor, selection, rangeStartPoint: anchor);
 
-        Assert.Contains(
-            GetGeometryDrawings(leftDrawings),
-            drawing => drawing.Brush is SolidColorBrush brush
-                && brush.Color == Color.FromArgb(90, 80, 255, 160));
-        Assert.DoesNotContain(
-            GetGeometryDrawings(rightDrawings),
-            drawing => drawing.Brush is SolidColorBrush brush
-                && brush.Color == Color.FromArgb(90, 80, 255, 160));
+        static bool IsAnchorAccent(Drawing drawing) =>
+            drawing is GeometryDrawing geometry
+            && (geometry.Brush is SolidColorBrush brush
+                    && brush.Color == Color.FromRgb(80, 255, 160)
+                || geometry.Pen?.Brush is SolidColorBrush penBrush
+                    && penBrush.Color == Color.FromRgb(80, 255, 160));
+
+        Assert.Contains(GetGeometryDrawings(leftDrawings), IsAnchorAccent);
+        Assert.DoesNotContain(GetGeometryDrawings(rightDrawings), IsAnchorAccent);
     }
 
     [Fact]
