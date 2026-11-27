@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.6.1] - 2026-11-27
+
+### Fixed
+
+- Fix the Stage 0/1 grid appearing shifted toward the top-left with an unselectable strip on the right and bottom edges when the grid monitor's DPI differs from the primary monitor's. WPF was resizing each overlay to the DPI-scaled suggested rectangle on `WM_DPICHANGED`; the exact monitor bounds are now re-asserted after the suggested placement is applied.
+
 ## [0.6.0] - 2026-11-27
 
 ### Added
