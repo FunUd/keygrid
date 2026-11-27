@@ -2,6 +2,7 @@ using System.Windows;
 using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
+using System.Windows.Threading;
 using KeyGrid.Core.Abstractions;
 using KeyGrid.Core.Geometry;
 using KeyGrid.Core.Selection;
@@ -322,6 +323,51 @@ public partial class OverlayWindow : Window, IOverlayWindowSurface
     }
 
     /// <summary>
+    /// Re-applies the exact monitor bounds in physical pixels. WPF rescales the
+    /// HWND to the WM_DPICHANGED suggested rectangle when the overlay's DPI
+    /// context changes, which would leave part of the monitor uncovered or draw
+    /// the grid offset from the true monitor origin.
+    /// </summary>
+    private void EnforceMonitorBounds()
+    {
+        if (_isClosing)
+        {
+            return;
+        }
+
+        var hwnd = Handle;
+        if (hwnd == nint.Zero)
+        {
+            return;
+        }
+
+        bool hasRect = NativeMethods.GetWindowRect(hwnd, out var rect);
+        if (hasRect
+            && rect.Left == MonitorRect.Left
+            && rect.Top == MonitorRect.Top
+            && rect.Right == MonitorRect.Right
+            && rect.Bottom == MonitorRect.Bottom)
+        {
+            return;
+        }
+
+        if (hasRect)
+        {
+            FileLogger.LogWarning(
+                $"Overlay bounds drifted from monitor rect (window=[{rect.Left}, {rect.Top}, " +
+                $"{rect.Right}, {rect.Bottom}], monitor={MonitorRect}); re-applying monitor bounds.");
+        }
+        NativeMethods.SetWindowPos(
+            hwnd,
+            nint.Zero,
+            MonitorRect.Left,
+            MonitorRect.Top,
+            MonitorRect.Width,
+            MonitorRect.Height,
+            NativeMethods.SWP_NOACTIVATE | NativeMethods.SWP_NOZORDER);
+    }
+
+    /// <summary>
     /// Starts reporting DPI changes after the initial per-monitor placement has
     /// settled. Moving a window to its target monitor during startup can produce a
     /// WM_DPICHANGED that must not cancel the new selection. Display-topology
@@ -381,15 +427,28 @@ public partial class OverlayWindow : Window, IOverlayWindowSurface
                 // every overlay reports them to the manager for cancellation.
                 DisplayConfigurationChanged?.Invoke();
             }
-            else if (msg == NativeMethods.WM_DPICHANGED && _dpiNotificationsEnabled)
+            else if (msg == NativeMethods.WM_DPICHANGED)
             {
-                int newDpi = (int)(wParam.ToInt64() & 0xFFFF);
-                if (newDpi != _expectedDpi)
+                // WPF answers WM_DPICHANGED by resizing the HWND to the suggested
+                // rectangle, which keeps the DIP size constant and therefore changes
+                // the physical pixel bounds. The renderer assumes the window exactly
+                // covers MonitorRect, so the suggested placement must be undone once
+                // it has been applied. The re-assert is deferred to ApplicationIdle so
+                // WPF's asynchronous SetWindowPos lands first.
+                Dispatcher.CurrentDispatcher.BeginInvoke(
+                    DispatcherPriority.ApplicationIdle,
+                    new Action(EnforceMonitorBounds));
+
+                if (_dpiNotificationsEnabled)
                 {
-                    // Moving a window to its target monitor during startup can send
-                    // an expected WM_DPICHANGED. Only a different DPI means that the
-                    // monitor configuration changed while the overlay was active.
-                    DisplayConfigurationChanged?.Invoke();
+                    int newDpi = (int)(wParam.ToInt64() & 0xFFFF);
+                    if (newDpi != _expectedDpi)
+                    {
+                        // Moving a window to its target monitor during startup can send
+                        // an expected WM_DPICHANGED. Only a different DPI means that the
+                        // monitor configuration changed while the overlay was active.
+                        DisplayConfigurationChanged?.Invoke();
+                    }
                 }
             }
         }
